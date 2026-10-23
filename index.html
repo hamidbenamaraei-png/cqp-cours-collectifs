@@ -52,6 +52,7 @@ const E = {nom:'entry.1232198973', prenom:'entry.1179002030', journee:'entry.135
 // ======= Journées (on ajoute une journée ici à chaque intervention) =======
 const JOURNEES = [
  {id:'2026-10-27', titre:'Mardi 27 octobre', theme:'EPMSP – Préparer son passage', diapos:16, dossier:'j1',
+  docs:[{titre:'Télécharger toutes les diapos', fichier:'j1/Diapos_EPMSP_27-10.pdf'}],
   ressenti:[
    "Ce qu'est l'EPMSP et comment se passe le passage",
    "Ce que le jury observe",
@@ -122,7 +123,8 @@ function accueil(){
 // ======= Écran 3 : les diapos =======
 function cours(j){
   let h = `<button class="back" id="bk">← Retour</button><div class="tag">${esc(j.titre)}</div><h1>${esc(j.theme)}</h1>
-   <p class="muted">Touche une diapo pour l'ouvrir en grand.</p>`;
+   ${(j.docs||[]).map(d=>`<a class="btn" href="${d.fichier}" download>⬇️ ${esc(d.titre)}</a>`).join('')}
+   <p class="muted" style="margin-top:16px">Touche une diapo pour l'ouvrir en grand.</p>`;
   for(let i=1;i<=j.diapos;i++){const s=`${j.dossier}/${String(i).padStart(2,'0')}.jpg`;h+=`<a href="${s}" target="_blank" rel="noopener"><img class="slide" loading="lazy" src="${s}" alt="Diapo ${i}"></a>`}
   h += `<button class="btn sec" id="bk2">← Retour</button>`;
   app.innerHTML=h;
