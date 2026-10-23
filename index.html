@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<title>Espace stagiaires – CQP Cours collectifs</title>
+<style>
+:root{--bg:#10162b;--card:#1c2442;--line:#2c365c;--txt:#fff;--soft:#c9cfe6;--mute:#8a92b2;--or:#ff7a3d;--ok:#4cc38a;--ko:#ff5d6c;--bl:#4c8dff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:17px;line-height:1.45}
+.wrap{max-width:720px;margin:0 auto;padding:20px 16px 60px}
+.tag{color:var(--or);font-weight:800;font-size:13px;letter-spacing:1.5px;text-transform:uppercase}
+h1{font-size:26px;margin:4px 0 18px;line-height:1.2}
+h2{font-size:20px;margin:0 0 10px}
+.card{background:var(--card);border-radius:18px;padding:18px;margin:0 0 16px;border-top:5px solid var(--bl)}
+.card.o{border-top-color:var(--or)}.card.g{border-top-color:var(--ok)}
+label{display:block;font-weight:700;margin:12px 0 6px}
+input[type=text],textarea{width:100%;padding:13px 14px;border-radius:12px;border:2px solid var(--line);background:#141b33;color:#fff;font-size:17px;font-family:inherit}
+input:focus,textarea:focus{outline:none;border-color:var(--or)}
+textarea{min-height:90px;resize:vertical}
+.btn{display:block;width:100%;padding:15px;border:0;border-radius:14px;background:var(--or);color:#10162b;font-weight:800;font-size:18px;cursor:pointer;margin-top:16px;text-align:center;text-decoration:none}
+.btn.sec{background:#2a3566;color:#fff}
+.btn:disabled{opacity:.5}
+.link{background:none;border:0;color:var(--mute);text-decoration:underline;font-size:15px;cursor:pointer;padding:6px 0}
+.muted{color:var(--mute);font-size:15px}
+.scale{display:flex;gap:8px;margin-top:4px}
+.scale button{flex:1;padding:12px 0;border-radius:12px;border:2px solid var(--line);background:#141b33;color:#fff;font-size:18px;font-weight:800;cursor:pointer}
+.scale button.on{background:var(--or);border-color:var(--or);color:#10162b}
+.scale-l{display:flex;justify-content:space-between;font-size:13px;color:var(--mute);margin-top:4px}
+.q{margin:18px 0 6px;font-weight:700}
+.opt{display:block;width:100%;text-align:left;padding:13px 14px;margin:8px 0;border-radius:12px;border:2px solid var(--line);background:#141b33;color:#fff;font-size:16px;cursor:pointer;font-family:inherit}
+.opt.on{border-color:var(--or);background:#2a2230}
+.opt.good{border-color:var(--ok);background:#173528}
+.opt.bad{border-color:var(--ko);background:#3a1c25}
+.expl{margin:6px 0 4px;padding:10px 12px;border-radius:10px;background:#141b33;font-size:15px;color:var(--soft)}
+.err{color:var(--ko);font-weight:700;margin-top:10px}
+.done{font-size:18px;font-weight:700;color:var(--ok)}
+.slide{width:100%;border-radius:12px;display:block;margin:0 0 12px;border:1px solid var(--line)}
+.top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px}
+.back{background:none;border:0;color:var(--soft);font-size:16px;cursor:pointer;padding:8px 0}
+.hide{display:none}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<script>
+// ======= Réglages =======
+const FORM = 'https://docs.google.com/forms/d/e/1FAIpQLSfENcJ-l4TOxJ4RV44Npl-B5x5EnINrPCt7GYhxH3y2Kygmog/formResponse';
+const E = {nom:'entry.1232198973', prenom:'entry.1179002030', journee:'entry.1357484407', ressenti:'entry.2006212165', reponses:'entry.27978275', difficulte:'entry.1243309547'};
+
+// ======= Journées (on ajoute une journée ici à chaque intervention) =======
+const JOURNEES = [
+ {id:'2026-10-27', titre:'Mardi 27 octobre', theme:'EPMSP – Préparer son passage', diapos:16, dossier:'j1',
+  ressenti:[
+   "Ce qu'est l'EPMSP et comment se passe le passage",
+   "Ce que le jury observe",
+   "Comment répartir mes 20 minutes",
+   "Ce que je dois préparer"],
+  questions:[
+   {q:"Combien dure le passage, et quelles sont ses parties ?",
+    o:["20 min : échauffement, corps de séance, retour au calme, étirements",
+       "30 min : échauffement, corps de séance, étirements, bilan",
+       "20 min : seulement le corps de séance"],
+    b:0, e:"Le passage dure 20 minutes et c'est une séance entière : échauffement, corps de séance, retour au calme, puis étirements."},
+   {q:"Sur quoi le jury regarde surtout ?",
+    o:["La difficulté des exercices",
+       "La sécurité des pratiquants et la tienne, des mouvements sûrs, le placement dans la salle",
+       "Ta tenue et le choix de ta musique"],
+    b:1, e:"Le jury regarde d'abord la sécurité : celle des pratiquants et la tienne, des mouvements sûrs, et le placement dans la salle."},
+   {q:"Pour l'EPMSP, la musique ou le Tabata, c'est obligatoire ?",
+    o:["Oui, la musique est obligatoire",
+       "Non, c'est au choix : sur la musique ou en version Tabata",
+       "Oui, le Tabata est obligatoire"],
+    b:1, e:"Pour l'EPMSP, c'est au choix. Attention : à l'examen final, la musique peut être imposée, donc il faut savoir animer sur la musique."}
+  ]}
+];
+
+// ======= Mémoire du téléphone (nom, prénom, quiz envoyés) =======
+function lire(k,d){try{const v=localStorage.getItem('cqp_'+k);return v?JSON.parse(v):d}catch(e){return d}}
+function ecrire(k,v){try{localStorage.setItem('cqp_'+k,JSON.stringify(v))}catch(e){}}
+let moi = lire('moi', null);
+const app = document.getElementById('app');
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function haut(){window.scrollTo(0,0)}
+
+// ======= Écran 1 : nom et prénom =======
+function ecranNom(){
+  app.innerHTML = `<div class="tag">CQP Instructeur Fitness – Cours collectifs</div>
+  <h1>Espace stagiaires</h1>
+  <div class="card o"><h2>Qui es-tu ?</h2>
+   <p class="muted">Une seule fois : ton téléphone s'en souviendra.</p>
+   <label for="n">Nom</label><input type="text" id="n" autocomplete="family-name" value="${esc(moi?moi.nom:'')}">
+   <label for="p">Prénom</label><input type="text" id="p" autocomplete="given-name" value="${esc(moi?moi.prenom:'')}">
+   <div class="err hide" id="er">Écris ton nom et ton prénom.</div>
+   <button class="btn" id="go">Entrer</button></div>`;
+  document.getElementById('go').onclick=()=>{
+    const nom=document.getElementById('n').value.trim(), prenom=document.getElementById('p').value.trim();
+    if(!nom||!prenom){document.getElementById('er').classList.remove('hide');return}
+    moi={nom,prenom}; ecrire('moi',moi); accueil();
+  };
+  haut();
+}
+
+// ======= Écran 2 : accueil =======
+function accueil(){
+  const envoyes = lire('envoyes',{});
+  let h = `<div class="top"><div><div class="tag">Espace stagiaires</div><h1 style="margin-bottom:6px">Bonjour ${esc(moi.prenom)} 👋</h1></div></div>
+  <p class="muted" style="margin-top:0">Pas toi ? <button class="link" id="chg">Changer de nom</button></p>`;
+  JOURNEES.slice().reverse().forEach(j=>{
+    h += `<div class="card"><div class="tag" style="color:var(--soft)">${esc(j.titre)}</div><h2 style="margin-top:4px">${esc(j.theme)}</h2>
+     <button class="btn" data-quiz="${j.id}">📝 Petit bilan de ma journée${envoyes[j.id]?' ✅':''}</button>
+     <button class="btn sec" data-cours="${j.id}">📚 Revoir les diapos</button></div>`;
+  });
+  app.innerHTML = h;
+  document.getElementById('chg').onclick=ecranNom;
+  app.querySelectorAll('[data-quiz]').forEach(b=>b.onclick=()=>quiz(JOURNEES.find(j=>j.id===b.dataset.quiz)));
+  app.querySelectorAll('[data-cours]').forEach(b=>b.onclick=()=>cours(JOURNEES.find(j=>j.id===b.dataset.cours)));
+  haut();
+}
+
+// ======= Écran 3 : les diapos =======
+function cours(j){
+  let h = `<button class="back" id="bk">← Retour</button><div class="tag">${esc(j.titre)}</div><h1>${esc(j.theme)}</h1>
+   <p class="muted">Touche une diapo pour l'ouvrir en grand.</p>`;
+  for(let i=1;i<=j.diapos;i++){const s=`${j.dossier}/${String(i).padStart(2,'0')}.jpg`;h+=`<a href="${s}" target="_blank" rel="noopener"><img class="slide" loading="lazy" src="${s}" alt="Diapo ${i}"></a>`}
+  h += `<button class="btn sec" id="bk2">← Retour</button>`;
+  app.innerHTML=h;
+  document.getElementById('bk').onclick=accueil; document.getElementById('bk2').onclick=accueil;
+  haut();
+}
+
+// ======= Écran 4 : le quiz =======
+function quiz(j){
+  const r = j.ressenti.map(()=>0), rep = j.questions.map(()=>-1);
+  let h = `<button class="back" id="bk">← Retour</button><div class="tag">${esc(j.titre)}</div><h1>Petit bilan de ma journée</h1>
+  <div class="card o"><h2>Mon ressenti</h2><p class="muted" style="margin-top:0">J'ai compris… (1 = pas du tout, 5 = tout à fait)</p>`;
+  j.ressenti.forEach((t,i)=>{h+=`<div class="q">${esc(t)}</div><div class="scale" data-r="${i}">${[1,2,3,4,5].map(n=>`<button data-n="${n}">${n}</button>`).join('')}</div>`});
+  h += `</div><div class="card"><h2>3 petites questions</h2>`;
+  j.questions.forEach((q,i)=>{h+=`<div class="q">${i+1}. ${esc(q.q)}</div><div data-q="${i}">${q.o.map((o,k)=>`<button class="opt" data-k="${k}">${esc(o)}</button>`).join('')}</div><div class="expl hide" id="ex${i}"></div>`});
+  h += `</div><div class="card g"><h2>Une difficulté à signaler ?</h2><p class="muted" style="margin-top:0">Facultatif.</p><textarea id="dif" placeholder="Écris ici si tu veux…"></textarea></div>
+  <div class="err hide" id="er"></div><button class="btn" id="env">Envoyer</button><div id="fin"></div>`;
+  app.innerHTML=h;
+  document.getElementById('bk').onclick=accueil;
+  app.querySelectorAll('.scale').forEach(s=>s.querySelectorAll('button').forEach(b=>b.onclick=()=>{
+    r[+s.dataset.r]=+b.dataset.n; s.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b))}));
+  app.querySelectorAll('[data-q]').forEach(g=>g.querySelectorAll('.opt').forEach(b=>b.onclick=()=>{
+    if(g.dataset.lock)return; rep[+g.dataset.q]=+b.dataset.k; g.querySelectorAll('.opt').forEach(x=>x.classList.toggle('on',x===b))}));
+  document.getElementById('env').onclick=()=>{
+    const er=document.getElementById('er');
+    if(r.includes(0)||rep.includes(-1)){er.textContent='Réponds à toutes les lignes du ressenti et aux 3 questions.';er.classList.remove('hide');return}
+    er.classList.add('hide');
+    const bon = rep.filter((k,i)=>k===j.questions[i].b).length;
+    const ressenti = j.ressenti.map((t,i)=>`${t} : ${r[i]}/5`).join(' | ');
+    const reponses = j.questions.map((q,i)=>`Q${i+1} ${rep[i]===q.b?'✅':'❌ ('+q.o[rep[i]]+')'}`).join(' | ')+` — Score ${bon}/${j.questions.length}`;
+    const d = new URLSearchParams();
+    d.append(E.nom,moi.nom); d.append(E.prenom,moi.prenom); d.append(E.journee,`${j.titre} – ${j.theme}`);
+    d.append(E.ressenti,ressenti); d.append(E.reponses,reponses); d.append(E.difficulte,document.getElementById('dif').value.trim());
+    const bt=document.getElementById('env'); bt.disabled=true; bt.textContent='Envoi…';
+    fetch(FORM,{method:'POST',mode:'no-cors',body:d}).then(()=>{
+      const env=lire('envoyes',{}); env[j.id]=Date.now(); ecrire('envoyes',env);
+      bt.classList.add('hide');
+      // correction
+      app.querySelectorAll('[data-q]').forEach(g=>{const i=+g.dataset.q;g.dataset.lock=1;
+        g.querySelectorAll('.opt').forEach(b=>{const k=+b.dataset.k;b.classList.remove('on');if(k===j.questions[i].b)b.classList.add('good');else if(k===rep[i])b.classList.add('bad')});
+        const ex=document.getElementById('ex'+i);ex.textContent=(rep[i]===j.questions[i].b?'✅ Bien vu. ':'❌ ')+j.questions[i].e;ex.classList.remove('hide')});
+      document.getElementById('fin').innerHTML=`<div class="card g"><div class="done">✅ Merci ${esc(moi.prenom)}, c'est envoyé !</div><p>Tu as ${bon} bonne${bon>1?'s':''} réponse${bon>1?'s':''} sur ${j.questions.length}. Regarde les corrections juste au-dessus.</p><button class="btn sec" id="ret">Retour à l'accueil</button></div>`;
+      document.getElementById('ret').onclick=accueil;
+      document.getElementById('fin').scrollIntoView({behavior:'smooth'});
+    }).catch(()=>{bt.disabled=false;bt.textContent='Envoyer';er.textContent="L'envoi n'a pas marché. Vérifie ta connexion internet et réessaie.";er.classList.remove('hide')});
+  };
+  haut();
+}
+
+moi ? accueil() : ecranNom();
+</script>
+</body>
+</html>
