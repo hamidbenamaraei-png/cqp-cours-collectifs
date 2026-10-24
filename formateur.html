@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<title>Espace formateur – CQP Cours collectifs</title>
+<style>
+:root{--bg:#10162b;--card:#1c2442;--line:#2c365c;--txt:#fff;--soft:#c9cfe6;--mute:#8a92b2;--or:#ff7a3d;--ok:#4cc38a;--ko:#ff5d6c;--bl:#4c8dff;--ja:#f5c451}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:17px;line-height:1.45}
+.wrap{max-width:720px;margin:0 auto;padding:20px 16px 60px}
+.tag{color:var(--or);font-weight:800;font-size:13px;letter-spacing:1.5px;text-transform:uppercase}
+h1{font-size:26px;margin:4px 0 18px;line-height:1.2}
+h2{font-size:20px;margin:0 0 10px}
+.card{background:var(--card);border-radius:18px;padding:18px;margin:0 0 16px;border-top:5px solid var(--bl)}
+.card.o{border-top-color:var(--or)}.card.g{border-top-color:var(--ok)}.card.r{border-top-color:var(--ko)}
+label{display:block;font-weight:700;margin:12px 0 6px}
+input,select,textarea{width:100%;padding:13px 14px;border-radius:12px;border:2px solid var(--line);background:#141b33;color:#fff;font-size:17px;font-family:inherit}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--or)}
+textarea{min-height:120px;resize:vertical}
+.btn{display:block;width:100%;padding:15px;border:0;border-radius:14px;background:var(--or);color:#10162b;font-weight:800;font-size:18px;cursor:pointer;margin-top:14px;text-align:center;text-decoration:none}
+.btn.sec{background:#2a3566;color:#fff}
+.btn.wa{background:#25d366;color:#0b2416}
+.btn:disabled{opacity:.5}
+.link{background:none;border:0;color:var(--mute);text-decoration:underline;font-size:15px;cursor:pointer;padding:6px 0}
+.muted{color:var(--mute);font-size:15px}
+.err{color:var(--ko);font-weight:700;margin-top:10px}
+.ok{color:var(--ok);font-weight:700;margin-top:10px}
+.hide{display:none}
+.big{font-size:40px;font-weight:800;line-height:1}
+.row{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:16px}
+.row:last-child{border-bottom:0}
+.pill{display:inline-block;min-width:52px;text-align:center;padding:3px 10px;border-radius:999px;font-weight:800;font-size:15px;white-space:nowrap}
+.p-ok{background:#173528;color:var(--ok)}.p-moy{background:#3a321a;color:var(--ja)}.p-ko{background:#3a1c25;color:var(--ko)}
+.stag{background:#141b33;border-radius:12px;padding:12px 14px;margin:10px 0}
+.stag b{font-size:17px}
+.stag .d{margin-top:6px;color:var(--soft);font-size:15px}
+.mic{display:flex;gap:10px;margin-top:10px}
+.mic button{flex:1;margin-top:0}
+.rec{background:var(--ko)!important;color:#fff!important}
+.check{display:flex;align-items:center;gap:10px;margin-top:12px;font-size:15px;color:var(--soft)}
+.check input{width:22px;height:22px}
+#resume{min-height:260px;font-size:15px}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<script>
+// ======= Réglages =======
+// Tableau Google des réponses (publié en CSV)
+const CSV = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ0Q6CmVaNRB_wzqusRfYaLQjon3iYJ9qjfPRGaimeo687QAkNxIeem81Mf_HeHGIdTqe3AsVerGOnx/pub?gid=1231707561&single=true&output=csv';
+// Empreinte du code d'accès (le code lui-même n'est pas écrit ici)
+const CODE_HASH = '9de007567a93e86a677452886d8b9326ecf5a0726172be9c57b017546bb21146';
+// Lien du groupe WhatsApp des formateurs : vide = WhatsApp demande à qui envoyer
+const WHATSAPP_GROUPE = '';
+
+// ======= Journées (mêmes dates que l'espace stagiaires) =======
+const JOURNEES = [
+ {id:'2026-10-27', titre:'Mardi 27 octobre', theme:'EPMSP – Préparer son passage',
+  questions:["Durée et parties du passage","Ce que le jury regarde surtout","Musique ou Tabata obligatoire ?"]}
+];
+
+// ======= Outils =======
+function lire(k,d){try{const v=localStorage.getItem('cqpf_'+k);return v?JSON.parse(v):d}catch(e){return d}}
+function ecrire(k,v){try{localStorage.setItem('cqpf_'+k,JSON.stringify(v))}catch(e){}}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+const app = document.getElementById('app');
+async function empreinte(t){
+  const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('cqp-cc:'+t));
+  return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('');
+}
+function parseCSV(txt){
+  const rows=[];let row=[],cur='',q=false;
+  for(let i=0;i<txt.length;i++){const c=txt[i];
+    if(q){if(c==='"'){if(txt[i+1]==='"'){cur+='"';i++}else q=false}else cur+=c}
+    else if(c==='"')q=true;
+    else if(c===','){row.push(cur);cur=''}
+    else if(c==='\n'||c==='\r'){if(c==='\r'&&txt[i+1]==='\n')i++;row.push(cur);rows.push(row);row=[];cur=''}
+    else cur+=c}
+  if(cur!==''||row.length){row.push(cur);rows.push(row)}
+  return rows.filter(r=>r.some(x=>x.trim()!==''));
+}
+function dateFR(s){const m=String(s).match(/(\d{2})\/(\d{2})\/(\d{4})/);return m?`${m[3]}-${m[2]}-${m[1]}`:''}
+function classe(v,max){const p=v/max;return p>=0.8?'p-ok':p>=0.6?'p-moy':'p-ko'}
+
+// ======= Écran 1 : le code =======
+function ecranCode(){
+  app.innerHTML=`<div class="tag">CQP Instructeur Fitness – Cours collectifs</div><h1>Espace formateur</h1>
+  <div class="card o"><h2>Code d'accès</h2>
+   <input type="password" id="c" inputmode="numeric" autocomplete="off" placeholder="••••••">
+   <div class="err hide" id="er">Code incorrect.</div>
+   <button class="btn" id="go">Entrer</button>
+   <p class="muted" style="margin-top:14px"><a href="./" style="color:var(--mute)">← Retour à l'espace stagiaires</a></p></div>`;
+  const go=async()=>{
+    const h=await empreinte(document.getElementById('c').value.trim());
+    if(h===CODE_HASH){ecrire('ok',h);accueil()}else document.getElementById('er').classList.remove('hide');
+  };
+  document.getElementById('go').onclick=go;
+  document.getElementById('c').onkeydown=e=>{if(e.key==='Enter')go()};
+}
+
+// ======= Écran 2 : choix de la journée =======
+function accueil(){
+  let h=`<div class="tag">Espace formateur</div><h1>Bonjour Hamid 👋</h1>`;
+  JOURNEES.slice().reverse().forEach(j=>{
+    h+=`<div class="card"><div class="tag" style="color:var(--soft)">${esc(j.titre)}</div><h2 style="margin-top:4px">${esc(j.theme)}</h2>
+    <button class="btn" data-j="${j.id}">📊 Voir les réponses et faire le résumé</button></div>`});
+  h+=`<p class="muted"><a href="./" style="color:var(--mute)">Voir l'espace stagiaires</a> · <button class="link" id="out">Se déconnecter</button></p>`;
+  app.innerHTML=h;
+  app.querySelectorAll('[data-j]').forEach(b=>b.onclick=()=>journee(JOURNEES.find(j=>j.id===b.dataset.j)));
+  document.getElementById('out').onclick=()=>{ecrire('ok','');ecranCode()};
+  window.scrollTo(0,0);
+}
+
+// ======= Écran 3 : une journée =======
+let lignes=[];
+async function journee(j){
+  app.innerHTML=`<button class="link" id="bk" style="color:var(--soft);text-decoration:none;font-size:16px">← Retour</button>
+  <div class="tag">${esc(j.titre)}</div><h1>${esc(j.theme)}</h1><div id="zone"><p class="muted">Chargement des réponses…</p></div>`;
+  document.getElementById('bk').onclick=accueil;
+  window.scrollTo(0,0);
+  try{
+    const r=await fetch(CSV+'&t='+Date.now(),{cache:'no-store'});
+    if(!r.ok)throw 0;
+    lignes=parseCSV(await r.text());
+  }catch(e){
+    document.getElementById('zone').innerHTML=`<div class="card r"><h2>Impossible de lire les réponses</h2><p>Vérifie ta connexion internet, puis réessaie.</p><button class="btn" id="re">Réessayer</button></div>`;
+    document.getElementById('re').onclick=()=>journee(j);return;
+  }
+  afficher(j,false);
+}
+
+function afficher(j,tests){
+  const t=lignes[0]||[], iH=0,iN=1,iP=2,iJ=3,iR=4,iQ=5,iD=6;
+  let rep=lignes.slice(1).filter(l=>(l[iJ]||'').trim().startsWith(j.titre));
+  const nbTests=rep.filter(l=>dateFR(l[iH])<j.id).length;
+  if(!tests)rep=rep.filter(l=>dateFR(l[iH])>=j.id);
+  const z=document.getElementById('zone');
+  let h='';
+  if(nbTests)h+=`<label class="check"><input type="checkbox" id="tst" ${tests?'checked':''}> Afficher aussi les réponses de test d'avant le ${esc(j.titre.toLowerCase())} (${nbTests})</label>`;
+  if(!rep.length){
+    h+=`<div class="card"><h2>Pas encore de réponses</h2><p class="muted">Les réponses arrivent dès qu'un stagiaire envoie son petit bilan.</p><button class="btn sec" id="maj">🔄 Actualiser</button></div>`;
+    z.innerHTML=h;
+    document.getElementById('maj').onclick=()=>journee(j);
+    if(nbTests)document.getElementById('tst').onchange=e=>afficher(j,e.target.checked);
+    observations(j,null,z,true);return;
+  }
+  // --- Ressenti : moyennes par ligne
+  const res={};
+  rep.forEach(l=>(l[iR]||'').split('|').forEach(p=>{const m=p.match(/(.+?)\s*:\s*(\d)\/5/);if(m){const k=m[1].trim();(res[k]=res[k]||[]).push(+m[2])}}));
+  const moy=Object.entries(res).map(([k,v])=>({k,m:v.reduce((a,b)=>a+b,0)/v.length}));
+  // --- Questions : % de bonnes réponses
+  const nq=j.questions.length, bonnes=Array(nq).fill(0);
+  rep.forEach(l=>{for(let i=0;i<nq;i++){if(new RegExp('Q'+(i+1)+'\\s*✅').test(l[iQ]||''))bonnes[i]++}});
+  const diffs=rep.map(l=>({n:`${(l[iP]||'').trim()} ${(l[iN]||'').trim()}`.trim(),d:(l[iD]||'').trim()})).filter(x=>x.d);
+  const scoreTot=rep.reduce((a,l)=>{const m=(l[iQ]||'').match(/Score\s*(\d+)\/(\d+)/);return a+(m?+m[1]:0)},0);
+
+  h+=`<div class="card o" style="display:flex;justify-content:space-between;align-items:center">
+     <div><div class="big">${rep.length}</div><div class="muted">stagiaire${rep.length>1?'s ont':' a'} répondu</div></div>
+     <div style="text-align:right"><div class="big">${(scoreTot/rep.length).toFixed(1)}<span style="font-size:20px">/${nq}</span></div><div class="muted">score moyen</div></div></div>`;
+  h+=`<div class="card"><h2>Ressenti « J'ai compris… »</h2><p class="muted" style="margin-top:0">Moyenne sur 5</p>`+
+     moy.map(x=>`<div class="row"><span>${esc(x.k)}</span><span class="pill ${classe(x.m,5)}">${x.m.toFixed(1)}</span></div>`).join('')+`</div>`;
+  h+=`<div class="card"><h2>Les ${nq} questions</h2><p class="muted" style="margin-top:0">Bonnes réponses</p>`+
+     j.questions.map((q,i)=>`<div class="row"><span>${i+1}. ${esc(q)}</span><span class="pill ${classe(bonnes[i],rep.length)}">${bonnes[i]}/${rep.length}</span></div>`).join('')+`</div>`;
+  h+=`<div class="card ${diffs.length?'r':'g'}"><h2>Difficultés signalées</h2>`+
+     (diffs.length?diffs.map(x=>`<div class="stag"><b>${esc(x.n)}</b><div class="d">${esc(x.d)}</div></div>`).join(''):`<p class="muted" style="margin:0">Aucune difficulté signalée.</p>`)+`</div>`;
+  h+=`<div class="card"><h2>Détail par stagiaire</h2>`+rep.map(l=>{
+       const m=(l[iQ]||'').match(/Score\s*(\d+)\/(\d+)/);const sc=m?+m[1]:0;
+       const rs=(l[iR]||'').split('|').map(p=>{const k=p.match(/:\s*(\d)\/5/);return k?k[1]:'?'}).join(' · ');
+       return `<div class="stag"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(((l[iP]||'')+' '+(l[iN]||'')).trim())}</b><span class="pill ${classe(sc,nq)}">${sc}/${nq}</span></div>
+       <div class="d">Ressenti : ${esc(rs)}</div>${/❌/.test(l[iQ]||'')?`<div class="d">${esc((l[iQ]||'').split('—')[0])}</div>`:''}</div>`}).join('')+
+     `<button class="btn sec" id="maj">🔄 Actualiser les réponses</button></div>`;
+  z.innerHTML=h;
+  document.getElementById('maj').onclick=()=>journee(j);
+  if(nbTests)document.getElementById('tst').onchange=e=>afficher(j,e.target.checked);
+  observations(j,{n:rep.length,moy,bonnes,diffs,scoreTot},z,false);
+}
+
+// ======= Mes observations + résumé =======
+function observations(j,st,z,vide){
+  const box=document.createElement('div');
+  box.innerHTML=`<div class="card g"><h2>Mes observations</h2>
+   <p class="muted" style="margin-top:0">Écris ou dicte ce que tu as remarqué pendant la journée. C'est gardé sur ce téléphone.</p>
+   <textarea id="obs" placeholder="Ex. : placement de la salle encore flou pour 2 stagiaires…"></textarea>
+   <div class="mic"><button class="btn sec" id="mic">🎤 Dicter</button></div>
+   <div class="muted hide" id="micinfo" style="margin-top:8px"></div>
+   <button class="btn" id="res">✨ Faire le résumé</button></div>
+   <div class="card o hide" id="rbox"><h2>Résumé pour les formateurs</h2>
+   <p class="muted" style="margin-top:0">Tu peux le corriger avant de l'envoyer.</p>
+   <textarea id="resume"></textarea>
+   <button class="btn wa" id="wa">📋 Copier et ouvrir WhatsApp</button>
+   <div class="ok hide" id="cp">✅ Résumé copié. Dans WhatsApp, choisis le groupe des formateurs, puis envoie.</div></div>`;
+  z.appendChild(box);
+  const obs=document.getElementById('obs');
+  obs.value=lire('obs_'+j.id,'');
+  obs.oninput=()=>ecrire('obs_'+j.id,obs.value);
+  // Dictée
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition, mb=document.getElementById('mic'), mi=document.getElementById('micinfo');
+  if(!SR){mb.onclick=()=>{mi.textContent="Sur ce téléphone, touche la case puis le petit micro 🎤 de ton clavier pour dicter.";mi.classList.remove('hide');obs.focus()}}
+  else{let rec=null;
+    mb.onclick=()=>{
+      if(rec){rec.stop();return}
+      rec=new SR();rec.lang='fr-FR';rec.continuous=true;rec.interimResults=false;
+      const base=obs.value;let ajout='';
+      rec.onresult=e=>{for(let i=e.resultIndex;i<e.results.length;i++)if(e.results[i].isFinal)ajout+=(ajout?' ':'')+e.results[i][0].transcript.trim();
+        obs.value=(base?base.replace(/\s*$/,'')+(base.trim()?'\n':''):'')+ajout;ecrire('obs_'+j.id,obs.value)};
+      rec.onend=()=>{rec=null;mb.textContent='🎤 Dicter';mb.classList.remove('rec')};
+      rec.onerror=()=>{mi.textContent="La dictée n'a pas marché. Tu peux utiliser le micro 🎤 de ton clavier.";mi.classList.remove('hide')};
+      rec.start();mb.textContent='⏹️ Arrêter la dictée';mb.classList.add('rec');
+    }}
+  document.getElementById('res').onclick=()=>{
+    document.getElementById('resume').value=resume(j,st,obs.value.trim());
+    const rb=document.getElementById('rbox');rb.classList.remove('hide');rb.scrollIntoView({behavior:'smooth'});
+  };
+  document.getElementById('wa').onclick=async()=>{
+    const txt=document.getElementById('resume').value;
+    try{await navigator.clipboard.writeText(txt)}catch(e){const t=document.getElementById('resume');t.select();try{document.execCommand('copy')}catch(_){}}
+    document.getElementById('cp').classList.remove('hide');
+    const url=WHATSAPP_GROUPE||('https://wa.me/?text='+encodeURIComponent(txt));
+    setTimeout(()=>{window.location.href=url},600);
+  };
+}
+
+function resume(j,st,obs){
+  let t=`📋 Bilan CQP Cours collectifs – ${j.titre}\n${j.theme}\n`;
+  if(!st){t+=`\nPas de réponses au petit bilan pour l'instant.\n`}
+  else{
+    t+=`\n👥 ${st.n} stagiaire${st.n>1?'s ont':' a'} répondu au petit bilan · score moyen ${(st.scoreTot/st.n).toFixed(1)}/${j.questions.length}\n`;
+    const bien=st.moy.filter(x=>x.m>=4), revoir=st.moy.filter(x=>x.m<3.5), moyen=st.moy.filter(x=>x.m>=3.5&&x.m<4);
+    if(bien.length)t+=`\n✅ Bien compris :\n`+bien.map(x=>`• ${x.k} (${x.m.toFixed(1)}/5)`).join('\n')+'\n';
+    if(moyen.length)t+=`\n🟡 Compris en partie :\n`+moyen.map(x=>`• ${x.k} (${x.m.toFixed(1)}/5)`).join('\n')+'\n';
+    if(revoir.length)t+=`\n🔴 À retravailler :\n`+revoir.map(x=>`• ${x.k} (${x.m.toFixed(1)}/5)`).join('\n')+'\n';
+    const qrat=j.questions.map((q,i)=>({q,b:st.bonnes[i]})).filter(x=>x.b<st.n);
+    t+=`\n📝 Questions :\n`+(qrat.length?qrat.map(x=>`• ${x.q} : ${x.b}/${st.n} bonnes réponses`).join('\n'):`• Toutes les questions réussies par tout le monde`)+'\n';
+    if(st.diffs.length)t+=`\n⚠️ Difficultés signalées par les stagiaires :\n`+st.diffs.map(x=>`• ${x.d}`).join('\n')+'\n';
+  }
+  if(obs)t+=`\n👀 Mes observations :\n${obs}\n`;
+  t+=`\nHamid`;
+  return t;
+}
+
+lire('ok','')===CODE_HASH ? accueil() : ecranCode();
+</script>
+</body>
+</html>

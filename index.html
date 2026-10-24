@@ -113,6 +113,7 @@ function accueil(){
      <button class="btn" data-quiz="${j.id}">📝 Petit bilan de ma journée${envoyes[j.id]?' ✅':''}</button>
      <button class="btn sec" data-cours="${j.id}">📚 Revoir les diapos</button></div>`;
   });
+  h += `<p class="muted" style="text-align:center;margin-top:30px"><a href="formateur.html" style="color:var(--mute);font-size:13px">Espace formateur</a></p>`;
   app.innerHTML = h;
   document.getElementById('chg').onclick=ecranNom;
   app.querySelectorAll('[data-quiz]').forEach(b=>b.onclick=()=>quiz(JOURNEES.find(j=>j.id===b.dataset.quiz)));
