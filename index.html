@@ -44,45 +44,13 @@ textarea{min-height:90px;resize:vertical}
 </head>
 <body>
 <div class="wrap" id="app"></div>
+<script src="commun.js"></script>
 <script>
-// ======= Réglages =======
-const FORM = 'https://docs.google.com/forms/d/e/1FAIpQLSfENcJ-l4TOxJ4RV44Npl-B5x5EnINrPCt7GYhxH3y2Kygmog/formResponse';
-const E = {nom:'entry.1232198973', prenom:'entry.1179002030', journee:'entry.1357484407', ressenti:'entry.2006212165', reponses:'entry.27978275', difficulte:'entry.1243309547'};
-
-// ======= Journées (on ajoute une journée ici à chaque intervention) =======
-const JOURNEES = [
- {id:'2026-10-27', titre:'Mardi 27 octobre', theme:'EPMSP – Préparer son passage', diapos:16, dossier:'j1',
-  docs:[{titre:'Télécharger toutes les diapos', fichier:'j1/Diapos_EPMSP_27-10.pdf'}],
-  ressenti:[
-   "Ce qu'est l'EPMSP et comment se passe le passage",
-   "Ce que le jury observe",
-   "Comment répartir mes 20 minutes",
-   "Ce que je dois préparer"],
-  questions:[
-   {q:"Combien dure le passage, et quelles sont ses parties ?",
-    o:["20 min : échauffement, corps de séance, retour au calme, étirements",
-       "30 min : échauffement, corps de séance, étirements, bilan",
-       "20 min : seulement le corps de séance"],
-    b:0, e:"Le passage dure 20 minutes et c'est une séance entière : échauffement, corps de séance, retour au calme, puis étirements."},
-   {q:"Sur quoi le jury regarde surtout ?",
-    o:["La difficulté des exercices",
-       "La sécurité des pratiquants et la tienne, des mouvements sûrs, le placement dans la salle",
-       "Ta tenue et le choix de ta musique"],
-    b:1, e:"Le jury regarde d'abord la sécurité : celle des pratiquants et la tienne, des mouvements sûrs, et le placement dans la salle."},
-   {q:"Pour l'EPMSP, la musique ou le Tabata, c'est obligatoire ?",
-    o:["Oui, la musique est obligatoire",
-       "Non, c'est au choix : sur la musique ou en version Tabata",
-       "Oui, le Tabata est obligatoire"],
-    b:1, e:"Pour l'EPMSP, c'est au choix. Attention : à l'examen final, la musique peut être imposée, donc il faut savoir animer sur la musique."}
-  ]}
-];
-
 // ======= Mémoire du téléphone (nom, prénom, quiz envoyés) =======
 function lire(k,d){try{const v=localStorage.getItem('cqp_'+k);return v?JSON.parse(v):d}catch(e){return d}}
 function ecrire(k,v){try{localStorage.setItem('cqp_'+k,JSON.stringify(v))}catch(e){}}
 let moi = lire('moi', null);
 const app = document.getElementById('app');
-function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function haut(){window.scrollTo(0,0)}
 
 // ======= Écran 1 : nom et prénom =======
@@ -118,20 +86,25 @@ function confirmer(nom,prenom){
 }
 
 // ======= Écran 2 : accueil =======
+let ETAT = null; // état des quiz (ouvert ou non), lu dans le tableau du formateur
 function accueil(){
   const envoyes = lire('envoyes',{});
   let h = `<div class="top"><div><div class="tag">Espace stagiaires</div><h1 style="margin-bottom:6px">Bonjour ${esc(moi.prenom)} 👋</h1></div></div>
 `;
   JOURNEES.slice().reverse().forEach(j=>{
+    const ouvert = ETAT && ETAT[j.id] && ETAT[j.id].ouvert;
     h += `<div class="card"><div class="tag" style="color:var(--soft)">${esc(j.titre)}</div><h2 style="margin-top:4px">${esc(j.theme)}</h2>
-     <button class="btn" data-quiz="${j.id}">📝 Petit bilan de ma journée${envoyes[j.id]?' ✅':''}</button>
+     ${ouvert?`<button class="btn" data-quiz="${j.id}">📝 Petit bilan de ma journée${envoyes[j.id]?' ✅':''}</button>`:''}
      <button class="btn sec" data-cours="${j.id}">📚 Revoir les diapos</button></div>`;
   });
   h += `<p class="muted" style="text-align:center;margin-top:30px"><a href="formateur.html" style="color:var(--mute);font-size:13px">Espace formateur</a></p>`;
   app.innerHTML = h;
-  app.querySelectorAll('[data-quiz]').forEach(b=>b.onclick=()=>quiz(JOURNEES.find(j=>j.id===b.dataset.quiz)));
+  app.querySelectorAll('[data-quiz]').forEach(b=>b.onclick=()=>{const j=JOURNEES.find(x=>x.id===b.dataset.quiz);quiz(j,ETAT[j.id].quiz)});
   app.querySelectorAll('[data-cours]').forEach(b=>b.onclick=()=>cours(JOURNEES.find(j=>j.id===b.dataset.cours)));
   haut();
+}
+function chargerEtat(){
+  etatQuiz().then(e=>{ETAT=e; if(moi && document.querySelector('[data-cours]') && !document.querySelector('.back')) accueil();}).catch(()=>{});
 }
 
 // ======= Écran 3 : les diapos =======
@@ -147,12 +120,13 @@ function cours(j){
 }
 
 // ======= Écran 4 : le quiz =======
-function quiz(j){
+function quiz(j0,z){
+  const j = Object.assign({}, j0, {ressenti:z.ressenti, questions:z.questions});
   const r = j.ressenti.map(()=>0), rep = j.questions.map(()=>-1);
   let h = `<button class="back" id="bk">← Retour</button><div class="tag">${esc(j.titre)}</div><h1>Petit bilan de ma journée</h1>
   <div class="card o"><h2>Mon ressenti</h2><p class="muted" style="margin-top:0">J'ai compris… (1 = pas du tout, 5 = tout à fait)</p>`;
   j.ressenti.forEach((t,i)=>{h+=`<div class="q">${esc(t)}</div><div class="scale" data-r="${i}">${[1,2,3,4,5].map(n=>`<button data-n="${n}">${n}</button>`).join('')}</div>`});
-  h += `</div><div class="card"><h2>3 petites questions</h2>`;
+  h += `</div><div class="card"><h2>${j.questions.length} petite${j.questions.length>1?'s':''} question${j.questions.length>1?'s':''}</h2>`;
   j.questions.forEach((q,i)=>{h+=`<div class="q">${i+1}. ${esc(q.q)}</div><div data-q="${i}">${q.o.map((o,k)=>`<button class="opt" data-k="${k}">${esc(o)}</button>`).join('')}</div><div class="expl hide" id="ex${i}"></div>`});
   h += `</div><div class="card g"><h2>Une difficulté à signaler ?</h2><p class="muted" style="margin-top:0">Facultatif.</p><textarea id="dif" placeholder="Écris ici si tu veux…"></textarea></div>
   <div class="err hide" id="er"></div><button class="btn" id="env">Envoyer</button><div id="fin"></div>`;
@@ -164,7 +138,7 @@ function quiz(j){
     if(g.dataset.lock)return; rep[+g.dataset.q]=+b.dataset.k; g.querySelectorAll('.opt').forEach(x=>x.classList.toggle('on',x===b))}));
   document.getElementById('env').onclick=()=>{
     const er=document.getElementById('er');
-    if(r.includes(0)||rep.includes(-1)){er.textContent='Réponds à toutes les lignes du ressenti et aux 3 questions.';er.classList.remove('hide');return}
+    if(r.includes(0)||rep.includes(-1)){er.textContent='Réponds à toutes les lignes du ressenti et à toutes les questions.';er.classList.remove('hide');return}
     er.classList.add('hide');
     const bon = rep.filter((k,i)=>k===j.questions[i].b).length;
     const ressenti = j.ressenti.map((t,i)=>`${t} : ${r[i]}/5`).join(' | ');
@@ -189,6 +163,7 @@ function quiz(j){
 }
 
 moi ? accueil() : ecranNom();
+chargerEtat();
 </script>
 </body>
 </html>
