@@ -69,20 +69,42 @@ function envoyerForm(url,champs){
 }
 function quizValide(z){return z&&Array.isArray(z.ressenti)&&Array.isArray(z.questions)&&z.questions.every(q=>q&&q.q&&Array.isArray(q.o)&&q.o.length>=2&&typeof q.b==='number')}
 
-// État des quiz : pour chaque journée, le dernier quiz enregistré et s'il est ouvert.
-// Ligne « quiz » = nouveau contenu ; ligne « ouvert » / « ferme » = visibilité. La plus récente gagne.
-async function etatQuiz(){
-  const etat={};JOURNEES.forEach(j=>etat[j.id]={quiz:j.quiz,ouvert:false,t:0,tq:0});
+// État général, lu dans le tableau « Mes quiz CQP » :
+// - pour chaque journée : le dernier quiz enregistré et s'il est ouvert
+//   (ligne « quiz » = nouveau contenu ; « ouvert » / « ferme » = visibilité) ;
+// - les stagiaires : colonne Journée = « stagiaires », Statut = demande / accepte / refuse / supprime,
+//   Contenu = {"id","nom","prenom"}. La ligne la plus récente gagne.
+async function etatGeneral(){
+  const etat={};JOURNEES.forEach(j=>etat[j.id]={quiz:j.quiz,ouvert:false});
+  const stag={};
   const L=await lireCSV(CSV_QUIZ);
-  if(!L.length)return etat;
-  const h=L[0].map(x=>x.trim().toLowerCase());
-  const iJ=h.findIndex(x=>x.startsWith('journ')), iS=h.indexOf('statut'), iC=h.indexOf('contenu');
-  L.slice(1).forEach((l,n)=>{
-    const id=(l[iJ]||'').trim(), st=(l[iS]||'').trim().toLowerCase();
-    if(!etat[id])return;
-    if(st==='quiz'){try{const z=JSON.parse(l[iC]||'');if(quizValide(z)){etat[id].quiz=z;etat[id].tq=n+1}}catch(e){}}
-    else if(st==='ouvert'){etat[id].ouvert=true;etat[id].t=n+1}
-    else if(st==='ferme'){etat[id].ouvert=false;etat[id].t=n+1}
-  });
-  return etat;
+  if(L.length){
+    const h=L[0].map(x=>x.trim().toLowerCase());
+    const iJ=h.findIndex(x=>x.startsWith('journ')), iS=h.indexOf('statut'), iC=h.indexOf('contenu');
+    L.slice(1).forEach((l,n)=>{
+      const id=(l[iJ]||'').trim(), st=(l[iS]||'').trim().toLowerCase();
+      if(id==='stagiaires'){
+        let c;try{c=JSON.parse(l[iC]||'')}catch(e){return}
+        if(!c||!c.id)return;
+        const s0=stag[c.id];
+        if(st==='demande'){
+          if(!s0)stag[c.id]={id:c.id,nom:String(c.nom||'').trim(),prenom:String(c.prenom||'').trim(),statut:'attente',n:n+1,date:l[0]||''};
+        }else if(['accepte','refuse','supprime'].includes(st)){
+          stag[c.id]=Object.assign(s0||{id:c.id,nom:String(c.nom||'').trim(),prenom:String(c.prenom||'').trim(),date:l[0]||''},{statut:st,n:n+1});
+        }
+        return;
+      }
+      if(!etat[id])return;
+      if(st==='quiz'){try{const z=JSON.parse(l[iC]||'');if(quizValide(z))etat[id].quiz=z}catch(e){}}
+      else if(st==='ouvert')etat[id].ouvert=true;
+      else if(st==='ferme')etat[id].ouvert=false;
+    });
+  }
+  return {quiz:etat,stagiaires:stag};
 }
+async function etatQuiz(){return (await etatGeneral()).quiz}
+function nouvelId(){
+  const a=new Uint8Array(9);crypto.getRandomValues(a);
+  return [...a].map(x=>x.toString(36).padStart(2,'0')).join('').slice(0,14);
+}
+function memeNom(a,b){const f=x=>String(x||'').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ');return f(a)===f(b)}

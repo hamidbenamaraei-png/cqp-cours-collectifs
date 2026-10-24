@@ -115,10 +115,15 @@ async function copier(txt){try{await navigator.clipboard.writeText(txt);return t
 // ======= État des quiz (tableau Google + ce que tu viens de faire sur ce téléphone) =======
 // Le tableau Google met quelques minutes à se mettre à jour : pendant 15 min, ce téléphone
 // se fie à ce que tu viens d'enregistrer.
-let ETAT = null;
+let ETAT = null, STAG = {};
 async function chargerEtat(){
-  try{ETAT=await etatQuiz()}catch(e){ETAT=null}
-  if(!ETAT){ETAT={};JOURNEES.forEach(j=>ETAT[j.id]={quiz:j.quiz,ouvert:false,horsLigne:true})}
+  let g=null;
+  try{g=await etatGeneral()}catch(e){g=null}
+  if(g){ETAT=g.quiz;STAG=g.stagiaires}
+  else{ETAT={};STAG={};JOURNEES.forEach(j=>ETAT[j.id]={quiz:j.quiz,ouvert:false,horsLigne:true})}
+  // décisions prises sur ce téléphone depuis moins de 15 min (le temps que Google se mette à jour)
+  const ls=lire('localst',{});
+  Object.entries(ls).forEach(([id,v])=>{if(Date.now()-v.at<15*60*1000){STAG[id]=Object.assign(STAG[id]||{id,nom:v.nom,prenom:v.prenom},{statut:v.statut})}});
   JOURNEES.forEach(j=>{
     const loc=lire('local_'+j.id,null);
     if(loc && Date.now()-loc.at<15*60*1000){
@@ -156,6 +161,10 @@ async function demarrer(){
 // ======= Écran : accueil =======
 function accueil(){
   let h=`<div class="tag">Espace formateur</div><h1>Bonjour Hamid 👋</h1>`;
+  const nAtt=Object.values(STAG).filter(x=>x.statut==='attente').length, nAcc=Object.values(STAG).filter(x=>x.statut==='accepte').length;
+  h+=`<div class="card ${nAtt?'o':'g'}"><h2>👥 Mes stagiaires</h2>
+    <p style="margin:0">${nAcc} stagiaire${nAcc>1?'s':''} accepté${nAcc>1?'s':''}${nAtt?` · <b style="color:var(--or)">${nAtt} demande${nAtt>1?'s':''} en attente</b>`:''}</p>
+    <button class="btn ${nAtt?'':'sec'}" id="stg">${nAtt?'Voir les demandes':'Gérer mes stagiaires'}</button></div>`;
   JOURNEES.slice().reverse().forEach(j=>{
     const o=ETAT[j.id].ouvert;
     h+=`<div class="card"><div class="tag" style="color:var(--soft)">${esc(j.titre)}</div><h2 style="margin-top:4px">${esc(j.theme)}</h2>
@@ -165,8 +174,55 @@ function accueil(){
   <p class="muted"><button class="link" id="rz">Pour mes tests : changer de nom dans l'espace stagiaires (sur ce téléphone)</button></p><div class="ok hide" id="rzok">✅ C'est fait : l'espace stagiaires te redemandera ton nom.</div>`;
   app.innerHTML=h;
   app.querySelectorAll('[data-j]').forEach(b=>b.onclick=()=>journee(JOURNEES.find(j=>j.id===b.dataset.j)));
+  document.getElementById('stg').onclick=mesStagiaires;
   document.getElementById('out').onclick=()=>{ecrire('ok','');ecranCode()};
   document.getElementById('rz').onclick=()=>{try{localStorage.removeItem('cqp_moi')}catch(e){};document.getElementById('rzok').classList.remove('hide')};
+  haut();
+}
+
+// ======= Écran : mes stagiaires =======
+function acceptes(){return Object.values(STAG).filter(x=>x.statut==='accepte').sort((a,b)=>(a.nom+a.prenom).localeCompare(b.nom+b.prenom,'fr'))}
+async function decider(liste,statut){
+  for(const x of liste){
+    await envoyerForm(FORM_QUIZ,{[EQ.journee]:'stagiaires',[EQ.statut]:statut,[EQ.contenu]:JSON.stringify({id:x.id,nom:x.nom,prenom:x.prenom})});
+    const ls=lire('localst',{});ls[x.id]={statut,nom:x.nom,prenom:x.prenom,at:Date.now()};ecrire('localst',ls);
+    STAG[x.id]=Object.assign(STAG[x.id]||x,{statut});
+  }
+}
+function mesStagiaires(msg){
+  const tous=Object.values(STAG);
+  const att=tous.filter(x=>x.statut==='attente'), acc=acceptes(), aut=tous.filter(x=>x.statut==='refuse'||x.statut==='supprime');
+  const doublon=x=>acc.some(a=>a.id!==x.id&&memeNom(a.prenom+' '+a.nom,x.prenom+' '+x.nom));
+  let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>👥 Mes stagiaires</h1>
+  ${msg?`<div class="ok" style="margin:-6px 0 14px">${msg}</div>`:''}
+  <div class="card o"><h2>Demandes en attente (${att.length})</h2>`;
+  if(!att.length)h+=`<p class="muted" style="margin:0">Aucune demande pour l'instant.</p>`;
+  att.forEach(x=>{h+=`<div class="stag"><b>${esc(x.prenom)} ${esc(x.nom)}</b>${doublon(x)?`<div class="d" style="color:var(--ja)">⚠️ Même nom qu'un stagiaire déjà accepté (deuxième téléphone ou faux profil ?)</div>`:''}
+    <div style="display:flex;gap:8px"><button class="btn small" data-acc="${x.id}">✅ Accepter</button><button class="btn small ko" data-ref="${x.id}">❌ Refuser</button></div></div>`});
+  if(att.length>1)h+=`<button class="btn ko" id="toutref">❌ Tout refuser (${att.length})</button>`;
+  h+=`</div><div class="card g"><h2>Stagiaires acceptés (${acc.length})</h2>`;
+  if(!acc.length)h+=`<p class="muted" style="margin:0">Personne pour l'instant.</p>`;
+  acc.forEach(x=>{h+=`<div class="row" style="align-items:center"><span><b>${esc(x.prenom)} ${esc(x.nom)}</b></span><button class="btn small ko" style="margin:0" data-sup="${x.id}">🗑️ Supprimer</button></div>`});
+  h+=`</div>`;
+  if(aut.length){h+=`<div class="card"><h2>Refusés ou supprimés (${aut.length})</h2><p class="muted" style="margin-top:0">Ils n'ont pas accès. Tu peux les réaccepter en cas d'erreur.</p>`;
+    aut.forEach(x=>{h+=`<div class="row" style="align-items:center"><span>${esc(x.prenom)} ${esc(x.nom)} <span class="muted">(${x.statut==='refuse'?'refusé':'supprimé'})</span></span><button class="btn small sec" style="margin:0" data-acc="${x.id}">↩️ Réaccepter</button></div>`});
+    h+=`</div>`}
+  h+=`<button class="btn sec" id="maj">🔄 Actualiser</button>
+  <p class="muted">Une décision met quelques minutes à arriver chez le stagiaire (le temps que Google se mette à jour). Le jour J, accepte-les dès l'accueil.</p>`;
+  app.innerHTML=h;
+  document.getElementById('bk').onclick=accueil;
+  document.getElementById('maj').onclick=async()=>{app.innerHTML=`<p class="muted">Chargement…</p>`;await chargerEtat();mesStagiaires()};
+  const agir=async(btn,liste,statut,texte)=>{
+    btn.disabled=true;btn.textContent='…';
+    try{await decider(liste,statut)}catch(e){alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");mesStagiaires();return}
+    const y=window.scrollY;mesStagiaires(texte);window.scrollTo(0,y);
+  };
+  app.querySelectorAll('[data-acc]').forEach(b=>b.onclick=()=>{const x=STAG[b.dataset.acc];agir(b,[x],'accepte',`✅ ${esc(x.prenom)} ${esc(x.nom)} est accepté.`)});
+  app.querySelectorAll('[data-ref]').forEach(b=>b.onclick=()=>{const x=STAG[b.dataset.ref];agir(b,[x],'refuse',`${esc(x.prenom)} ${esc(x.nom)} est refusé.`)});
+  app.querySelectorAll('[data-sup]').forEach(b=>b.onclick=()=>{const x=STAG[b.dataset.sup];
+    if(confirm(`Supprimer ${x.prenom} ${x.nom} ?\n\nIl n'aura plus accès à l'espace stagiaires et ses réponses ne compteront plus dans tes statistiques. Tu pourras le réaccepter plus tard.`))agir(b,[x],'supprime',`🗑️ ${esc(x.prenom)} ${esc(x.nom)} est supprimé.`)});
+  const tr=document.getElementById('toutref');
+  if(tr)tr.onclick=()=>{if(confirm(`Refuser les ${att.length} demandes en attente ?`))agir(tr,att,'refuse',`${att.length} demandes refusées.`)};
   haut();
 }
 
@@ -321,8 +377,8 @@ function saisie(j){
   const r=z.ressenti.map(()=>0), rep=z.questions.map(()=>-1);
   let h=`<button class="back" id="bk">← Retour</button><div class="tag">${esc(j.titre)}</div><h1>Saisir une réponse papier</h1>
   <div class="card o"><h2>Le stagiaire</h2>
-   <label for="n">Nom</label><input type="text" id="n"><label for="p">Prénom</label><input type="text" id="p">
-   <p class="muted">Écris-le exactement comme dans l'espace stagiaires, pour qu'il soit bien reconnu.</p></div>`;
+   ${acceptes().length?`<label for="sel">Choisis le stagiaire</label><select id="sel"><option value="">— Choisir —</option>${acceptes().map(x=>`<option value="${x.id}">${esc(x.prenom)} ${esc(x.nom)}</option>`).join('')}<option value="_">Autre (écrire le nom)</option></select>`:''}
+   <div id="manuel" class="${acceptes().length?'hide':''}"><label for="n">Nom</label><input type="text" id="n"><label for="p">Prénom</label><input type="text" id="p"></div></div>`;
   if(z.ressenti.length){h+=`<div class="card"><h2>Son ressenti</h2>`;
     z.ressenti.forEach((t,i)=>{h+=`<div class="q">${esc(t)}</div><div class="scale" data-r="${i}">${[1,2,3,4,5].map(n=>`<button data-n="${n}">${n}</button>`).join('')}</div>`});h+=`</div>`}
   h+=`<div class="card"><h2>Ses réponses</h2>`;
@@ -331,11 +387,13 @@ function saisie(j){
   <div class="err hide" id="er"></div><button class="btn" id="env">Envoyer cette feuille</button><div id="fin"></div>`;
   app.innerHTML=h;
   document.getElementById('bk').onclick=()=>journee(j);
+  const sel=document.getElementById('sel');
+  if(sel)sel.onchange=()=>{const x=STAG[sel.value];document.getElementById('manuel').classList.toggle('hide',sel.value!=='_');if(x){document.getElementById('n').value=x.nom;document.getElementById('p').value=x.prenom}else if(sel.value==='_'){document.getElementById('n').value='';document.getElementById('p').value=''}};
   app.querySelectorAll('.scale').forEach(s=>s.querySelectorAll('button').forEach(b=>b.onclick=()=>{r[+s.dataset.r]=+b.dataset.n;s.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b))}));
   app.querySelectorAll('[data-q]').forEach(g=>g.querySelectorAll('.opt').forEach(b=>b.onclick=()=>{rep[+g.dataset.q]=+b.dataset.k;g.querySelectorAll('.opt').forEach(x=>x.classList.toggle('on',x===b))}));
   document.getElementById('env').onclick=async()=>{
     const er=document.getElementById('er'), nom=document.getElementById('n').value.trim(), prenom=document.getElementById('p').value.trim();
-    if(!nom||!prenom){er.textContent='Écris le nom et le prénom du stagiaire.';er.classList.remove('hide');return}
+    if(!nom||!prenom){er.textContent='Choisis le stagiaire (ou écris son nom et son prénom).';er.classList.remove('hide');return}
     if(r.includes(0)||rep.includes(-1)){er.textContent='Remplis tout le ressenti et toutes les questions (si une case est vide sur la feuille, choisis la plus proche ou laisse la feuille de côté).';er.classList.remove('hide');return}
     er.classList.add('hide');
     const bon=rep.filter((k,i)=>k===z.questions[i].b).length;
@@ -374,8 +432,12 @@ function afficher(j,tests){
   let rep=lignes.slice(1).filter(l=>(l[iJ]||'').trim().startsWith(j.titre));
   const nbTests=rep.filter(l=>dateFR(l[iH])<j.id).length;
   if(!tests)rep=rep.filter(l=>dateFR(l[iH])>=j.id);
+  // seulement les stagiaires acceptés (dès qu'il y en a au moins un)
+  const acc=acceptes(); let masques=0;
+  if(acc.length&&!tests){const avant=rep.length;rep=rep.filter(l=>acc.some(a=>memeNom(a.prenom+' '+a.nom,(l[iP]||'')+' '+(l[iN]||''))));masques=avant-rep.length}
   const zone=document.getElementById('zone');
   let h='';
+  if(masques)h+=`<p class="muted">${masques} réponse${masques>1?'s':''} de personnes non acceptées ou supprimées ${masques>1?'sont masquées':'est masquée'}.</p>`;
   if(nbTests)h+=`<label class="check"><input type="checkbox" id="tst" ${tests?'checked':''}> Afficher aussi les réponses de test d'avant le ${esc(j.titre.toLowerCase())} (${nbTests})</label>`;
   if(!rep.length){
     h+=`<div class="card"><h2>Pas encore de réponses</h2><p class="muted">Les réponses arrivent dès qu'un stagiaire envoie son petit bilan (ou que tu saisis une feuille papier).</p><button class="btn sec" id="maj">🔄 Actualiser</button></div>`;

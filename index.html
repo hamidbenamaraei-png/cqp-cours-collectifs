@@ -80,7 +80,7 @@ function confirmer(nom,prenom){
    <p class="muted">Vérifie bien l'orthographe : tu ne pourras plus le modifier ensuite.</p>
    <button class="btn" id="oui">Oui, c'est moi</button>
    <button class="btn sec" id="non">Non, corriger</button></div>`;
-  document.getElementById('oui').onclick=()=>{moi={nom,prenom}; ecrire('moi',moi); accueil();};
+  document.getElementById('oui').onclick=()=>{moi={nom,prenom,id:nouvelId()}; ecrire('moi',moi); envoyerDemande(); attente(true);};
   document.getElementById('non').onclick=()=>{moi={nom,prenom}; ecranNom(); moi=null;};
   haut();
 }
@@ -103,8 +103,45 @@ function accueil(){
   app.querySelectorAll('[data-cours]').forEach(b=>b.onclick=()=>cours(JOURNEES.find(j=>j.id===b.dataset.cours)));
   haut();
 }
-function chargerEtat(){
-  etatQuiz().then(e=>{ETAT=e; if(moi && document.querySelector('[data-cours]') && !document.querySelector('.back')) accueil();}).catch(()=>{});
+// ======= Accès : demande envoyée au formateur, qui accepte ou refuse =======
+function envoyerDemande(){
+  ecrire('demande_at',Date.now());
+  return envoyerForm(FORM_QUIZ,{[EQ.journee]:'stagiaires',[EQ.statut]:'demande',[EQ.contenu]:JSON.stringify({id:moi.id,nom:moi.nom,prenom:moi.prenom})}).catch(()=>{});
+}
+function attente(vientDEnvoyer){
+  app.innerHTML = `<div class="tag">Espace stagiaires</div><h1>Bonjour ${esc(moi.prenom)} 👋</h1>
+  <div class="card o"><h2>⏳ Ta demande est envoyée</h2>
+   <p>Attends que Hamid t'accepte. Ensuite, ton espace s'ouvrira avec les diapos et le petit bilan de la journée.</p>
+   <p class="muted">${vientDEnvoyer?"Ça peut prendre quelques minutes. ":""}Touche « Vérifier » de temps en temps.</p>
+   <button class="btn" id="ver">🔄 Vérifier</button></div>
+  <p class="muted" style="text-align:center;margin-top:30px"><a href="formateur.html" style="color:var(--mute);font-size:13px">Espace formateur</a></p>`;
+  document.getElementById('ver').onclick=verifier;
+  haut();
+}
+function bloque(){
+  app.innerHTML = `<div class="tag">Espace stagiaires</div><h1>Bonjour ${esc(moi.prenom)}</h1>
+  <div class="card r" style="border-top-color:var(--ko)"><h2>Accès non actif</h2>
+   <p>Ton accès à cet espace n'est pas (ou plus) actif. Si c'est une erreur, parles-en à Hamid.</p>
+   <button class="btn sec" id="ver">🔄 Vérifier à nouveau</button></div>
+  <p class="muted" style="text-align:center;margin-top:30px"><a href="formateur.html" style="color:var(--mute);font-size:13px">Espace formateur</a></p>`;
+  document.getElementById('ver').onclick=verifier;
+  haut();
+}
+async function verifier(){
+  app.innerHTML = `<p class="muted">Chargement…</p>`;
+  let g;
+  try{g=await etatGeneral()}catch(e){
+    app.innerHTML = `<div class="card"><h2>Pas de connexion</h2><p>Vérifie ta connexion internet, puis réessaie.</p><button class="btn" id="re">Réessayer</button></div>`;
+    document.getElementById('re').onclick=verifier;return;
+  }
+  ETAT=g.quiz;
+  if(!moi.id){moi.id=nouvelId();ecrire('moi',moi);envoyerDemande();return attente(true)}
+  const s=g.stagiaires[moi.id];
+  if(s&&s.statut==='accepte')return accueil();
+  if(s&&(s.statut==='refuse'||s.statut==='supprime'))return bloque();
+  // pas encore dans le tableau : on renvoie la demande si elle date de plus de 10 minutes
+  if(!s&&Date.now()-lire('demande_at',0)>10*60*1000)envoyerDemande();
+  attente(false);
 }
 
 // ======= Écran 3 : les diapos =======
@@ -162,8 +199,7 @@ function quiz(j0,z){
   haut();
 }
 
-moi ? accueil() : ecranNom();
-chargerEtat();
+moi ? verifier() : ecranNom();
 </script>
 </body>
 </html>
