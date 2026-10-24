@@ -106,10 +106,12 @@ function accueil(){
   JOURNEES.slice().reverse().forEach(j=>{
     h+=`<div class="card"><div class="tag" style="color:var(--soft)">${esc(j.titre)}</div><h2 style="margin-top:4px">${esc(j.theme)}</h2>
     <button class="btn" data-j="${j.id}">📊 Voir les réponses et faire le résumé</button></div>`});
-  h+=`<p class="muted"><a href="./" style="color:var(--mute)">Voir l'espace stagiaires</a> · <button class="link" id="out">Se déconnecter</button></p>`;
+  h+=`<p class="muted"><a href="./" style="color:var(--mute)">Voir l'espace stagiaires</a> · <button class="link" id="out">Se déconnecter</button></p>
+  <p class="muted"><button class="link" id="rz">Pour mes tests : changer de nom dans l'espace stagiaires (sur ce téléphone)</button></p><div class="ok hide" id="rzok">✅ C'est fait : l'espace stagiaires te redemandera ton nom.</div>`;
   app.innerHTML=h;
   app.querySelectorAll('[data-j]').forEach(b=>b.onclick=()=>journee(JOURNEES.find(j=>j.id===b.dataset.j)));
   document.getElementById('out').onclick=()=>{ecrire('ok','');ecranCode()};
+  document.getElementById('rz').onclick=()=>{try{localStorage.removeItem('cqp_moi')}catch(e){};document.getElementById('rzok').classList.remove('hide')};
   window.scrollTo(0,0);
 }
 

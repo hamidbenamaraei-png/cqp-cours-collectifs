@@ -90,7 +90,7 @@ function ecranNom(){
   app.innerHTML = `<div class="tag">CQP Instructeur Fitness – Cours collectifs</div>
   <h1>Espace stagiaires</h1>
   <div class="card o"><h2>Qui es-tu ?</h2>
-   <p class="muted">Une seule fois : ton téléphone s'en souviendra.</p>
+   <p style="margin:6px 0 0;padding:10px 12px;border-radius:10px;background:#3a2a1a;color:#ffd2b8;font-weight:700">⚠️ Fais bien attention à bien écrire ton nom et ton prénom, car tu ne pourras pas les modifier plus tard.</p>
    <label for="n">Nom</label><input type="text" id="n" autocomplete="family-name" value="${esc(moi?moi.nom:'')}">
    <label for="p">Prénom</label><input type="text" id="p" autocomplete="given-name" value="${esc(moi?moi.prenom:'')}">
    <div class="err hide" id="er">Écris ton nom et ton prénom.</div>
@@ -98,8 +98,22 @@ function ecranNom(){
   document.getElementById('go').onclick=()=>{
     const nom=document.getElementById('n').value.trim(), prenom=document.getElementById('p').value.trim();
     if(!nom||!prenom){document.getElementById('er').classList.remove('hide');return}
-    moi={nom,prenom}; ecrire('moi',moi); accueil();
+    confirmer(nom,prenom);
   };
+  haut();
+}
+
+// ======= Confirmation du nom =======
+function confirmer(nom,prenom){
+  app.innerHTML = `<div class="tag">CQP Instructeur Fitness – Cours collectifs</div>
+  <h1>Espace stagiaires</h1>
+  <div class="card o"><h2>C'est bien toi ?</h2>
+   <p style="font-size:22px;font-weight:800;margin:10px 0">${esc(prenom)} ${esc(nom)}</p>
+   <p class="muted">Vérifie bien l'orthographe : tu ne pourras plus le modifier ensuite.</p>
+   <button class="btn" id="oui">Oui, c'est moi</button>
+   <button class="btn sec" id="non">Non, corriger</button></div>`;
+  document.getElementById('oui').onclick=()=>{moi={nom,prenom}; ecrire('moi',moi); accueil();};
+  document.getElementById('non').onclick=()=>{moi={nom,prenom}; ecranNom(); moi=null;};
   haut();
 }
 
@@ -107,7 +121,7 @@ function ecranNom(){
 function accueil(){
   const envoyes = lire('envoyes',{});
   let h = `<div class="top"><div><div class="tag">Espace stagiaires</div><h1 style="margin-bottom:6px">Bonjour ${esc(moi.prenom)} 👋</h1></div></div>
-  <p class="muted" style="margin-top:0">Pas toi ? <button class="link" id="chg">Changer de nom</button></p>`;
+`;
   JOURNEES.slice().reverse().forEach(j=>{
     h += `<div class="card"><div class="tag" style="color:var(--soft)">${esc(j.titre)}</div><h2 style="margin-top:4px">${esc(j.theme)}</h2>
      <button class="btn" data-quiz="${j.id}">📝 Petit bilan de ma journée${envoyes[j.id]?' ✅':''}</button>
@@ -115,7 +129,6 @@ function accueil(){
   });
   h += `<p class="muted" style="text-align:center;margin-top:30px"><a href="formateur.html" style="color:var(--mute);font-size:13px">Espace formateur</a></p>`;
   app.innerHTML = h;
-  document.getElementById('chg').onclick=ecranNom;
   app.querySelectorAll('[data-quiz]').forEach(b=>b.onclick=()=>quiz(JOURNEES.find(j=>j.id===b.dataset.quiz)));
   app.querySelectorAll('[data-cours]').forEach(b=>b.onclick=()=>cours(JOURNEES.find(j=>j.id===b.dataset.cours)));
   haut();
