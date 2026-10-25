@@ -287,7 +287,7 @@ function accueil(){
   h+=`<div class="card j"><h2>🧠 Quiz de révision</h2>
     <p style="margin:0" class="${rc?'':'muted'}">${rc?`${esc(rc.titre)} · ${ro?'<b style="color:var(--ok)">ouvert</b>':'caché aux stagiaires'}`:'Des questions de toutes les journées, depuis le début.'}</p>
     <button class="btn sec" id="rev">Ouvrir les révisions</button></div>`;
-  h+=`<div class="card o"><h2>🎡 La roue</h2><p style="margin:0" class="muted">Échauffement, corps de séance ou étirements, tirés au hasard. Sur ton téléphone seulement.</p>
+  h+=`<div class="card o"><h2>🎡 La roue</h2><p style="margin:0" class="muted">Répartition du cours ou exercices de renforcement, tirés au hasard. Sur ton téléphone seulement.</p>
     <button class="btn sec" id="roue">Ouvrir la roue</button></div>`;
   h+=`<div class="card"><h2>📋 Mes fiches</h2><p style="margin:0" class="muted">Les tableaux de tes cours : mouvements (placement, exécution, sécurité) et étirements. Visibles par toi seul.</p>
     <button class="btn sec" id="fiches">Ouvrir mes fiches</button></div>`;
@@ -1127,16 +1127,34 @@ document.addEventListener('visibilitychange',()=>{
 
 // ======= 🎡 La roue simple (sur le téléphone du formateur seulement) =======
 let ROUE_SIMPLE_TOURNE=false;
+const ROUE_SIMPLE_CATS={
+  repart:{titre:'Répartition du cours',emoji:'🧩',zones:{tout:{t:'',cases:['Échauffement','Corps de séance','Étirements']}}},
+  renfo:{titre:'Exercices de renforcement musculaire',emoji:'💪',zones:{
+    bas:{t:'Bas du corps',cases:['Squat','Fente','Relevé de bassin','Élévation latérale','Relevé de jambe arrière']},
+    haut:{t:'Haut du corps',cases:['Poitrine','Épaules','Dos','Biceps','Triceps']},
+    abdos:{t:'Abdos',cases:['Gainage','Montée de buste','Relevé de jambes alternées','Superman']},
+    tout:{t:'Tout',cases:null}}}
+};
+ROUE_SIMPLE_CATS.renfo.zones.tout.cases=['bas','haut','abdos'].flatMap(z=>ROUE_SIMPLE_CATS.renfo.zones[z].cases);
 function roueSimple(){
-  const cases=ROUE_LISTES_DEFAUT.partie.map(t=>({t}));
-  const liste=()=>lire('roue_liste',[]);
+  // ancienne liste unique → liste « Répartition du cours »
+  try{const old=localStorage.getItem('cqpf_roue_liste');if(old&&!localStorage.getItem('cqpf_roue_liste_repart')){localStorage.setItem('cqpf_roue_liste_repart',old)}if(old)localStorage.removeItem('cqpf_roue_liste')}catch(e){}
+  let cat=lire('roue_cat','repart'); if(!ROUE_SIMPLE_CATS[cat])cat='repart';
+  let zone=lire('roue_zone','bas');
   const acc=acceptes();
+  const liste=()=>lire('roue_liste_'+cat,[]);
+  const zoneObj=()=>{const Z=ROUE_SIMPLE_CATS[cat].zones;return Z[zone]||Z[Object.keys(Z)[0]]};
+  // cases encore à tirer : celles sorties le moins de fois (la roue se remplit quand tout est sorti)
+  const restantes=()=>{const C=zoneObj().cases, L=liste(), n=c=>L.filter(x=>x.r===c).length, m=Math.min(...C.map(n));return C.filter(c=>n(c)===m)};
   let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>🎡 La roue</h1>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">${Object.entries(ROUE_SIMPLE_CATS).map(([k,c])=>`<button class="btn small ${k===cat?'':'sec'}" style="margin:0" data-cat="${k}">${c.emoji} ${esc(c.titre)}</button>`).join('')}</div>
   <div class="card o" id="rs-zone">
+    ${Object.keys(ROUE_SIMPLE_CATS[cat].zones).length>1?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${Object.entries(ROUE_SIMPLE_CATS[cat].zones).map(([k,z])=>`<button class="btn small ${zoneObj()===z?'':'sec'}" style="margin:0;padding:7px 12px" data-zone="${k}">${esc(z.t)}</button>`).join('')}</div>`:''}
     <label for="rs-nom" style="margin-top:0">Pour qui ?</label>
     <input type="text" id="rs-nom" list="rs-noms" placeholder="Écris le prénom" autocomplete="off">
     <datalist id="rs-noms"></datalist>
     <div id="rs-boite" style="margin-top:14px"></div>
+    <p class="muted" id="rs-reste" style="text-align:center;margin:8px 0 0"></p>
     <div class="roue-res" id="rs-res"></div>
     <button class="btn" id="rs-go">🎡 Lancer</button>
     <div style="display:flex;justify-content:space-between;gap:8px;margin-top:8px">
@@ -1144,19 +1162,22 @@ function roueSimple(){
       <button class="roue-son" id="rs-proj">📽️ Projeter</button>
     </div>
   </div>
-  <div class="card"><h2>📋 La liste</h2><div id="rs-liste"></div>
+  <div class="card"><h2>📋 La liste · ${esc(ROUE_SIMPLE_CATS[cat].titre)}</h2><div id="rs-liste"></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn small sec" id="rs-copie">📋 Copier la liste</button><button class="btn small ko" id="rs-eff">🗑️ Effacer la liste</button></div>
     <div class="ok hide" id="rs-ok"></div>
-    <p class="muted" style="margin-bottom:0">Gardée sur ce téléphone seulement.</p></div>`;
+    <p class="muted" style="margin-bottom:0">Gardée sur ce téléphone seulement. Un stagiaire ne passe qu'une fois ; ✕ pour le refaire.</p></div>`;
   app.innerHTML=h;
-  const R=creerRoue(document.getElementById('rs-boite'),cases,{titre:'Parties du cours'});
+  let R=null;
   const nom=document.getElementById('rs-nom'), res=document.getElementById('rs-res'), go=document.getElementById('rs-go'), ok=document.getElementById('rs-ok');
-  let dessinerListe=()=>{const L=liste();document.getElementById('rs-liste').innerHTML=L.length?L.map((x,k)=>`<div class="row" style="align-items:center"><span><b>${esc(x.n)}</b> → ${esc(x.r)}</span><button class="link" data-del="${k}" style="color:var(--ko)">✕</button></div>`).join(''):'<p class="muted" style="margin:0 0 8px">Personne pour l\'instant.</p>';
-    app.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{const L2=liste();L2.splice(+b.dataset.del,1);ecrire('roue_liste',L2);dessinerListe()})};
-  const majNoms=()=>{const L=liste();document.getElementById('rs-noms').innerHTML=acc.map(x=>x.prenom+' '+x.nom).filter(n=>!L.some(y=>memeNom(y.n,n))).map(n=>`<option value="${esc(n)}">`).join('')};
-  const dessiner0=dessinerListe;
-  dessinerListe=()=>{dessiner0();majNoms()};
-  dessinerListe();
+  const dessinerRoue=()=>{const C=restantes();R=creerRoue(document.getElementById('rs-boite'),C.map(t=>({t})),{titre:ROUE_SIMPLE_CATS[cat].titre});
+    const tot=zoneObj().cases.length;document.getElementById('rs-reste').textContent=C.length<tot?`Il reste : ${C.join(', ')}`:`${tot} cases sur la roue`};
+  const dessinerListe=()=>{const L=liste();
+    document.getElementById('rs-liste').innerHTML=L.length?L.map((x,k)=>`<div class="row" style="align-items:center"><span><b>${esc(x.n)}</b> → ${esc(x.r)}</span><button class="link" data-del="${k}" style="color:var(--ko)">✕</button></div>`).join(''):'<p class="muted" style="margin:0 0 8px">Personne pour l\'instant.</p>';
+    app.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{const L2=liste();L2.splice(+b.dataset.del,1);ecrire('roue_liste_'+cat,L2);dessinerListe();dessinerRoue()});
+    document.getElementById('rs-noms').innerHTML=acc.map(x=>x.prenom+' '+x.nom).filter(n=>!L.some(y=>memeNom(y.n,n))).map(n=>`<option value="${esc(n)}">`).join('')};
+  dessinerRoue();dessinerListe();
+  app.querySelectorAll('[data-cat]').forEach(b=>b.onclick=()=>{if(ROUE_SIMPLE_TOURNE)return;ecrire('roue_cat',b.dataset.cat);quitter();roueSimple()});
+  app.querySelectorAll('[data-zone]').forEach(b=>b.onclick=()=>{if(ROUE_SIMPLE_TOURNE)return;ecrire('roue_zone',b.dataset.zone);quitter();roueSimple()});
   const son=document.getElementById('rs-son');const majSon=()=>{son.textContent=roueSonActif()?'🔊 Son':'🔇 Son coupé'};majSon();
   son.onclick=()=>{roueSonChanger(!roueSonActif());majSon()};
   go.onclick=async()=>{
@@ -1166,28 +1187,29 @@ function roueSimple(){
     const deja=liste().find(y=>memeNom(y.n,qui));
     if(deja){res.innerHTML=`<small style="color:var(--ko)">⚠️ ${esc(deja.n)} a déjà eu</small>${esc(deja.r)}`;return}
     ROUE_SIMPLE_TOURNE=true;roueAudioPret();go.disabled=true;go.textContent='La roue tourne…';res.innerHTML='';
-    const i=Math.floor(Math.random()*cases.length);
+    const C=restantes(), i=Math.floor(Math.random()*C.length);
     await R.tourner(i);
-    const r=cases[i].t;
-    res.innerHTML=`<small>${esc(qui)}</small>${esc(r)}`;
-    const L=liste();L.push({n:qui,r,at:Date.now()});ecrire('roue_liste',L);dessinerListe();
+    res.innerHTML=`<small>${esc(qui)}</small>${esc(C[i])}`;
+    const L=liste();L.push({n:qui,r:C[i],at:Date.now()});ecrire('roue_liste_'+cat,L);
     nom.value='';go.disabled=false;go.textContent='🎡 Lancer';ROUE_SIMPLE_TOURNE=false;
+    dessinerListe();
+    setTimeout(()=>{if(!ROUE_SIMPLE_TOURNE)dessinerRoue()},1800); // la case tirée sort de la roue
   };
   nom.onkeydown=e=>{if(e.key==='Enter')go.click()};
-  document.getElementById('rs-copie').onclick=async()=>{const L=liste();if(!L.length)return;const t='🎡 Parties du cours\n'+L.map(x=>`• ${x.n} → ${x.r}`).join('\n');
+  document.getElementById('rs-copie').onclick=async()=>{const L=liste();if(!L.length)return;const t=`${ROUE_SIMPLE_CATS[cat].emoji} ${ROUE_SIMPLE_CATS[cat].titre}\n`+L.map(x=>`• ${x.n} → ${x.r}`).join('\n');
     if(!await copier(t)){const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();try{document.execCommand('copy')}catch(_){}ta.remove()}
     ok.textContent='✅ Liste copiée.';ok.classList.remove('hide')};
-  document.getElementById('rs-eff').onclick=()=>{if(confirm('Effacer toute la liste ?')){ecrire('roue_liste',[]);dessinerListe();res.innerHTML=''}};
-  const zone=document.getElementById('rs-zone');
-  document.getElementById('rs-proj').onclick=()=>{
-    const on=!zone.classList.contains('rs-plein');
-    zone.classList.toggle('rs-plein',on);
-    document.getElementById('rs-proj').textContent=on?'✕ Quitter':'📽️ Projeter';
-    try{if(on&&zone.requestFullscreen)zone.requestFullscreen().catch(()=>{});else if(!on&&document.fullscreenElement)document.exitFullscreen()}catch(e){}
+  document.getElementById('rs-eff').onclick=()=>{if(confirm('Effacer toute la liste ?')){ecrire('roue_liste_'+cat,[]);dessinerListe();dessinerRoue();res.innerHTML=''}};
+  const zoneEl=document.getElementById('rs-zone'), proj=document.getElementById('rs-proj');
+  const quitter=()=>{document.onkeydown=null;document.onfullscreenchange=null;try{if(document.fullscreenElement)document.exitFullscreen()}catch(e){}};
+  proj.onclick=()=>{
+    const on=!zoneEl.classList.contains('rs-plein');
+    zoneEl.classList.toggle('rs-plein',on);proj.textContent=on?'✕ Quitter':'📽️ Projeter';
+    try{if(on&&zoneEl.requestFullscreen)zoneEl.requestFullscreen().catch(()=>{});else if(!on&&document.fullscreenElement)document.exitFullscreen()}catch(e){}
   };
-  document.onfullscreenchange=()=>{if(!document.fullscreenElement&&zone.classList.contains('rs-plein')){zone.classList.remove('rs-plein');document.getElementById('rs-proj').textContent='📽️ Projeter'}};
-  document.onkeydown=e=>{if(e.code==='Space'&&zone.classList.contains('rs-plein')){e.preventDefault();go.click()}};
-  document.getElementById('bk').onclick=()=>{document.onkeydown=null;document.onfullscreenchange=null;accueil()};
+  document.onfullscreenchange=()=>{if(!document.fullscreenElement&&zoneEl.classList.contains('rs-plein')){zoneEl.classList.remove('rs-plein');proj.textContent='📽️ Projeter'}};
+  document.onkeydown=e=>{if(e.code==='Space'&&zoneEl.classList.contains('rs-plein')){e.preventDefault();go.click()}};
+  document.getElementById('bk').onclick=()=>{quitter();accueil()};
   haut();
 }
 
