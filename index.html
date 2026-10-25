@@ -124,7 +124,7 @@ function mmss(ms){const s=Math.max(0,Math.ceil(ms/1000));return Math.floor(s/60)
 function dejaFerme(S){return !!lire('fermes',{})[idSession(S)]}
 
 function boutonQuiz(S,texte){
-  if(S.duree&&dejaFerme(S))return `<p class="done" style="margin:12px 0 0">✅ Quiz envoyé.</p><p class="muted" style="margin:4px 0 0">Ta correction est dans « 📈 Mon évolution ».</p>`;
+  if(S.duree&&dejaFerme(S))return `<p class="done" style="margin:12px 0 0">✅ Quiz envoyé.</p><p class="muted" style="margin:4px 0 0">Ta correction est dans « 📈 Mes révisions ».</p>`;
   const D=brouillons()[idSession(S)];
   if(D&&!D.envoye)return `<button class="btn" data-ses="${esc(idSession(S))}">⏱️ Reprendre le quiz (il reste ${mmss(reste(D))})</button>`;
   const envoyes=lire('envoyes',{});
@@ -136,7 +136,7 @@ function accueil(){
   ECRAN='accueil'; QUIZ_AFFICHE=null;
   const sessions={};
   let h = `<div class="top"><div><div class="tag">Espace stagiaires</div><h1 style="margin-bottom:6px">Bonjour ${esc(moi.prenom)} 👋</h1></div></div>
-  <button class="btn sec" id="evo" style="margin:0 0 16px">📈 Mon évolution</button>`;
+  <button class="btn sec" id="evo" style="margin:0 0 16px">📈 Mes révisions</button>`;
   const T=roueActive();
   if(T){
     const vu=T.res&&T.res[moi.id]&&lire('roue_vu',{})[T.id+':'+(T.res[moi.id].length-1)];
@@ -323,7 +323,7 @@ function correction(D,auto){
   document.getElementById('fin').innerHTML=`<div class="card g"><div class="done">✅ Merci ${esc(moi.prenom)}, c'est envoyé !</div>
     ${auto?`<p>⏱️ Le temps est fini : tes réponses sont parties toutes seules.</p>`:''}
     <p>Regarde les corrections juste au-dessus.</p>
-    <button class="btn" id="evo2">📈 Mon évolution</button><button class="btn sec" id="ret">Retour à l'accueil</button></div>`;
+    <button class="btn" id="evo2">📈 Mes révisions</button><button class="btn sec" id="ret">Retour à l'accueil</button></div>`;
   document.getElementById('evo2').onclick=evolution;
   document.getElementById('ret').onclick=accueil;
   document.getElementById('fin').scrollIntoView({behavior:'smooth'});
@@ -364,7 +364,7 @@ function pastille(items){const ok=items.filter(x=>x.s==='ok').length;return ok==
 function evolution(){
   ECRAN='evolution'; QUIZ_AFFICHE=null;
   const h=lire('histo',[]);
-  let html=`<button class="back" id="bk">← Retour</button><div class="tag">Espace stagiaires</div><h1>📈 Mon évolution</h1>`;
+  let html=`<button class="back" id="bk">← Retour</button><div class="tag">Espace stagiaires</div><h1>📈 Mes révisions</h1>`;
   if(!h.length){
     html+=`<div class="card"><p style="margin:0">Ton évolution apparaîtra ici après ton premier quiz. 💪</p></div>`;
   }else{

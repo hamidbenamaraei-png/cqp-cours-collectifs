@@ -282,8 +282,10 @@ function accueil(){
   h+=`<div class="card j"><h2>🧠 Quiz de révision</h2>
     <p style="margin:0" class="${rc?'':'muted'}">${rc?`${esc(rc.titre)} · ${ro?'<b style="color:var(--ok)">ouvert</b>':'caché aux stagiaires'}`:'Des questions de toutes les journées, depuis le début.'}</p>
     <button class="btn sec" id="rev">Ouvrir les révisions</button></div>`;
-  h+=`<div class="card o"><h2>🎡 La roue</h2><p style="margin:0" class="${ROUE.tirage?'':'muted'}">${ROUE.tirage?roueAccueilTexte():'Exercices, étirements, parties du cours… tirés au hasard pour chaque stagiaire.'}</p>
+  h+=`<div class="card o"><h2>🎡 La roue</h2><p style="margin:0" class="${ROUE.tirage?'':'muted'}">${ROUE.tirage?roueAccueilTexte():'Les parties du cours tirées au hasard pour chaque stagiaire.'}</p>
     <button class="btn sec" id="roue">Ouvrir la roue</button></div>`;
+  h+=`<div class="card"><h2>📋 Mes fiches</h2><p style="margin:0" class="muted">Les tableaux de tes cours : mouvements (placement, exécution, sécurité) et étirements. Visibles par toi seul.</p>
+    <button class="btn sec" id="fiches">Ouvrir mes fiches</button></div>`;
   JOURNEES.slice().reverse().forEach(j=>{
     const o=estOuvert(ETAT[j.id]);
     h+=`<div class="card"><div class="tag" style="color:var(--soft)">${esc(j.titre)}</div><h2 style="margin-top:4px">${esc(j.theme)}</h2>
@@ -296,6 +298,7 @@ function accueil(){
   document.getElementById('stg').onclick=()=>mesStagiaires();
   document.getElementById('rev').onclick=()=>revisionEcran();
   document.getElementById('roue').onclick=()=>{roueEcran.lu=false;roueEcran()};
+  document.getElementById('fiches').onclick=()=>mesFiches();
   document.getElementById('out').onclick=()=>{ecrire('ok','');ecranCode()};
   document.getElementById('rz').onclick=()=>{try{localStorage.removeItem('cqp_moi')}catch(e){};document.getElementById('rzok').classList.remove('hide')};
   haut();
@@ -1095,6 +1098,26 @@ document.addEventListener('visibilitychange',()=>{
   if(DICTEE.cle)sauverObsEnLigne(DICTEE.cle);
 });
 
+// ======= 📋 Mes fiches (tableaux des cours, pour le formateur seulement) =======
+function mesFiches(filtre){
+  filtre=filtre||'caf';
+  const onglets=[['caf','CAF'],['ballon','Gym ballon'],['full','Full body'],['step','Step'],['sballon','Stretch ballon'],['stapis','Stretch tapis'],['schaise','Stretch chaise']];
+  const mouv=ROUE_EXERCICES.filter(x=>x.cours.includes(filtre)), etir=ROUE_ETIREMENTS.filter(x=>x.cours.includes(filtre));
+  const ligne=(t,v)=>v?`<div class="fl"><b>${t}</b>${esc(v)}</div>`:'';
+  let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>📋 Mes fiches</h1>
+  <div class="choix" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">${onglets.map(([k,t])=>`<button class="btn small ${k===filtre?'':'sec'}" style="margin:0" data-fc="${k}">${t}</button>`).join('')}</div>`;
+  if(mouv.length){h+=`<div class="card o"><h2>🏋️ Mouvements (${mouv.length})</h2><p class="muted" style="margin-top:0">Touche un mouvement pour voir sa fiche.</p>`+
+    mouv.map(x=>`<details class="fiche" style="border-left-color:var(--or)"><summary style="font-weight:800;font-size:17px;cursor:pointer">${esc(x.nom)}${x.d?' <span class="muted" style="font-weight:400">(des 2 côtés)</span>':''}</summary>${ligne('Placement',x.pl)}${ligne('Exécution',x.ex)}${ligne('Sécurité',x.se)}</details>`).join('')+`</div>`}
+  if(etir.length){h+=`<div class="card g"><h2>🧘 Étirements (${etir.length})</h2>`+
+    etir.map(x=>`<details class="fiche"><summary style="font-weight:800;font-size:17px;cursor:pointer">${esc(x.nom)}${x.d?' <span class="muted" style="font-weight:400">(des 2 côtés)</span>':''}</summary>${ligne('Consigne',x.co)}${ligne('Explication',x.ex)}${ligne('Méthode',x.me)}</details>`).join('')+`</div>`}
+  if(!mouv.length&&!etir.length)h+=`<p class="muted">Rien pour ce cours.</p>`;
+  h+=`<button class="btn sec" id="bk2">← Retour</button>`;
+  app.innerHTML=h;
+  document.getElementById('bk').onclick=accueil;document.getElementById('bk2').onclick=accueil;
+  app.querySelectorAll('[data-fc]').forEach(b=>b.onclick=()=>mesFiches(b.dataset.fc));
+  haut();
+}
+
 // ======= 🎡 La roue =======
 // Le hasard est tiré ICI, au moment où tu actives : la répartition de tous les stagiaires acceptés
 // est écrite dans le formulaire « Mes quiz CQP » (Journée = roue, Statut = tirage).
@@ -1114,6 +1137,7 @@ function roueChargerLocal(g){
 // ---- réglages de l'écran (gardés sur ce téléphone) ----
 function roueConf(){
   const c=Object.assign({choisies:['partie'],off:{},doublon:{},mode:{},equipes:false,taille:4,variante:'plus',deuxParties:false,fiches:false,perso:{nom:'',texte:''},cibles:{}},lire('roue_conf',{}));
+  c.choisies=(c.choisies||[]).filter(t=>ROUE_TYPES.some(x=>x.type===t)); if(!c.choisies.length)c.choisies=['partie'];
   if(!c.off.etirements)c.off.etirements=ROUE_ETIREMENTS.filter(x=>x.cours.every(k=>/^s(ballon|tapis|chaise)$/.test(k))).map(x=>x.id);
   return c;
 }
@@ -1308,7 +1332,7 @@ async function roueEcran(msg,garderScroll){
       <button class="btn sec" id="r-maj">🔄 Actualiser</button></div>`;
   }
   // ===== préparer =====
-  h+=`<div class="card o"><h2>${T?'🔧 Préparer un nouveau tirage':'🔧 Préparer la roue'}</h2><p class="muted" style="margin-top:0">Choisis une ou plusieurs roues (tirage combiné).</p>
+  h+=`<div class="card o"><h2>${T?'🔧 Préparer un nouveau tirage':'🔧 Préparer la roue'}</h2><p class="muted" style="margin-top:0">Chaque stagiaire reçoit une partie du cours, tirée au hasard.</p>
     <div class="choix">${ROUE_TYPES.map(t=>`<button class="rchip ${RC.choisies.includes(t.type)?'on':''}" data-rt="${t.type}">${t.emoji} ${esc(t.type==='perso'?'Ma roue':t.titre)}</button>`).join('')}</div></div>`;
   RC.choisies.forEach(type=>{h+=carteRoue(type,n)});
   // équipes

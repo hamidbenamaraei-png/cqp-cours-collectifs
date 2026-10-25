@@ -140,7 +140,9 @@ const ROUE_ETIREMENTS=[
 
 // ===== Les roues : types, listes de départ, phrases =====
 const ROUE_COURS={caf:'CAF',ballon:'Gym ballon',full:'Full body',sballon:'Stretch ballon',stapis:'Stretch tapis',schaise:'Stretch chaise',step:'Step'};
-const ROUE_TYPES=[
+// Décision d'Hamid (25/10) : sur la roue, seulement les parties du cours. Les autres roues restent
+// définies (ROUE_TYPES_TOUS) pour relire les anciens tirages ; les fiches restent dans « 📋 Mes fiches ».
+const ROUE_TYPES_TOUS=[
  {type:'exercices',emoji:'🏋️',titre:'Exercices',cours:['caf','ballon','full']},
  {type:'etirements',emoji:'🧘',titre:'Étirements',cours:['caf','ballon','full','step','sballon','stapis','schaise']},
  {type:'partie',emoji:'🧩',titre:'Partie du cours',modifiable:true},
@@ -148,8 +150,9 @@ const ROUE_TYPES=[
  {type:'materiel',emoji:'🧰',titre:'Matériel',modifiable:true},
  {type:'perso',emoji:'✏️',titre:'Ma roue'}
 ];
+const ROUE_TYPES=ROUE_TYPES_TOUS.filter(t=>t.type==='partie');
 const ROUE_LISTES_DEFAUT={
- partie:['Échauffement','Corps de séance','Retour au calme','Étirements'],
+ partie:['Échauffement','Corps de séance','Étirements'],
  style:['Renfo sur musique','Tabata','CAF','Gym ballon','Full body','Step','Stretch','Circuit training'],
  materiel:['Step','Ballon','Haltères','Barre','Élastique','Tapis seul','Chaise','Kettlebell']
 };
@@ -161,7 +164,7 @@ const ROUE_PHRASES={
  materiel:{'step':'avec un step','ballon':'avec ballon','halteres':'avec des haltères','barre':'avec une barre','elastique':'avec un élastique',
   'tapis seul':'avec seulement un tapis','chaise':'avec une chaise','kettlebell':'avec une kettlebell'}
 };
-function roueType(t){return ROUE_TYPES.find(x=>x.type===t)||{type:t,emoji:'🎡',titre:'Roue'}}
+function roueType(t){return ROUE_TYPES_TOUS.find(x=>x.type===t)||{type:t,emoji:'🎡',titre:'Roue'}}
 function roueCle(s){return String(s||'').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ')}
 function ficheRoue(id){if(!id)return null;return ROUE_EXERCICES.find(x=>x.id===id)||ROUE_ETIREMENTS.find(x=>x.id===id)||null}
 function etiquetteCase(c){const f=c&&c.f&&ficheRoue(c.f);return f?f.court:String(c&&c.t||'')}
