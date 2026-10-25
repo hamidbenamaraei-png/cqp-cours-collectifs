@@ -57,6 +57,7 @@ summary{cursor:pointer;font-weight:700}
 <body>
 <div class="wrap" id="app"></div>
 <script src="commun.js"></script>
+<script src="roue.js"></script>
 <script>
 // ======= Mémoire du téléphone (nom, prénom, quiz envoyés, historique) =======
 function lire(k,d){try{const v=localStorage.getItem('cqp_'+k);return v?JSON.parse(v):d}catch(e){return d}}
@@ -102,6 +103,7 @@ function confirmer(nom,prenom){
 
 // ======= Les quiz : une « session » = un quiz ouvert (journée ou révision) =======
 let ETAT = null, REVS = {}; // état des quiz (ouvert ou non), lu dans le tableau du formateur
+let ROUE = null, NOMS = {}; // la roue (tirage préparé par Hamid) et les prénoms des stagiaires
 function sessionJournee(j){
   const e=ETAT[j.id];
   return {cle:j.id,label:`${j.titre} – ${j.theme}`,tag:j.titre,titre:'Petit bilan de ma journée',z:e.quiz,duree:e.duree||0,ouvCle:e.ouvCle||''};
@@ -135,6 +137,13 @@ function accueil(){
   const sessions={};
   let h = `<div class="top"><div><div class="tag">Espace stagiaires</div><h1 style="margin-bottom:6px">Bonjour ${esc(moi.prenom)} 👋</h1></div></div>
   <button class="btn sec" id="evo" style="margin:0 0 16px">📈 Mon évolution</button>`;
+  const T=roueActive();
+  if(T){
+    const vu=T.res&&T.res[moi.id]&&lire('roue_vu',{})[T.id+':'+(T.res[moi.id].length-1)];
+    h+=`<div class="card o"><div class="tag">🎡 La roue</div><h2 style="margin-top:4px">${vu?'Ta mission est prête':'C\'est à toi : lance la roue !'}</h2>
+      <p class="muted" style="margin:0">${vu?'Revois ta mission quand tu veux.':'Touche le bouton pour découvrir ta mission.'}</p>
+      <button class="btn" id="roue">🎡 ${vu?'Voir ma mission':'Lancer la roue'}</button></div>`;
+  }
   const rev=revisionOuverte();
   if(rev){const S=sessionRevision(rev);sessions[idSession(S)]=S;
     h+=`<div class="card o"><div class="tag">🧠 Révision</div><h2 style="margin-top:4px">${esc(rev.titre)}</h2>
@@ -150,6 +159,7 @@ function accueil(){
   });
   app.innerHTML = h;
   document.getElementById('evo').onclick=evolution;
+  const br=document.getElementById('roue'); if(br)br.onclick=ecranRoue;
   app.querySelectorAll('[data-ses]').forEach(b=>b.onclick=()=>ouvrirSession(sessions[b.dataset.ses]));
   app.querySelectorAll('[data-cours]').forEach(b=>b.onclick=()=>cours(JOURNEES.find(j=>j.id===b.dataset.cours)));
   haut();
@@ -186,7 +196,8 @@ async function verifier(){
     app.innerHTML = `<div class="card"><h2>Pas de connexion</h2><p>Vérifie ta connexion internet, puis réessaie.</p><button class="btn" id="re">Réessayer</button></div>`;
     document.getElementById('re').onclick=verifier;return;
   }
-  ETAT=g.quiz; REVS=g.revisions||{};
+  ETAT=g.quiz; REVS=g.revisions||{}; ROUE=g.roue||null;
+  NOMS={};Object.values(g.stagiaires||{}).forEach(x=>NOMS[x.id]=x.prenom);
   if(!moi.id){moi.id=nouvelId();ecrire('moi',moi);envoyerDemande();return attente(true)}
   const s=g.stagiaires[moi.id];
   if(s&&s.statut==='accepte'){
@@ -389,6 +400,104 @@ function evolution(){
   app.innerHTML=html;
   document.getElementById('bk').onclick=accueil;document.getElementById('bk2').onclick=accueil;
   haut();
+}
+
+// ======= 🎡 La roue (préparée par Hamid ; le résultat est déjà tiré, la roue s'arrête dessus) =======
+function roueActive(){const T=ROUE&&ROUE.tirage;return T&&T.actif&&Array.isArray(T.roues)&&T.roues.length?T:null}
+function casesTirees(T,manche){
+  return T.roues.map((r,k)=>({type:r.type,titre:r.titre,emoji:r.emoji,cases:((manche&&manche[k])||[]).map(i=>r.cases[i]).filter(Boolean),idx:(manche&&manche[k])||[]}));
+}
+function htmlMission(T,manche,derniere){
+  const tir=casesTirees(T,manche), M=phraseMission(tir);
+  let h=`<div class="mission" id="mission"><div class="tag">🎯 Ta mission</div>
+    ${M.phrase?`<div class="phrase">${esc(M.phrase)}</div>`:''}
+    ${M.lignes.map(l=>`<div class="ml"><b>${l.emoji} ${esc(l.titre)}</b><span>${esc(l.valeur)}</span></div>`).join('')}`;
+  const E=(T.eq||[]).find(e=>(e.ids||[]).includes(moi.id));
+  if(E){const autres=E.ids.filter(x=>x!==moi.id).map(x=>NOMS[x]).filter(Boolean);
+    const et=autres.length>1?autres.slice(0,-1).join(', ')+' et '+autres[autres.length-1]:autres[0]||'';
+    h+=`<div class="ml"><b>👥 Équipe</b><span><b style="color:var(--or)">Équipe ${esc(E.n)}</b>${et?' avec '+esc(et):''}</span></div>`}
+  if(derniere){
+    const fiches=[];tir.forEach(x=>x.cases.forEach(c=>{const f=c.f&&ficheRoue(c.f);if(f)fiches.push(f)}));
+    if(fiches.length)h+=T.fiches?fiches.map(htmlFiche).join(''):`<p class="muted" style="margin:12px 0 0">📋 La fiche sera montrée par Hamid.</p>`;
+  }
+  return h+`</div>`;
+}
+let ROUE_EN_COURS=false;
+function ecranRoue(){
+  ECRAN='roue'; QUIZ_AFFICHE=null;
+  const T=roueActive();
+  if(!T)return accueil();
+  const mes=T.res&&T.res[moi.id];
+  let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace stagiaires</div><h1>🎡 La roue</h1>`;
+  if(!Array.isArray(mes)||!mes.length){
+    h+=`<div class="card j"><h2>⏳ La roue arrive bientôt</h2><p>Demande à Hamid : il va t'ajouter.</p><button class="btn" id="maj">🔄 Vérifier</button></div>`;
+    app.innerHTML=h;
+    document.getElementById('bk').onclick=accueil;
+    document.getElementById('maj').onclick=rafraichirRoue;
+    return haut();
+  }
+  const m=mes.length-1, manche=mes[m], cle=T.id+':'+m, vu=!!lire('roue_vu',{})[cle];
+  const etapes=[];T.roues.forEach((r,k)=>((manche[k])||[]).forEach(i=>etapes.push({k,i})));
+  h+=`<div class="card o" style="padding-bottom:14px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div class="tag" id="rtitre"></div><button class="roue-son" id="son"></button></div>
+    <div id="roue-boite"></div>
+    <div class="roue-res" id="rres"></div>
+    <button class="btn" id="lancer">${vu?'🎡 Relancer la roue (pour le plaisir)':'🎡 Lancer la roue'}</button>
+    ${vu?`<p class="muted" style="margin:8px 0 0;text-align:center">Ton résultat ne change pas : c'est le même à chaque fois.</p>`:''}</div>
+   <div id="rmission">${vu?htmlMission(T,manche,true):''}</div>`;
+  if(m>0){h+=`<details><summary>Mes tirages d'avant</summary>${mes.slice(0,m).map((x,n)=>`<p style="margin:10px 0 4px" class="muted">Tirage ${n+1}</p>`+htmlMission(T,x,false)).join('')}</details>`}
+  h+=`<button class="btn sec" id="maj">🔄 Actualiser</button>`;
+  app.innerHTML=h;
+  document.getElementById('bk').onclick=()=>{if(!ROUE_EN_COURS)accueil()};
+  document.getElementById('maj').onclick=()=>{if(!ROUE_EN_COURS)rafraichirRoue()};
+  const son=document.getElementById('son');
+  const majSon=()=>{son.textContent=roueSonActif()?'🔊 Son':'🔇 Son coupé'};majSon();
+  son.onclick=()=>{roueSonChanger(!roueSonActif());majSon()};
+  const boite=document.getElementById('roue-boite'), titre=document.getElementById('rtitre'), res=document.getElementById('rres');
+  let W=null;
+  const montrer=(k,surCase)=>{const r=T.roues[k];titre.textContent=`${r.emoji||roueType(r.type).emoji} ${r.titre||roueType(r.type).titre}${T.roues.length>1?` · roue ${k+1}/${T.roues.length}`:''}`;
+    const a=360/Math.max(1,r.cases.length);
+    W=creerRoue(boite,r.cases,{titre:r.titre,angle:surCase!=null?-(surCase*a+a/2):0});
+    if(surCase!=null){W.surligner(surCase);boite.dataset.case=String(surCase)}
+    return W};
+  if(vu&&etapes.length){const e=etapes[etapes.length-1];montrer(e.k,e.i);res.innerHTML=`<small>${esc(T.roues[e.k].titre||'')}</small>${esc(nomCase(T.roues[e.k].cases[e.i]))}`}
+  else montrer(0);
+  document.getElementById('lancer').onclick=async()=>{
+    if(ROUE_EN_COURS||!etapes.length)return;
+    ROUE_EN_COURS=true; roueAudioPret();
+    const b=document.getElementById('lancer');b.disabled=true;b.textContent='La roue tourne…';
+    document.getElementById('rmission').innerHTML='';
+    for(let n=0;n<etapes.length;n++){
+      const e=etapes[n];
+      if(n===0||etapes[n-1].k!==e.k)montrer(e.k);
+      res.innerHTML='&nbsp;';
+      await new Promise(r=>setTimeout(r,n?500:60));
+      await W.tourner(e.i);
+      res.innerHTML=`<small>${esc(T.roues[e.k].titre||'')}</small>${esc(nomCase(T.roues[e.k].cases[e.i]))}`;
+      if(n<etapes.length-1)await new Promise(r=>setTimeout(r,1300));
+    }
+    ROUE_EN_COURS=false;
+    const v=lire('roue_vu',{});
+    if(!v[cle]){v[cle]=Date.now();ecrire('roue_vu',v);
+      envoyerForm(FORM_QUIZ,{[EQ.journee]:'roue',[EQ.statut]:'lance',[EQ.contenu]:JSON.stringify({id:T.id,s:moi.id,m:m+1})}).catch(()=>{})}
+    b.disabled=false;b.textContent='🎡 Relancer la roue (pour le plaisir)';
+    document.getElementById('rmission').innerHTML=htmlMission(T,manche,true);
+    setTimeout(()=>{const x=document.getElementById('mission');if(x)x.scrollIntoView({behavior:'smooth',block:'start'})},200);
+  };
+  haut();
+}
+async function rafraichirRoue(){
+  app.innerHTML=`<p class="muted">Chargement…</p>`;
+  let g;
+  try{g=await etatGeneral()}catch(e){
+    app.innerHTML=`<div class="card"><h2>Pas de connexion</h2><p>Vérifie ta connexion internet, puis réessaie.</p><button class="btn" id="re">Réessayer</button><button class="btn sec" id="ac">← Retour</button></div>`;
+    document.getElementById('re').onclick=rafraichirRoue;document.getElementById('ac').onclick=accueil;return;
+  }
+  ETAT=g.quiz;REVS=g.revisions||{};ROUE=g.roue||null;
+  NOMS={};Object.values(g.stagiaires||{}).forEach(x=>NOMS[x.id]=x.prenom);
+  const s=g.stagiaires[moi.id];
+  if(!s||s.statut!=='accepte')return verifier();
+  roueActive()?ecranRoue():accueil();
 }
 
 // ======= Lien envoyé par Hamid pour un nouveau téléphone (#t=…) =======

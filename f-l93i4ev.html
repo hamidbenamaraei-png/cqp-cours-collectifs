@@ -77,6 +77,43 @@ textarea{min-height:90px;resize:vertical}
 #barre-dictee button.sec{flex:none;background:#2a3566;color:#fff}
 #barre-dictee small{display:block;font-weight:600;font-size:12px}
 body.avec-barre .wrap{padding-bottom:120px}
+/* La roue */
+.rchip{padding:9px 13px;border-radius:999px;border:2px solid var(--line);background:#141b33;color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit}
+.rchip.on{background:var(--or);border-color:var(--or);color:#10162b}
+.rchip.mi{border-color:var(--or)}
+.rchip small{font-weight:600;opacity:.8}
+.de{background:none;border:0;font-size:inherit;cursor:pointer;padding:0;display:inline-block;line-height:1}
+.de.roule{animation:deroule .6s ease-out}
+@keyframes deroule{0%{transform:rotate(0) scale(1)}50%{transform:rotate(200deg) scale(1.3)}100%{transform:rotate(360deg) scale(1)}}
+/* Mode projection */
+#proj{position:fixed;inset:0;z-index:100;background:#070b18;color:#fff;display:flex;gap:3vw;align-items:center;justify-content:center;padding:3vh 3vw;overflow:auto}
+#proj .pj-g{flex:none;display:flex;flex-direction:column;align-items:center}
+#proj .pj-w{width:min(84vh,56vw);max-width:none}
+#proj .pj-t{font-size:clamp(22px,2.6vw,52px);font-weight:800;margin-bottom:1vh;text-align:center}
+#proj .pj-d{flex:1;max-width:40vw;max-height:94vh;display:flex;flex-direction:column;gap:1.4vh;overflow:auto;padding:4px 2px}
+#proj .pj-sel{font-size:clamp(16px,1.4vw,28px);padding:12px 14px;background:#141b33}
+#proj .pj-res{font-size:clamp(26px,2.7vw,60px);font-weight:800;line-height:1.12;min-height:2em}
+#proj .pj-res small{display:block;font-size:.38em;color:var(--mute);letter-spacing:2px;text-transform:uppercase;margin-top:.4em}
+#proj .pj-qui{font-size:.55em;color:var(--or)}
+#proj .pj-ph{font-size:.45em;color:var(--ja);margin-top:.6em;line-height:1.3}
+#proj .pj-mute{font-size:.5em;color:var(--mute);font-weight:600}
+#proj .pj-go{padding:2.2vh 2vw;border:0;border-radius:18px;background:var(--or);color:#10162b;font-weight:800;font-size:clamp(24px,2.6vw,56px);cursor:pointer;font-family:inherit}
+#proj .pj-go:disabled{opacity:.5}
+#proj .pj-b{padding:1.4vh 1.4vw;border:0;border-radius:14px;background:#2a3566;color:#fff;font-weight:800;font-size:clamp(18px,1.6vw,34px);cursor:pointer;font-family:inherit}
+#proj .pj-b2{padding:8px 12px;border:2px solid var(--line);border-radius:12px;background:none;color:var(--soft);font-weight:700;font-size:clamp(14px,1vw,20px);cursor:pointer;font-family:inherit}
+#proj .pj-o{display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:clamp(14px,1.1vw,22px);color:var(--soft)}
+#proj .pj-o input{width:22px;height:22px;vertical-align:middle}
+#proj .pj-h{font-size:clamp(14px,1.1vw,22px);color:var(--mute);line-height:1.5;max-height:14vh;overflow:auto}
+#proj .pj-disc{position:fixed;left:6px;bottom:4px;width:28px;height:28px;border:0;background:none;color:#1c2442;font-size:22px;cursor:pointer;padding:0}
+#proj .pj-disc.arme{color:#283258}
+#proj .pj-menu{position:fixed;left:8px;bottom:36px;display:flex;flex-direction:column;gap:4px;z-index:3}
+#proj .pj-menu select{width:auto;font-size:12px;padding:3px 6px;border-radius:6px;background:#0b1022;color:#8a92b2;border:1px solid #1c2442}
+#proj .pj-fiche{position:fixed;inset:4vh 6vw;background:#10162b;border:3px solid var(--ok);border-radius:24px;padding:3vh 3vw;overflow:auto;z-index:4;font-size:clamp(18px,1.7vw,34px)}
+#proj .pj-fiche .fiche{font-size:inherit;border-left-width:8px}
+#proj .pj-fiche .fiche h3{font-size:1.6em}
+#proj .pj-fiche .fiche .fl{font-size:1em}
+#proj .pj-fiche .fiche .fl b,#proj .pj-fiche .fiche .fc{font-size:.6em}
+@media (max-aspect-ratio:1/1){#proj{flex-direction:column;justify-content:flex-start}#proj .pj-w{width:min(92vw,58vh)}#proj .pj-d{max-width:none;width:100%}}
 /* Feuille papier */
 .feuille{background:#fff;color:#111;border-radius:6px;padding:26px 24px;font-size:15px;line-height:1.4}
 .feuille h3{margin:0 0 4px;font-size:19px}
@@ -105,6 +142,7 @@ body.avec-barre .wrap{padding-bottom:120px}
 <body>
 <div class="wrap" id="app"></div>
 <script src="commun.js"></script>
+<script src="roue.js"></script>
 <script>
 // ======= Réglages propres au formateur =======
 // Empreinte du code d'accès (le code lui-même n'est pas écrit ici)
@@ -134,13 +172,16 @@ async function copier(txt){try{await navigator.clipboard.writeText(txt);return t
 const copie = x => JSON.parse(JSON.stringify(x));
 // Les lignes « __obs__ » du tableau des réponses sont tes observations, jamais un stagiaire
 function estObs(l){return (l[1]||'').trim()==='__obs__'}
+// Les lignes « __roue__ » gardent tes 🎯 de la roue (jamais un stagiaire non plus)
+function estRoue(l){return (l[1]||'').trim()==='__roue__'}
 
 // ======= Le tableau des réponses (les observations sont mises à part) =======
 let lignes=[], OBS=[];
 async function chargerReponses(){
   const L=await lireCSV(CSV_REPONSES);
-  lignes=L.length?[L[0]].concat(L.slice(1).filter(l=>!estObs(l))):[];
+  lignes=L.length?[L[0]].concat(L.slice(1).filter(l=>!estObs(l)&&!estRoue(l))):[];
   OBS=L.slice(1).filter(estObs);
+  MARQUES_EN_LIGNE=L.slice(1).filter(estRoue);
   return lignes;
 }
 
@@ -153,6 +194,7 @@ async function chargerEtat(){
   try{g=await etatGeneral()}catch(e){g=null}
   if(g){ETAT=g.quiz;STAG=g.stagiaires;REVS=g.revisions||{}}
   else{ETAT={};STAG={};REVS={};JOURNEES.forEach(j=>ETAT[j.id]={quiz:j.quiz,ouvert:false,horsLigne:true})}
+  roueChargerLocal(g);
   // décisions prises sur ce téléphone depuis moins de 15 min (le temps que Google se mette à jour)
   const ls=lire('localst',{});
   Object.entries(ls).forEach(([id,v])=>{if(Date.now()-v.at<15*60*1000){STAG[id]=Object.assign(STAG[id]||{id,nom:v.nom,prenom:v.prenom},{statut:v.statut})}});
@@ -240,6 +282,8 @@ function accueil(){
   h+=`<div class="card j"><h2>🧠 Quiz de révision</h2>
     <p style="margin:0" class="${rc?'':'muted'}">${rc?`${esc(rc.titre)} · ${ro?'<b style="color:var(--ok)">ouvert</b>':'caché aux stagiaires'}`:'Des questions de toutes les journées, depuis le début.'}</p>
     <button class="btn sec" id="rev">Ouvrir les révisions</button></div>`;
+  h+=`<div class="card o"><h2>🎡 La roue</h2><p style="margin:0" class="${ROUE.tirage?'':'muted'}">${ROUE.tirage?roueAccueilTexte():'Exercices, étirements, parties du cours… tirés au hasard pour chaque stagiaire.'}</p>
+    <button class="btn sec" id="roue">Ouvrir la roue</button></div>`;
   JOURNEES.slice().reverse().forEach(j=>{
     const o=estOuvert(ETAT[j.id]);
     h+=`<div class="card"><div class="tag" style="color:var(--soft)">${esc(j.titre)}</div><h2 style="margin-top:4px">${esc(j.theme)}</h2>
@@ -251,6 +295,7 @@ function accueil(){
   app.querySelectorAll('[data-j]').forEach(b=>b.onclick=()=>journee(JOURNEES.find(j=>j.id===b.dataset.j)));
   document.getElementById('stg').onclick=()=>mesStagiaires();
   document.getElementById('rev').onclick=()=>revisionEcran();
+  document.getElementById('roue').onclick=()=>{roueEcran.lu=false;roueEcran()};
   document.getElementById('out').onclick=()=>{ecrire('ok','');ecranCode()};
   document.getElementById('rz').onclick=()=>{try{localStorage.removeItem('cqp_moi')}catch(e){};document.getElementById('rzok').classList.remove('hide')};
   haut();
@@ -573,7 +618,7 @@ function banqueQuiz(j,c,retour,choisir){
 }
 function quizSurprise(j,retour,choisir){
   const z={ressenti:(j.quiz.ressenti||[]).slice(0,3),questions:tirerQuestions(paquetsParTheme(j.banque.questions),10)};
-  apercu({tag:j.titre,titre:'🎲 Quiz surprise',z,pool:j.banque.questions,retour,
+  apercu({tag:j.titre,titre:'Quiz surprise',de:true,z,pool:j.banque.questions,retour,
     info:'Questions tirées au hasard dans la banque de la journée.',
     actions:[{txt:'✅ Choisir ce quiz',f:z=>choisir(z)}]});
 }
@@ -581,7 +626,8 @@ function quizSurprise(j,retour,choisir){
 function apercu(cfg){
   const z=copie(cfg.z), verrous=z.questions.map(()=>false), vus=new Set();
   const dessiner=()=>{
-    let h=`<button class="back" id="bk">← Retour</button><div class="tag">${esc(cfg.tag)}</div><h1>${esc(cfg.titre)}</h1>
+    let h=`<button class="back" id="bk">← Retour</button><div class="tag">${esc(cfg.tag)}</div><h1>${cfg.de?`<button class="de" id="de" title="Relancer le tirage" aria-label="Relancer le tirage">🎲</button> `:''}${esc(cfg.titre)}</h1>
+     ${cfg.de?`<p style="margin:-12px 0 10px;color:var(--or);font-weight:700;font-size:15px">👆 Touche le dé pour relancer</p>`:''}
      ${cfg.info?`<p class="muted" style="margin-top:-8px">${esc(cfg.info)}</p>`:''}
      <p><span class="duree">${texteDuree(z)}</span> <span class="muted">· ${z.questions.length} questions</span></p>`;
     if(z.ressenti.length)h+=`<div class="card o"><h2>Ressenti « J'ai compris… »</h2>${z.ressenti.map(t=>`<div class="row"><span>${esc(t)}</span></div>`).join('')}</div>`;
@@ -602,6 +648,19 @@ function apercu(cfg){
       if(verrous.every(Boolean)){const i=document.getElementById('autreinfo');i.textContent='Toutes les questions sont gardées 🔒 : enlève un cadenas pour en changer.';i.classList.remove('hide');return}
       z.questions=autreProposition(z.questions,verrous,cfg.pool,vus);const y=window.scrollY;dessiner();window.scrollTo(0,y)};
     app.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>cfg.actions[+b.dataset.a].f(copie(z)));
+    const de=document.getElementById('de');
+    if(de)de.onclick=()=>{
+      if(verrous.every(Boolean)){const i=document.getElementById('autreinfo');i.textContent='Toutes les questions sont gardées 🔒 : enlève un cadenas pour en changer.';i.classList.remove('hide');return}
+      // nouveau tirage au hasard (les 🔒 restent), en évitant les questions déjà affichées
+      const gardees=new Set(z.questions.filter((q,i)=>verrous[i]).map(cleQ)), actuelles=new Set(z.questions.map(cleQ));
+      const pool=cfg.pool.filter(p=>!gardees.has(cleQ(p))), neufs=pool.filter(p=>!actuelles.has(cleQ(p))), nb=verrous.filter(v=>!v).length;
+      let tir=tirerQuestions(paquetsParTheme(neufs.length>=nb?neufs:pool),nb);
+      if(tir.length<nb){const pris=new Set(tir.map(cleQ));tir=tir.concat(tirerQuestions(paquetsParTheme(pool.filter(p=>!pris.has(cleQ(p)))),nb-tir.length))}
+      let k=0;z.questions=z.questions.map((q,i)=>verrous[i]?q:(tir[k++]||q));
+      z.questions.forEach(q=>vus.add(cleQ(q)));
+      const y=window.scrollY;dessiner();window.scrollTo(0,y);
+      const d2=document.getElementById('de');if(d2){d2.classList.add('roule');setTimeout(()=>d2.classList.remove('roule'),650)}
+    };
   };
   dessiner(); haut();
 }
@@ -750,7 +809,7 @@ function saisie(j){
   document.getElementById('env').onclick=async()=>{
     const er=document.getElementById('er'), nom=document.getElementById('n').value.trim(), prenom=document.getElementById('p').value.trim();
     if(!nom||!prenom){er.textContent='Choisis le stagiaire (ou écris son nom et son prénom).';er.classList.remove('hide');return}
-    if(nom==='__obs__'){er.textContent='Ce nom est réservé.';er.classList.remove('hide');return}
+    if(nom==='__obs__'||nom==='__roue__'){er.textContent='Ce nom est réservé.';er.classList.remove('hide');return}
     if(r.includes(0)||rep.includes(-1)){er.textContent='Remplis tout le ressenti et toutes les questions (si une case est vide sur la feuille, choisis la plus proche ou laisse la feuille de côté).';er.classList.remove('hide');return}
     er.classList.add('hide');
     const t=texteReponses(z,r,rep,true);
@@ -1035,6 +1094,477 @@ document.addEventListener('visibilitychange',()=>{
   Object.keys(OBS_MINUTEURS).forEach(sauverObsEnLigne);
   if(DICTEE.cle)sauverObsEnLigne(DICTEE.cle);
 });
+
+// ======= 🎡 La roue =======
+// Le hasard est tiré ICI, au moment où tu actives : la répartition de tous les stagiaires acceptés
+// est écrite dans le formulaire « Mes quiz CQP » (Journée = roue, Statut = tirage).
+// Les résultats que tu choisis toi-même (🎯) sont écrits comme les autres ; le 🎯 n'est gardé que
+// sur ce téléphone et dans le formulaire des réponses (ligne « __roue__ », jamais lue côté stagiaires).
+let ROUE={tirage:null,lances:{},listes:{},persos:{}}, RC=null, MARQUES_EN_LIGNE=[];
+const FRAIS=15*60*1000, LETTRES='ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+// ordre dans lequel les roues tournent (pour une phrase qui se lit bien)
+const ORDRE_TIRAGE=['partie','style','materiel','exercices','etirements','perso'];
+function roueChargerLocal(g){
+  ROUE=(g&&g.roue)||{tirage:null,lances:{},listes:{},persos:{}};
+  const lt=lire('local_roue',null);
+  if(lt&&lt.tirage&&Date.now()-lt.at<FRAIS&&(!ROUE.tirage||(+lt.tirage.at||0)>=(+ROUE.tirage.at||0)))ROUE.tirage=lt.tirage;
+  const ll=lire('local_roue_listes',{});Object.entries(ll).forEach(([k,v])=>{if(Date.now()-v.at<FRAIS)ROUE.listes[k]=v.cases});
+  const lp=lire('local_roue_persos',{});Object.entries(lp).forEach(([k,v])=>{if(Date.now()-v.at<FRAIS){if(v.supprime)delete ROUE.persos[k];else ROUE.persos[k]={nom:v.nom,cases:v.cases}}});
+}
+// ---- réglages de l'écran (gardés sur ce téléphone) ----
+function roueConf(){
+  const c=Object.assign({choisies:['partie'],off:{},doublon:{},mode:{},equipes:false,taille:4,variante:'plus',deuxParties:false,fiches:false,perso:{nom:'',texte:''},cibles:{}},lire('roue_conf',{}));
+  if(!c.off.etirements)c.off.etirements=ROUE_ETIREMENTS.filter(x=>x.cours.every(k=>/^s(ballon|tapis|chaise)$/.test(k))).map(x=>x.id);
+  return c;
+}
+function sauverConf(){ecrire('roue_conf',RC)}
+function titreRoue(type){return type==='perso'&&RC.perso.nom?RC.perso.nom:roueType(type).titre}
+function toutesCases(type){
+  if(type==='exercices')return ROUE_EXERCICES.map(x=>({k:x.id,t:x.nom,f:x.id,g:x.cours}));
+  if(type==='etirements')return ROUE_ETIREMENTS.map(x=>({k:x.id,t:x.nom,f:x.id,g:x.cours}));
+  const vu=new Set(), res=[];
+  const liste=type==='perso'?String(RC.perso.texte||'').split('\n'):(ROUE.listes[type]||ROUE_LISTES_DEFAUT[type]||[]);
+  liste.forEach(t=>{t=String(t).trim();const k=roueCle(t);if(t&&!vu.has(k)){vu.add(k);res.push({k,t})}});
+  return res;
+}
+function casesCochees(type){const off=new Set(RC.off[type]||[]);return toutesCases(type).filter(c=>!off.has(c.k))}
+function sansDoublon(type){return RC.doublon[type]!==false}
+function modeRoue(type){return type==='partie'?'stag':(RC.mode[type]||(type==='exercices'||type==='etirements'?'stag':'equipe'))}
+function marques(){return lire('roue_marques',{})}
+function marquesDe(id){const m=marques()[id];if(m)return m;const l=MARQUES_EN_LIGNE.filter(l=>(l[2]||'').trim()===id);if(l.length){try{return JSON.parse(l[l.length-1][6]||'{}')||{}}catch(e){}}return {}}
+async function sauverMarques(id,v){
+  const all=marques();all[id]=v;ecrire('roue_marques',all);
+  try{await envoyerForm(FORM,{[E.nom]:'__roue__',[E.prenom]:id,[E.journee]:'Roue',[E.ressenti]:'',[E.reponses]:'',[E.difficulte]:JSON.stringify(v)})}catch(e){}
+}
+async function publierTirage(T){
+  T.at=Date.now();
+  await envoyerForm(FORM_QUIZ,{[EQ.journee]:'roue',[EQ.statut]:'tirage',[EQ.contenu]:JSON.stringify(T)});
+  ecrire('local_roue',{at:Date.now(),tirage:T});ROUE.tirage=T;
+}
+
+// ---- le hasard ----
+function hasard(n){const a=new Uint32Array(1);crypto.getRandomValues(a);return a[0]%n}
+function melangerH(a){a=a.slice();for(let i=a.length-1;i>0;i--){const k=hasard(i+1);[a[i],a[k]]=[a[k],a[i]]}return a}
+// Répartit k cases entre des « unités » (stagiaires ou équipes) :
+// assez de cases → aucun doublon ; sinon équilibré (chaque case sort autant de fois, à une près).
+// o.fixe {u:case} (choisi par toi), o.interdit {u:Set} (déjà eu avant), o.prec [nb de sorties avant], o.base [déjà pris ici], o.libre (au hasard pur)
+function repartir(units,k,o){
+  o=o||{};const fixe=o.fixe||{},interdit=o.interdit||{},prec=o.prec||[],res={};
+  if(!k||!units.length)return res;
+  const tous=[...Array(k).keys()], ok=(u,c)=>!(interdit[u]&&interdit[u].has(c));
+  units.forEach(u=>{if(fixe[u]!=null&&fixe[u]<k)res[u]=fixe[u]});
+  const libres=melangerH(units.filter(u=>res[u]==null));
+  if(o.libre){libres.forEach(u=>{const p=tous.filter(c=>ok(u,c)),q=p.length?p:tous;res[u]=q[hasard(q.length)]});return res}
+  const cnt=tous.map(c=>(o.base&&o.base[c])||0);Object.values(res).forEach(c=>cnt[c]++);
+  const slots=[];
+  libres.forEach(()=>{
+    const min=Math.min(...cnt);let cand=tous.filter(c=>cnt[c]===min);
+    const pm=Math.min(...cand.map(c=>prec[c]||0));cand=cand.filter(c=>(prec[c]||0)===pm);
+    const c=cand[hasard(cand.length)];cnt[c]++;slots.push(c);
+  });
+  // on donne les cases en évitant ce que chacun a déjà eu (appariement)
+  const match=Array(slots.length).fill(-1);
+  const essayer=(ui,vu)=>{for(const s of melangerH(slots.map((_,i)=>i))){if(vu[s]||!ok(libres[ui],slots[s]))continue;vu[s]=1;if(match[s]<0||essayer(match[s],vu)){match[s]=ui;return true}}return false};
+  const sans=[];libres.forEach((u,ui)=>{if(!essayer(ui,{}))sans.push(ui)});
+  match.forEach((ui,s)=>{if(ui>=0)res[libres[ui]]=slots[s]});
+  const restes=slots.filter((_,s)=>match[s]<0);sans.forEach((ui,j)=>{res[libres[ui]]=restes[j]});
+  return res;
+}
+function tailleEquipes(n){
+  const t=Math.max(2,+RC.taille||4), f=nb=>{nb=Math.max(1,nb);const b=Math.floor(n/nb),r=n%nb;return Array.from({length:nb},(_,i)=>b+(i<r?1:0))};
+  return {plus:f(Math.ceil(n/t)),moins:f(Math.floor(n/t)),exact:n%t===0};
+}
+function texteTailles(ts){const et=ts.length>1?ts.slice(0,-1).join(', ')+' et '+ts[ts.length-1]:String(ts[0]);return `${ts.length} équipe${ts.length>1?'s':''} (${et} stagiaires)`}
+function taillesChoisies(n){const t=tailleEquipes(n);return RC.variante==='moins'&&!t.exact?t.moins:t.plus}
+function formerEquipes(ids,tailles){const m=melangerH(ids);let p=0;return tailles.map((t,i)=>{const e={n:LETTRES[i]||String(i+1),ids:m.slice(p,p+t)};p+=t;return e})}
+// Une manche : pour chaque roue, un résultat (liste de cases) par stagiaire
+function tirerManche(T,ids,cibles,avant){
+  const M={};ids.forEach(s=>M[s]=T.roues.map(()=>[]));
+  T.roues.forEach((r,k)=>{
+    const n=r.cases.length;if(!n)return;
+    const prec=Array(n).fill(0), interdit={};
+    avant.forEach(A=>Object.entries(A).forEach(([s,v])=>((v&&v[k])||[]).forEach(i=>{prec[i]++;(interdit[s]=interdit[s]||new Set()).add(i)})));
+    const fixe={};ids.forEach(s=>{const c=cibles[s]&&cibles[s][k];if(c!=null&&c<n)fixe[s]=c});
+    if(T.eq&&r.mode==='equipe'){
+      const fx={},it={};
+      T.eq.forEach(e=>e.ids.forEach(s=>{if(fixe[s]!=null)fx[e.n]=fixe[s];if(interdit[s])interdit[s].forEach(i=>(it[e.n]=it[e.n]||new Set()).add(i))}));
+      const R=repartir(T.eq.map(e=>e.n),n,{fixe:fx,interdit:it,prec,libre:!r.sansDoublon});
+      T.eq.forEach(e=>e.ids.forEach(s=>{if(M[s])M[s][k]=[R[e.n]]}));
+    }else if(T.eq){
+      const glob=Array(n).fill(0);
+      melangerH(T.eq).forEach(e=>{
+        const membres=e.ids.filter(s=>M[s]);
+        const R=repartir(membres,n,{fixe,interdit,prec:prec.map((p,i)=>p*1000+glob[i]),libre:!r.sansDoublon});
+        membres.forEach(s=>{M[s][k]=[R[s]];glob[R[s]]++});
+        if(r.type==='partie'&&T.deuxParties&&r.sansDoublon&&membres.length&&membres.length<n){
+          const pris=new Set(membres.map(s=>R[s])), reste=melangerH([...Array(n).keys()].filter(i=>!pris.has(i))), ordre=melangerH(membres);
+          reste.forEach((i,j)=>{const s=ordre[j%ordre.length];M[s][k].push(i);M[s][k].sort((a,b)=>a-b)});
+        }
+      });
+    }else{
+      const R=repartir(ids,n,{fixe,interdit,prec,libre:!r.sansDoublon});
+      ids.forEach(s=>M[s][k]=[R[s]]);
+    }
+  });
+  return M;
+}
+function manches(T){const nb=Math.max(0,...Object.values(T.res).map(v=>v.length));return Array.from({length:nb},(_,m)=>{const A={};Object.entries(T.res).forEach(([s,v])=>{if(v[m])A[s]=v[m]});return A})}
+// 🎯 choisis avant l'activation → {stagiaire:{numéro de roue: numéro de case}}
+function ciblesIndex(T,ids){
+  const out={};
+  ids.forEach(s=>{const c=RC.cibles[s];if(!c)return;
+    T.roues.forEach((r,k)=>{const key=c[r.type];if(key==null)return;const i=r.cases.findIndex(x=>(x.f||roueCle(x.t))===key);if(i>=0)(out[s]=out[s]||{})[k]=i})});
+  return out;
+}
+function construireTirage(){
+  const ids=acceptes().map(x=>x.id);
+  const roues=RC.choisies.map(type=>({type,emoji:roueType(type).emoji,titre:titreRoue(type),
+    cases:casesCochees(type).map(c=>c.f?{t:c.t,f:c.f}:{t:c.t}),sansDoublon:sansDoublon(type),mode:RC.equipes?modeRoue(type):'stag'})).filter(r=>r.cases.length);
+  const T={id:nouvelId(),v:1,at:Date.now(),actif:true,fiches:!!RC.fiches,roues,eq:null,res:{}};
+  if(RC.equipes&&ids.length>1){T.eq=formerEquipes(ids,taillesChoisies(ids.length));if(RC.deuxParties)T.deuxParties=true}
+  const cib=ciblesIndex(T,ids), M=tirerManche(T,ids,cib,[]);
+  ids.forEach(s=>T.res[s]=[M[s]]);
+  const mq={};Object.entries(cib).forEach(([s,v])=>Object.keys(v).forEach(k=>(mq[s]=mq[s]||{})['0:'+k]=1));
+  return {T,mq};
+}
+function nouveauxSansResultat(T){return acceptes().filter(x=>!T.res[x.id])}
+function ajouterNouveaux(T,nouv){
+  const nb=Math.max(1,...Object.values(T.res).map(v=>v.length));
+  nouv.forEach(s=>{
+    if(T.eq&&T.eq.length){const min=Math.min(...T.eq.map(e=>e.ids.length)),c=T.eq.filter(e=>e.ids.length===min);c[hasard(c.length)].ids.push(s)}
+    T.res[s]=[];
+    for(let m=0;m<nb;m++){
+      const res=T.roues.map((r,k)=>{
+        const n=r.cases.length;if(!n)return [];
+        const E_=T.eq&&T.eq.find(e=>e.ids.includes(s));
+        const groupe=(E_?E_.ids:Object.keys(T.res)).filter(x=>x!==s&&T.res[x]&&T.res[x][m]);
+        if(E_&&r.mode==='equipe'&&groupe.length)return T.res[groupe[0]][m][k].slice();
+        const base=Array(n).fill(0);groupe.forEach(x=>(T.res[x][m][k]||[]).forEach(i=>base[i]++));
+        const it=new Set();T.res[s].forEach(v=>(v[k]||[]).forEach(i=>it.add(i)));
+        return [repartir([s],n,{base,interdit:{[s]:it},libre:!r.sansDoublon})[s]];
+      });
+      T.res[s].push(res);
+    }
+  });
+}
+// Choisir le résultat d'un stagiaire après coup (dernière manche) : échange avec quelqu'un qui n'a pas encore lancé
+function choisirApres(T,X,k,c){
+  const m=T.res[X].length-1, r=T.roues[k], L=(ROUE.lances[T.id]||{}), aLance=s=>(L[s]||0)>=m+1, nom=s=>STAG[s]?STAG[s].prenom:'?';
+  const ancien=T.res[X][m][k].slice(), notes=[];
+  if(ancien.length===1&&ancien[0]===c)return notes;
+  if(T.eq&&r.mode==='equipe'){
+    const e=T.eq.find(e=>e.ids.includes(X));
+    if(r.sansDoublon){const autre=T.eq.find(f=>f!==e&&f.ids.some(s=>T.res[s]&&T.res[s][m]&&(T.res[s][m][k]||[]).includes(c)));
+      if(autre){if(autre.ids.some(aLance))notes.push(`L'équipe ${autre.n} a aussi cette case (elle a déjà lancé la roue).`);else autre.ids.forEach(s=>{if(T.res[s]&&T.res[s][m])T.res[s][m][k]=ancien.slice()})}}
+    e.ids.forEach(s=>{if(T.res[s]&&T.res[s][m])T.res[s][m][k]=[c]});
+    if(e.ids.some(aLance))notes.push(`Quelqu'un de l'équipe ${e.n} a déjà lancé la roue : il verra le nouveau résultat en rouvrant la roue.`);
+  }else{
+    const groupe=T.eq?(T.eq.find(e=>e.ids.includes(X))||{ids:[]}).ids:Object.keys(T.res);
+    const neuf=[c].concat(ancien.slice(1).filter(i=>i!==c));
+    if(r.sansDoublon){
+      const tient=groupe.filter(s=>s!==X&&T.res[s]&&T.res[s][m]&&(T.res[s][m][k]||[]).includes(c));
+      const Y=tient.find(s=>!aLance(s)&&T.res[s][m][k].length===1);
+      if(Y)T.res[Y][m][k]=[ancien[0]];
+      else if(tient.length)notes.push(`${tient.map(nom).join(', ')} a aussi cette case (déjà lancé) : ce sera un doublon.`);
+    }
+    T.res[X][m][k]=neuf;
+    if(aLance(X))notes.push(`${nom(X)} a déjà lancé la roue : il verra son nouveau résultat en rouvrant la roue.`);
+  }
+  return notes;
+}
+
+// ---- l'écran ----
+function texteRes(T,s,m){const v=T.res[s]&&T.res[s][m];if(!v)return '';return T.roues.map((r,k)=>`${r.emoji} ${(v[k]||[]).map(i=>r.cases[i]?etiquetteCase(r.cases[i]):'?').join(' + ')}`).join(' · ')}
+function roueAccueilTexte(){const T=ROUE.tirage;if(!T)return 'Pas encore de tirage.';return (T.actif?'<b style="color:var(--ok)">Activée</b> chez les stagiaires':'Pas activée chez les stagiaires')+' · '+T.roues.map(r=>r.emoji+' '+esc(r.titre)).join(' + ')}
+async function roueEcran(msg,garderScroll){
+  if(!RC)RC=roueConf();
+  const y=window.scrollY;
+  const T=ROUE.tirage, acc=acceptes(), n=acc.length;
+  let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>🎡 La roue</h1>
+   ${msg?`<div class="ok" style="margin:-6px 0 14px">${msg}</div>`:''}`;
+  // ===== tirage en cours =====
+  if(T){
+    const mq=marquesDe(T.id), nbM=Math.max(1,...Object.values(T.res).map(v=>v.length)), m=nbM-1, L=ROUE.lances[T.id]||{};
+    const avecFiches=T.roues.some(r=>r.type==='exercices'||r.type==='etirements');
+    const nouv=nouveauxSansResultat(T);
+    const ids=acc.filter(x=>T.res[x.id]).map(x=>x.id), lances=ids.filter(s=>(L[s]||0)>=m+1).length;
+    h+=`<div class="card ${T.actif?'g':'j'}"><div class="statut"><span class="dot" style="background:${T.actif?'var(--ok)':'var(--mute)'}"></span>${T.actif?'Activée chez les stagiaires':'Désactivée : les stagiaires ne la voient pas'}</div>
+      <p class="muted" style="margin:6px 0 0">${T.roues.map(r=>`${r.emoji} ${esc(r.titre)} (${r.cases.length})`).join(' + ')}${T.eq?` · 👥 ${T.eq.length} équipes`:''}${nbM>1?` · manche ${nbM}`:''}${avecFiches?` · fiches ${T.fiches?'<b style="color:var(--ok)">montrées</b>':'cachées'}`:''}</p>
+      ${T.actif?`<button class="btn ko" id="r-off">⏸️ Désactiver</button>`:`<button class="btn" id="r-on">▶️ Activer chez les stagiaires</button>`}
+      ${avecFiches?`<button class="btn sec" id="r-fi">${T.fiches?'🙈 Cacher les fiches':'📋 Montrer les fiches aux stagiaires'}</button>`:''}
+      ${T.actif?`<button class="btn wa" id="r-wa">📲 Prévenir les stagiaires sur WhatsApp</button>`:''}
+      <div class="ok hide" id="r-ok"></div></div>`;
+    h+=`<div class="card"><h2>📋 Les résultats${nbM>1?` (manche ${nbM})`:''}</h2>
+      <p class="muted" style="margin-top:0">✅ ${lances} sur ${ids.length} ${lances>1?'ont':'a'} lancé la roue · ⏳ = pas encore. Ça met quelques minutes à arriver ici.</p>`;
+    const ligne=s=>{const x=STAG[s]||{prenom:'?',nom:''}, cib=Object.keys(mq[s]||{}).some(k=>k.startsWith(m+':'));
+      return `<div class="stag" data-s="${s}"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><b>${esc(x.prenom)} ${esc(x.nom)}${cib?' <span title="Résultat choisi par toi" style="font-size:14px">🎯</span>':''}</b><span style="flex:none;font-size:15px">${(L[s]||0)>=m+1?'✅':'⏳'}</span></div>
+        <div class="d" style="color:#fff">${esc(texteRes(T,s,m))}</div>
+        ${m>0?`<div class="d muted" style="font-size:13px">Avant : ${T.res[s].slice(0,m).map((_,i)=>esc(texteRes(T,s,i))+(Object.keys(mq[s]||{}).some(k=>k.startsWith(i+':'))?' 🎯':'')).join(' / ')}</div>`:''}
+        <button class="link" data-ch="${s}" style="font-size:13px;padding:2px 0">Choisir son résultat</button><div class="hide" id="ch-${s}"></div></div>`};
+    if(T.eq)T.eq.forEach(e=>{const mb=e.ids.filter(s=>STAG[s]&&STAG[s].statut==='accepte');if(!mb.length)return;h+=`<div class="tag" style="margin:14px 0 0;color:var(--ja)">Équipe ${esc(e.n)} · ${mb.length}</div>`+mb.map(ligne).join('')});
+    else h+=ids.map(ligne).join('');
+    if(nouv.length)h+=`<div class="stag" style="border-left:4px solid var(--ja)"><b>Pas encore de résultat (${nouv.length})</b><div class="d">${nouv.map(x=>esc(x.prenom+' '+x.nom)).join(', ')}</div><div class="d muted">Chez eux : « La roue arrive bientôt, demande à Hamid ».</div><button class="btn small" id="r-nouv">➕ Ajouter les nouveaux</button></div>`;
+    h+=`<button class="btn sec" id="r-manche">🎲 Une manche de plus (sans répéter)</button>
+      <button class="btn sec" id="r-maj">🔄 Actualiser</button></div>`;
+  }
+  // ===== préparer =====
+  h+=`<div class="card o"><h2>${T?'🔧 Préparer un nouveau tirage':'🔧 Préparer la roue'}</h2><p class="muted" style="margin-top:0">Choisis une ou plusieurs roues (tirage combiné).</p>
+    <div class="choix">${ROUE_TYPES.map(t=>`<button class="rchip ${RC.choisies.includes(t.type)?'on':''}" data-rt="${t.type}">${t.emoji} ${esc(t.type==='perso'?'Ma roue':t.titre)}</button>`).join('')}</div></div>`;
+  RC.choisies.forEach(type=>{h+=carteRoue(type,n)});
+  // équipes
+  const tl=tailleEquipes(Math.max(n,1));
+  h+=`<div class="card"><h2>👥 Par équipes</h2>
+    <label class="check"><input type="checkbox" id="r-eq" ${RC.equipes?'checked':''}> Faire des équipes tirées au hasard</label>`;
+  if(RC.equipes){
+    h+=`<label>Taille d'une équipe</label><div class="choix">${[2,3,4,5,6].map(t=>`<button class="rchip ${+RC.taille===t?'on':''}" data-tt="${t}">${t}</button>`).join('')}</div>`;
+    if(n>1){
+      if(tl.exact)h+=`<p style="margin:10px 0 0">${n} stagiaires → <b>${texteTailles(tl.plus)}</b></p>`;
+      else h+=`<p class="muted" style="margin:10px 0 4px">${n} stagiaires ne font pas des équipes de ${RC.taille} pile. Ma proposition :</p>
+        <button class="opt ${RC.variante!=='moins'?'on':''}" data-va="plus">${texteTailles(tl.plus)}</button>
+        ${tl.moins.length&&tl.moins.length!==tl.plus.length?`<button class="opt ${RC.variante==='moins'?'on':''}" data-va="moins">${texteTailles(tl.moins)}</button>`:''}`;
+      const ts=taillesChoisies(n), np=RC.choisies.includes('partie')&&sansDoublon('partie')?casesCochees('partie').length:0, petites=ts.filter(t=>t<np);
+      if(np&&petites.length){
+        h+=`<div class="stag" style="border-left:4px solid var(--ja)"><b>⚠️ ${petites.length>1?`${petites.length} équipes ont`:'Une équipe a'} moins de stagiaires (${petites.join(', ')}) que de parties du cours (${np}).</b>
+          <div class="d">${RC.deuxParties?'✅ Quelqu\'un aura 2 parties dans ces équipes.':'Une partie ne sera pas faite dans ces équipes.'}</div>
+          <button class="btn small" id="r-grand">Agrandir les équipes</button> <button class="btn small sec" id="r-deux">${RC.deuxParties?'Ne plus donner 2 parties':'Donner 2 parties à quelqu\'un'}</button></div>`;
+      }
+    }else h+=`<p class="muted">Il faut au moins 2 stagiaires acceptés.</p>`;
+  }
+  h+=`</div>`;
+  // fiches + choix discret
+  const avecF=RC.choisies.some(t=>t==='exercices'||t==='etirements');
+  if(avecF)h+=`<div class="card"><label class="check" style="margin-top:0"><input type="checkbox" id="r-fiches" ${RC.fiches?'checked':''}> Montrer les fiches aux stagiaires dès l'activation</label><p class="muted" style="margin:6px 0 0">Tu pourras les montrer ou les cacher ensuite.</p></div>`;
+  const nbC=Object.values(RC.cibles).filter(v=>v&&Object.keys(v).length).length;
+  h+=`<details id="r-disc" ${lire('roue_disc_ouvert',false)?'open':''}><summary style="font-weight:600;color:var(--soft)">🎯 Choisir le résultat d'un stagiaire${nbC?` (${nbC})`:''}</summary>
+    <p class="muted">Pour lui faire travailler un point faible sans qu'il se sente visé. Chez lui, rien ne change : même roue, même animation. Le reste est tiré au hasard autour, sans doublon.</p>
+    ${acc.map(x=>`<div class="stag"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>${esc(x.prenom)} ${esc(x.nom)}${RC.cibles[x.id]&&Object.keys(RC.cibles[x.id]).length?' 🎯':''}</b><button class="link" data-pc="${x.id}" style="font-size:13px">Choisir son résultat</button></div><div class="hide" id="pc-${x.id}"></div></div>`).join('')||'<p class="muted">Aucun stagiaire accepté.</p>'}</details>`;
+  // résumé + boutons
+  h+=`<div class="err hide" id="r-er"></div>`;
+  if(n)h+=`<p class="muted" style="margin:14px 0 0">${resumeRepartition(n)}</p>`;
+  h+=`<button class="btn" id="r-go">${T&&T.actif?'🔄 Nouveau tirage (refait toute la répartition)':'🎡 Tirer et activer chez les stagiaires'}</button>
+    <button class="btn sec" id="r-proj">📽️ Mode projection (plein écran)</button>`;
+  app.innerHTML=h;
+  if(garderScroll)window.scrollTo(0,y);else haut();
+  brancherRoue(T);
+  // les 🎯 enregistrés sur un autre téléphone (formulaire des réponses)
+  if(T&&!marques()[T.id]&&!roueEcran.lu){roueEcran.lu=true;try{await chargerReponses();if(MARQUES_EN_LIGNE.some(l=>(l[2]||'').trim()===T.id))roueEcran(msg,true)}catch(e){}}
+}
+function resumeRepartition(n){
+  return RC.choisies.map(type=>{const k=casesCochees(type).length;if(!k)return `${roueType(type).emoji} aucune case cochée`;
+    const u=RC.equipes&&modeRoue(type)==='equipe'?taillesChoisies(n).length:n, qui=RC.equipes&&modeRoue(type)==='equipe'?'équipe':'stagiaire';
+    if(!sansDoublon(type))return `${roueType(type).emoji} ${k} cases, au hasard (doublons possibles)`;
+    if(RC.equipes&&modeRoue(type)==='stag')return `${roueType(type).emoji} ${k} cases, toutes différentes dans chaque équipe`;
+    if(u<=k)return `${roueType(type).emoji} ${k} cases pour ${u} ${qui}${u>1?'s':''} : aucun doublon`;
+    const b=Math.floor(u/k);return `${roueType(type).emoji} ${k} cases pour ${u} ${qui}s : chaque case sort ${u%k?`${b+1} ou ${b}`:b} fois`;
+  }).join('<br>');
+}
+function carteRoue(type,n){
+  const ty=roueType(type), tout=toutesCases(type), off=new Set(RC.off[type]||[]), coch=tout.filter(c=>!off.has(c.k));
+  let h=`<div class="card" data-carte="${type}"><h2>${ty.emoji} ${esc(titreRoue(type))} <span class="muted" style="font-weight:600">· ${coch.length}/${tout.length} cases</span></h2>`;
+  if(type==='perso'){
+    h+=`<label for="pn">Nom de ta roue</label><input type="text" id="pn" value="${esc(RC.perso.nom||'')}" placeholder="Ex. : Les consignes de sécurité">
+      <label for="pt">Les cases (une par ligne)</label><textarea id="pt" style="min-height:130px" placeholder="Écris une case par ligne">${esc(RC.perso.texte||'')}</textarea>
+      <button class="btn small" id="p-sav">💾 Enregistrer ma roue</button>`;
+    const ps=Object.values(ROUE.persos);
+    if(ps.length)h+=`<label>Mes roues enregistrées</label>`+ps.map(p=>`<div class="row" style="align-items:center"><span>${esc(p.nom)} <span class="muted">· ${p.cases.length} cases</span></span><span style="display:flex;gap:6px;flex:none"><button class="btn small sec" style="margin:0" data-pu="${esc(memeNomCle(p.nom))}">Utiliser</button><button class="btn small ko" style="margin:0" data-pd="${esc(memeNomCle(p.nom))}">🗑️</button></span></div>`).join('');
+  }
+  if(ty.cours){
+    h+=`<p class="muted" style="margin:0 0 4px">Filtrer par cours (touche pour cocher ou décocher tout le cours) :</p><div class="choix">${ty.cours.map(c=>{const cs=tout.filter(x=>x.g.includes(c)),on=cs.filter(x=>!off.has(x.k)).length;
+      return `<button class="rchip ${on===cs.length?'on':on?'mi':''}" data-fc="${type}:${c}">${esc(ROUE_COURS[c])} <small>${on}/${cs.length}</small></button>`}).join('')}</div>`;
+  }
+  if(coch.length>24)h+=`<p style="color:var(--ja);font-size:15px;margin:10px 0 0">Plus de 24 cases : sur un téléphone, la roue sera difficile à lire. Décoche des cours ou des cases.</p>`;
+  h+=`<label class="check"><input type="checkbox" data-sd="${type}" ${sansDoublon(type)?'checked':''}> Sans doublon (conseillé)</label>`;
+  if(RC.equipes&&type!=='partie')h+=`<div class="choix" style="margin-top:8px"><button class="rchip ${modeRoue(type)==='equipe'?'on':''}" data-md="${type}:equipe">Même résultat pour toute l'équipe</button><button class="rchip ${modeRoue(type)==='stag'?'on':''}" data-md="${type}:stag">Un résultat par stagiaire</button></div>`;
+  if(RC.equipes&&type==='partie')h+=`<p class="muted" style="margin:6px 0 0">Par équipes : chaque stagiaire d'une équipe a une partie différente.</p>`;
+  if(tout.length){
+    h+=`<details style="background:#141b33;margin:12px 0 0"><summary>Voir et cocher les cases</summary>
+      <div style="display:flex;gap:14px;margin:8px 0"><button class="link" data-tout="${type}:1">Tout cocher</button><button class="link" data-tout="${type}:0">Tout décocher</button></div>`;
+    const groupes=ty.cours?ty.cours.map(c=>({c,l:tout.filter(x=>x.g[0]===c)})).filter(g=>g.l.length):[{c:'',l:tout}];
+    groupes.forEach(g=>{if(g.c)h+=`<div class="tag" style="margin:12px 0 2px;color:var(--soft)">${esc(ROUE_COURS[g.c])}</div>`;
+      g.l.forEach(c=>{h+=`<div class="ligne" style="margin:2px 0"><label class="check" style="margin:4px 0;flex:1"><input type="checkbox" data-cc="${type}" value="${esc(c.k)}" ${off.has(c.k)?'':'checked'}> ${esc(c.t)}</label>${ty.modifiable?`<button class="x" style="height:40px;width:40px" data-rm="${type}" data-k="${esc(c.k)}" title="Retirer">✕</button>`:''}</div>`})});
+    if(ty.modifiable)h+=`<div class="ligne" style="margin-top:12px"><input type="text" id="add-${type}" placeholder="Nouvelle case"><button class="btn small" style="margin:0" data-add="${type}">+ Ajouter</button></div>
+      <button class="link" data-def="${type}">↩️ Remettre la liste de départ</button>`;
+    h+=`</details>`;
+  }
+  return h+`</div>`;
+}
+function selectsChoix(roues,valeurs,prefix){
+  // roues : [{titre, emoji, cases:[{k,t}]}] ; valeurs : clé par roue (ou '')
+  return roues.map((r,i)=>`<label style="font-size:14px;margin:8px 0 4px">${r.emoji} ${esc(r.titre)}</label><select data-${prefix}="${i}" style="padding:9px 10px;font-size:15px">
+    <option value="">${prefix==='pc'?'Au hasard':'— Garder —'}</option>${r.cases.map(c=>`<option value="${esc(c.k)}" ${valeurs[i]===c.k?'selected':''}>${esc(c.t)}</option>`).join('')}</select>`).join('');
+}
+function brancherRoue(T){
+  const $=id=>document.getElementById(id), re=(m)=>roueEcran(m,true);
+  $('bk').onclick=accueil;
+  // choix des roues
+  app.querySelectorAll('[data-rt]').forEach(b=>b.onclick=()=>{const t=b.dataset.rt,i=RC.choisies.indexOf(t);if(i>=0)RC.choisies.splice(i,1);else RC.choisies.push(t);RC.choisies.sort((a,b)=>ORDRE_TIRAGE.indexOf(a)-ORDRE_TIRAGE.indexOf(b));sauverConf();re()});
+  app.querySelectorAll('[data-fc]').forEach(b=>b.onclick=()=>{const [type,c]=b.dataset.fc.split(':');const cs=toutesCases(type).filter(x=>x.g.includes(c)).map(x=>x.k);const off=new Set(RC.off[type]||[]);
+    const tousOn=cs.every(k=>!off.has(k));cs.forEach(k=>tousOn?off.add(k):off.delete(k));RC.off[type]=[...off];sauverConf();re()});
+  app.querySelectorAll('[data-cc]').forEach(c=>c.onchange=()=>{const type=c.dataset.cc,off=new Set(RC.off[type]||[]);c.checked?off.delete(c.value):off.add(c.value);RC.off[type]=[...off];sauverConf();
+    const d=c.closest('details');re();const d2=app.querySelector(`[data-carte="${type}"] details`);if(d&&d2)d2.open=true});
+  app.querySelectorAll('[data-tout]').forEach(b=>b.onclick=()=>{const [type,v]=b.dataset.tout.split(':');RC.off[type]=v==='1'?[]:toutesCases(type).map(x=>x.k);sauverConf();re();const d2=app.querySelector(`[data-carte="${type}"] details`);if(d2)d2.open=true});
+  app.querySelectorAll('[data-sd]').forEach(c=>c.onchange=()=>{RC.doublon[c.dataset.sd]=c.checked;sauverConf();re()});
+  app.querySelectorAll('[data-md]').forEach(b=>b.onclick=()=>{const [type,v]=b.dataset.md.split(':');RC.mode[type]=v;sauverConf();re()});
+  // listes modifiables
+  const sauverListe=async(type,liste,texte)=>{
+    const ll=lire('local_roue_listes',{});ll[type]={at:Date.now(),cases:liste};ecrire('local_roue_listes',ll);ROUE.listes[type]=liste;
+    try{await envoyerForm(FORM_QUIZ,{[EQ.journee]:'roue',[EQ.statut]:'liste',[EQ.contenu]:JSON.stringify({roue:type,cases:liste})});re(texte)}
+    catch(e){re("⚠️ Pas de connexion : la liste est gardée sur ce téléphone seulement.")}
+  };
+  const ouvrir=type=>{const d2=app.querySelector(`[data-carte="${type}"] details`);if(d2)d2.open=true};
+  app.querySelectorAll('[data-rm]').forEach(b=>b.onclick=async()=>{const type=b.dataset.rm;const l=toutesCases(type).filter(c=>c.k!==b.dataset.k).map(c=>c.t);await sauverListe(type,l,'✅ Case retirée et liste enregistrée.');ouvrir(type)});
+  app.querySelectorAll('[data-add]').forEach(b=>b.onclick=async()=>{const type=b.dataset.add,inp=$('add-'+type),t=inp.value.trim();if(!t)return;
+    if(toutesCases(type).some(c=>c.k===roueCle(t))){inp.value='';return}
+    await sauverListe(type,toutesCases(type).map(c=>c.t).concat(t),'✅ Case ajoutée et liste enregistrée.');ouvrir(type)});
+  app.querySelectorAll('[data-def]').forEach(b=>b.onclick=async()=>{const type=b.dataset.def;if(!confirm('Remettre la liste de départ ?'))return;await sauverListe(type,ROUE_LISTES_DEFAUT[type].slice(),'✅ Liste de départ remise.');ouvrir(type)});
+  // ma roue
+  if($('pt')){
+    $('pn').oninput=e=>{RC.perso.nom=e.target.value;sauverConf()};
+    $('pt').oninput=e=>{RC.perso.texte=e.target.value;sauverConf()};
+    $('p-sav').onclick=async()=>{
+      const nom=$('pn').value.trim(),cases=toutesCases('perso').map(c=>c.t),er=$('r-er');
+      if(!nom||cases.length<2){er.textContent=!nom?'Donne un nom à ta roue pour l\'enregistrer.':'Écris au moins 2 cases (une par ligne).';er.classList.remove('hide');er.scrollIntoView({block:'center'});return}
+      const k=memeNomCle(nom),lp=lire('local_roue_persos',{});lp[k]={at:Date.now(),nom,cases};ecrire('local_roue_persos',lp);ROUE.persos[k]={nom,cases};
+      try{await envoyerForm(FORM_QUIZ,{[EQ.journee]:'roue',[EQ.statut]:'perso',[EQ.contenu]:JSON.stringify({nom,cases})});re(`✅ Roue « ${esc(nom)} » enregistrée.`)}catch(e){re('⚠️ Pas de connexion : ta roue est gardée sur ce téléphone seulement.')}
+    };
+  }
+  app.querySelectorAll('[data-pu]').forEach(b=>b.onclick=()=>{const p=ROUE.persos[b.dataset.pu];if(!p)return;RC.perso={nom:p.nom,texte:p.cases.join('\n')};RC.off.perso=[];sauverConf();re(`✅ Roue « ${esc(p.nom)} » chargée.`)});
+  app.querySelectorAll('[data-pd]').forEach(b=>b.onclick=async()=>{const p=ROUE.persos[b.dataset.pd];if(!p||!confirm(`Supprimer la roue « ${p.nom} » ?`))return;
+    const lp=lire('local_roue_persos',{});lp[b.dataset.pd]={at:Date.now(),nom:p.nom,supprime:true};ecrire('local_roue_persos',lp);delete ROUE.persos[b.dataset.pd];
+    try{await envoyerForm(FORM_QUIZ,{[EQ.journee]:'roue',[EQ.statut]:'perso',[EQ.contenu]:JSON.stringify({nom:p.nom,supprime:true})})}catch(e){}re('🗑️ Roue supprimée.')});
+  // équipes
+  $('r-eq').onchange=e=>{RC.equipes=e.target.checked;sauverConf();re()};
+  app.querySelectorAll('[data-tt]').forEach(b=>b.onclick=()=>{RC.taille=+b.dataset.tt;sauverConf();re()});
+  app.querySelectorAll('[data-va]').forEach(b=>b.onclick=()=>{RC.variante=b.dataset.va;sauverConf();re()});
+  if($('r-grand'))$('r-grand').onclick=()=>{const n=acceptes().length,np=casesCochees('partie').length;
+    RC.variante='moins';if(taillesChoisies(n).some(t=>t<np)){RC.taille=Math.max(+RC.taille,np);RC.variante='plus';if(taillesChoisies(n).some(t=>t<np))RC.variante='moins'}
+    RC.deuxParties=false;sauverConf();re(`✅ Équipes agrandies : ${texteTailles(taillesChoisies(n))}.`)};
+  if($('r-deux'))$('r-deux').onclick=()=>{RC.deuxParties=!RC.deuxParties;sauverConf();re()};
+  if($('r-fiches'))$('r-fiches').onchange=e=>{RC.fiches=e.target.checked;sauverConf()};
+  $('r-disc').ontoggle=e=>ecrire('roue_disc_ouvert',e.target.open);
+  // 🎯 avant activation
+  app.querySelectorAll('[data-pc]').forEach(b=>b.onclick=()=>{
+    const s=b.dataset.pc,z=$('pc-'+s);if(!z.classList.contains('hide')){z.classList.add('hide');return}
+    const rs=RC.choisies.map(t=>({type:t,emoji:roueType(t).emoji,titre:titreRoue(t),cases:casesCochees(t)})), v=RC.cibles[s]||{};
+    z.innerHTML=selectsChoix(rs,rs.map(r=>v[r.type]||''),'pc')+`<button class="btn small" data-pcok="${s}">OK</button>`;z.classList.remove('hide');
+    z.querySelector('[data-pcok]').onclick=()=>{const nv={};z.querySelectorAll('[data-pc]').forEach(sel=>{if(sel.value)nv[rs[+sel.dataset.pc].type]=sel.value});
+      if(Object.keys(nv).length)RC.cibles[s]=nv;else delete RC.cibles[s];sauverConf();re()};
+  });
+  // activer / tirer
+  $('r-go').onclick=async()=>{
+    const er=$('r-er'),pb=[];
+    if(!acceptes().length)pb.push("Aucun stagiaire accepté : accepte-les d'abord dans « Mes stagiaires ».");
+    if(!RC.choisies.length)pb.push('Choisis au moins une roue.');
+    RC.choisies.forEach(t=>{if(!casesCochees(t).length)pb.push(`${roueType(t).emoji} ${titreRoue(t)} : coche au moins une case.`)});
+    if(pb.length){er.innerHTML=pb.map(esc).join('<br>');er.classList.remove('hide');er.scrollIntoView({behavior:'smooth',block:'center'});return}
+    if(T&&T.actif&&!confirm('Refaire toute la répartition ? Les stagiaires auront un nouveau résultat.'))return;
+    const b=$('r-go');b.disabled=true;b.textContent='Tirage en cours…';
+    const {T:N,mq}=construireTirage();
+    try{await publierTirage(N)}catch(e){b.disabled=false;b.textContent='🎡 Réessayer';er.textContent="Ça n'a pas marché. Vérifie ta connexion internet et réessaie.";er.classList.remove('hide');return}
+    await sauverMarques(N.id,mq);
+    roueEcran(`✅ Tirage fait pour ${Object.keys(N.res).length} stagiaire${Object.keys(N.res).length>1?'s':''}. La roue apparaîtra chez eux d'ici quelques minutes (le temps que Google se mette à jour).`);
+  };
+  $('r-proj').onclick=()=>projection();
+  if(!T)return;
+  // tirage en cours
+  const changer=async(f,texte,b)=>{if(b){b.disabled=true;b.textContent='Un instant…'}const N=copie(T);f(N);
+    try{await publierTirage(N)}catch(e){alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");return re()}
+    re(texte)};
+  if($('r-off'))$('r-off').onclick=e=>changer(N=>N.actif=false,"✅ Roue désactivée. Elle disparaîtra chez les stagiaires d'ici quelques minutes.",e.target);
+  if($('r-on'))$('r-on').onclick=e=>changer(N=>N.actif=true,"✅ Roue activée. Elle apparaîtra chez les stagiaires d'ici quelques minutes.",e.target);
+  if($('r-fi'))$('r-fi').onclick=e=>changer(N=>N.fiches=!N.fiches,T.fiches?'✅ Fiches cachées aux stagiaires.':'✅ Fiches montrées aux stagiaires (d\'ici quelques minutes).',e.target);
+  if($('r-wa'))$('r-wa').onclick=()=>ouvrirWhatsApp(`Hello la team ! 👋\nLa roue est prête ! 🎡\nLancez-la sur votre espace stagiaires pour découvrir votre mission 🎯 :\n${LIEN_STAGIAIRES}\n💪`);
+  $('r-maj').onclick=async()=>{app.innerHTML=`<p class="muted">Chargement…</p>`;await chargerEtat();roueEcran.lu=false;roueEcran()};
+  $('r-manche').onclick=e=>{if(!confirm('Donner un nouveau tirage à tout le monde ? Chacun aura un résultat différent de ce qu\'il a déjà eu.'))return;
+    changer(N=>{const ids=Object.keys(N.res).filter(s=>STAG[s]&&STAG[s].statut==='accepte');const M=tirerManche(N,ids,{},manches(N));ids.forEach(s=>N.res[s].push(M[s]))},'✅ Nouvelle manche tirée. Elle arrivera chez les stagiaires d\'ici quelques minutes.',e.target)};
+  if($('r-nouv'))$('r-nouv').onclick=e=>{const nv=nouveauxSansResultat(T).map(x=>x.id);changer(N=>ajouterNouveaux(N,nv),`✅ ${nv.length} stagiaire${nv.length>1?'s ajoutés':' ajouté'}, sans changer les autres.`,e.target)};
+  // 🎯 après coup
+  app.querySelectorAll('[data-ch]').forEach(b=>b.onclick=()=>{
+    const s=b.dataset.ch,z=$('ch-'+s);if(!z.classList.contains('hide')){z.classList.add('hide');return}
+    const m=T.res[s].length-1, rs=T.roues.map(r=>({emoji:r.emoji,titre:r.titre,cases:r.cases.map((c,i)=>({k:String(i),t:nomCase(c)}))}));
+    const mq=marquesDe(T.id), aMarque=Object.keys(mq[s]||{}).some(k=>k.startsWith(m+':'));
+    z.innerHTML=selectsChoix(rs,rs.map(()=>''),'cr')+`<button class="btn small" data-crok="1">OK</button>${aMarque?` <button class="link" data-crx="1" style="font-size:13px">Enlever le 🎯</button>`:''}`;z.classList.remove('hide');
+    z.querySelector('[data-crok]').onclick=async()=>{
+      const N=copie(T),notes=[],mk=copie(mq);let fait=false;
+      z.querySelectorAll('[data-cr]').forEach(sel=>{if(sel.value==='')return;const k=+sel.dataset.cr;notes.push(...choisirApres(N,s,k,+sel.value));(mk[s]=mk[s]||{})[m+':'+k]=1;fait=true});
+      if(!fait){z.classList.add('hide');return}
+      try{await publierTirage(N)}catch(e){alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");return}
+      await sauverMarques(N.id,mk);
+      re('✅ Résultat changé.'+(notes.length?' '+notes.map(esc).join(' '):''));
+    };
+    const x=z.querySelector('[data-crx]');if(x)x.onclick=async()=>{const mk=copie(mq);Object.keys(mk[s]||{}).forEach(k=>{if(k.startsWith(m+':'))delete mk[s][k]});await sauverMarques(T.id,mk);re('🎯 enlevé.')};
+  });
+}
+
+// ======= 📽️ Mode projection : vrai tirage au hasard, tout de suite, en grand =======
+function projection(){
+  if(!RC)RC=roueConf();
+  const roues=RC.choisies.map(type=>({type,emoji:roueType(type).emoji,titre:titreRoue(type),cases:casesCochees(type).map(c=>c.f?{t:c.t,f:c.f}:{t:c.t})})).filter(r=>r.cases.length);
+  if(!roues.length){alert('Choisis au moins une roue et coche des cases.');return}
+  const P={sans:true,sortis:roues.map(()=>new Set()),force:roues.map(()=>null),qui:'',hist:[],en:false,dernier:null,W:null,vue:0};
+  const ov=document.createElement('div');ov.id='proj';document.body.appendChild(ov);document.body.style.overflow='hidden';
+  try{const d=document.documentElement;(d.requestFullscreen||d.webkitRequestFullscreen||(()=>{})).call(d)}catch(e){}
+  ov.innerHTML=`<div class="pj-g"><div class="pj-t" id="pjt"></div><div id="pjw" class="pj-w"></div></div>
+   <div class="pj-d">
+    <select id="pjqui" class="pj-sel"><option value="">👤 Pour qui ? (personne)</option>${acceptes().map(x=>`<option value="${esc(x.prenom)}">${esc(x.prenom)} ${esc(x.nom)}</option>`).join('')}</select>
+    <div class="pj-res" id="pjres"><span class="pj-mute">Appuie sur « Lancer » ou sur la barre Espace</span></div>
+    <button class="pj-go" id="pjgo">🎡 Lancer</button>
+    <button class="pj-b hide" id="pjfi">📋 Voir la fiche</button>
+    <div class="pj-o"><label><input type="checkbox" id="pjsans" checked> Sans répétition</label><button class="pj-b2" id="pjrem">↩️ Remettre toutes les cases</button><button class="pj-b2" id="pjson"></button></div>
+    <div class="pj-h" id="pjh"></div>
+    <button class="pj-b2" id="pjq" style="align-self:flex-start">✕ Quitter</button>
+   </div>
+   <button class="pj-disc" id="pjdisc" aria-label="Réglages">·</button><div class="pj-menu hide" id="pjm"></div>
+   <div class="pj-fiche hide" id="pjf"></div>`;
+  const $=id=>document.getElementById(id);
+  const restes=k=>roues[k].cases.map((c,i)=>i).filter(i=>!(P.sans&&P.sortis[k].has(i)));
+  const afficher=k=>{P.vue=k;const r=roues[k],ix=restes(k);$('pjt').textContent=`${r.emoji} ${r.titre}${roues.length>1?` · ${k+1}/${roues.length}`:''}`;
+    P.W=creerRoue($('pjw'),ix.map(i=>r.cases[i]),{titre:r.titre});P.W.ix=ix;return P.W};
+  const majSon=()=>{$('pjson').textContent=roueSonActif()?'🔊 Son':'🔇 Son coupé'};majSon();
+  const majDisc=()=>{$('pjdisc').classList.toggle('arme',P.force.some(x=>x!=null))};
+  afficher(0);
+  const lancer=async()=>{
+    if(P.en)return;
+    if(roues.some((r,k)=>!restes(k).length)){$('pjres').innerHTML=`<span class="pj-mute">Toutes les cases sont sorties. Touche « ↩️ Remettre toutes les cases ».</span>`;return}
+    P.en=true;roueAudioPret();$('pjgo').disabled=true;$('pjfi').classList.add('hide');$('pjf').classList.add('hide');$('pjm').classList.add('hide');
+    const qui=$('pjqui').value, sortie=[];
+    $('pjres').innerHTML=qui?`<div class="pj-qui">Pour ${esc(qui)}</div>`:'';
+    for(let k=0;k<roues.length;k++){
+      const W=afficher(k), ix=W.ix;
+      let i=P.force[k]!=null&&ix.includes(P.force[k])?P.force[k]:ix[hasard(ix.length)];
+      P.force[k]=null;
+      await new Promise(r=>setTimeout(r,k?400:30));
+      await W.tourner(ix.indexOf(i));
+      sortie.push({type:roues[k].type,titre:roues[k].titre,emoji:roues[k].emoji,cases:[roues[k].cases[i]],i});
+      $('pjres').innerHTML=(qui?`<div class="pj-qui">Pour ${esc(qui)}</div>`:'')+sortie.map(x=>`<div class="pj-l"><small>${x.emoji} ${esc(x.titre)}</small>${esc(nomCase(x.cases[0]))}</div>`).join('');
+      if(k<roues.length-1)await new Promise(r=>setTimeout(r,1200));
+    }
+    if(P.sans)sortie.forEach((x,k)=>P.sortis[k].add(x.i));
+    if(roues.length>1){const M=phraseMission(sortie);if(M.phrase)$('pjres').innerHTML+=`<div class="pj-ph">🎯 ${esc(M.phrase)}</div>`}
+    P.dernier=sortie;P.hist.unshift((qui?qui+' → ':'')+sortie.map(x=>etiquetteCase(x.cases[0])).join(' · '));
+    $('pjh').innerHTML=P.hist.slice(0,8).map(t=>`<div>${esc(t)}</div>`).join('');
+    $('pjfi').classList.toggle('hide',!sortie.some(x=>x.cases[0].f&&ficheRoue(x.cases[0].f)));
+    $('pjgo').disabled=false;P.en=false;majDisc();
+  };
+  const fiche=()=>{if(!P.dernier)return;const fs=P.dernier.map(x=>x.cases[0].f&&ficheRoue(x.cases[0].f)).filter(Boolean);if(!fs.length)return;
+    $('pjf').innerHTML=fs.map(htmlFiche).join('')+`<button class="pj-b" id="pjfx">✕ Fermer la fiche</button>`;$('pjf').classList.remove('hide');$('pjfx').onclick=()=>$('pjf').classList.add('hide')};
+  const quitter=()=>{document.removeEventListener('keydown',clavier);ov.remove();document.body.style.overflow='';try{if(document.fullscreenElement)document.exitFullscreen()}catch(e){}};
+  const menu=()=>{const m=$('pjm');if(!m.classList.contains('hide')){m.classList.add('hide');return}
+    m.innerHTML=roues.map((r,k)=>`<select data-pf="${k}"><option value="">${esc(r.emoji)} hasard</option>${restes(k).map(i=>`<option value="${i}" ${P.force[k]===i?'selected':''}>${esc(etiquetteCase(r.cases[i]))}</option>`).join('')}</select>`).join('');
+    m.classList.remove('hide');m.querySelectorAll('[data-pf]').forEach(s=>s.onchange=()=>{P.force[+s.dataset.pf]=s.value===''?null:+s.value;majDisc()})};
+  function clavier(e){
+    if(e.target&&/SELECT|INPUT/.test(e.target.tagName)&&e.key!=='Escape')return;
+    if(e.code==='Space'||e.key===' '){e.preventDefault();lancer()}
+    else if(e.key==='Escape'){if(!$('pjf').classList.contains('hide'))$('pjf').classList.add('hide');else if(!$('pjm').classList.contains('hide'))$('pjm').classList.add('hide')}
+    else if(e.key==='f'||e.key==='F')fiche();
+  }
+  document.addEventListener('keydown',clavier);
+  $('pjgo').onclick=lancer;$('pjfi').onclick=fiche;$('pjq').onclick=quitter;$('pjdisc').onclick=menu;
+  $('pjsans').onchange=e=>{P.sans=e.target.checked;afficher(P.vue)};
+  $('pjrem').onclick=()=>{P.sortis.forEach(s=>s.clear());afficher(0);$('pjres').innerHTML='<span class="pj-mute">Toutes les cases sont remises.</span>'};
+  $('pjson').onclick=()=>{roueSonChanger(!roueSonActif());majSon()};
+  return P;
+}
 
 lire('ok','')===CODE_HASH ? demarrer() : ecranCode();
 </script>

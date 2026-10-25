@@ -260,9 +260,11 @@ function estOuvert(e){if(!e||!e.ouvert)return false;const f=finQuiz(e);return !(
 // - les révisions : colonne Journée = « revision », Contenu = {"id",...} ;
 // - les stagiaires : colonne Journée = « stagiaires », Statut = demande / accepte / refuse / supprime,
 //   Contenu = {"id","nom","prenom"}. La ligne la plus récente gagne.
+// - la roue : colonne Journée = « roue » ; Statut = tirage (le tirage complet, le plus récent gagne),
+//   lance (un stagiaire a lancé la roue), liste (cases d'une roue modifiée), perso (« Ma roue » enregistrée).
 async function etatGeneral(){
   const etat={};JOURNEES.forEach(j=>etat[j.id]={quiz:j.quiz,ouvert:false,duree:0,ouvertAt:null,ouvCle:''});
-  const stag={}, revs={};
+  const stag={}, revs={}, roue={tirage:null,lances:{},listes:{},persos:{}};
   const L=await lireCSV(CSV_QUIZ);
   if(L.length){
     const h=L[0].map(x=>x.trim().toLowerCase());
@@ -278,6 +280,15 @@ async function etatGeneral(){
         }else if(['accepte','refuse','supprime','efface'].includes(st)){
           stag[c.id]=Object.assign(s0||{id:c.id,nom:String(c.nom||'').trim(),prenom:String(c.prenom||'').trim(),date:l[0]||''},{statut:st,n:n+1});
         }
+        return;
+      }
+      if(id==='roue'){
+        let c;try{c=JSON.parse(l[iC]||'')}catch(e){return}
+        if(!c||typeof c!=='object')return;
+        if(st==='tirage'&&c.id&&Array.isArray(c.roues)&&c.res&&typeof c.res==='object'){if(!roue.tirage||(+c.at||0)>=(+roue.tirage.at||0))roue.tirage=c}
+        else if(st==='lance'&&c.id&&c.s){const t=roue.lances[c.id]||(roue.lances[c.id]={});t[c.s]=Math.max(t[c.s]||0,+c.m||1)}
+        else if(st==='liste'&&c.roue&&Array.isArray(c.cases))roue.listes[c.roue]=c.cases.map(String).filter(x=>x.trim());
+        else if(st==='perso'&&c.nom){const k=memeNomCle(c.nom);if(c.supprime)delete roue.persos[k];else if(Array.isArray(c.cases))roue.persos[k]={nom:String(c.nom),cases:c.cases.map(String)}}
         return;
       }
       if(id==='revision'){
@@ -297,7 +308,7 @@ async function etatGeneral(){
     });
   }
   Object.keys(revs).forEach(k=>{if(!revs[k].quiz)delete revs[k]});
-  return {quiz:etat,stagiaires:stag,revisions:revs};
+  return {quiz:etat,stagiaires:stag,revisions:revs,roue};
 }
 async function etatQuiz(){return (await etatGeneral()).quiz}
 // La révision « en cours » = la dernière préparée
@@ -306,6 +317,7 @@ function nouvelId(){
   const a=new Uint8Array(9);crypto.getRandomValues(a);
   return [...a].map(x=>x.toString(36).padStart(2,'0')).join('').slice(0,14);
 }
+function memeNomCle(x){return String(x||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ')}
 function memeNom(a,b){const f=x=>String(x||'').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ');return f(a)===f(b)}
 
 // ===== Banque de questions : outils =====
