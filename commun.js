@@ -176,28 +176,24 @@ const BANQUE_J1={
  ],
  categories:[
   {id:"epmsp",emoji:"🎯",titre:"L'EPMSP, c'est quoi",themes:["epmsp","jury"],quiz:[
-   {id:"epmsp-1",titre:"L'essentiel de l'EPMSP",ressenti:["Ce qu'est l'EPMSP et à quoi elle sert","Comment se passe le passage","Ce que le jury observe"],questions:["e02","e03","e05","m01","j01"]},
-   {id:"epmsp-2",titre:"Les mots à connaître",ressenti:["Le sens des mots CQP, EPMSP et CC","À quoi sert l'EPMSP"],questions:["e01","e06","e07","e02","e03"]},
-   {id:"epmsp-3",titre:"Ce que regarde le jury",ressenti:["Ce que le jury observe","Ce qui peut faire rater un passage"],questions:["j01","j02","j03","j04","j05"]}]},
+   {id:"epmsp-1",titre:"L'EPMSP et les mots à connaître",ressenti:["Ce qu'est l'EPMSP et à quoi elle sert","Le sens des mots CQP, EPMSP et CC","Comment se passe le passage"],questions:["e01","e02","e03","e05","e06","e07","j01","j02","j03","m01"]},
+   {id:"epmsp-2",titre:"Ce que regarde le jury",ressenti:["Ce que le jury observe","Ce qui peut faire rater un passage","Comment se passe le passage"],questions:["j01","j02","j03","j04","j05","e02","e03","e05","m01","m02"]}]},
   {id:"minutes",emoji:"⏱️",titre:"Mes 20 minutes",themes:["minutes"],quiz:[
-   {id:"minutes-1",titre:"Les 4 parties de la séance",ressenti:["Les 4 parties de la séance","L'ordre des parties"],questions:["m02","m03","m09","m12","m13"]},
-   {id:"minutes-2",titre:"Répartir mes 20 minutes",ressenti:["Comment répartir mes 20 minutes"],questions:["m01","m04","m05","m07","m08"]},
-   {id:"minutes-3",titre:"Le corps de séance",ressenti:["Ce que je fais dans le corps de séance","Le rôle de l'échauffement et du retour au calme"],questions:["m10","m11","m06","m09","m12"]}]},
+   {id:"minutes-1",titre:"Les 4 parties et leur durée",ressenti:["Les 4 parties de la séance","Comment répartir mes 20 minutes"],questions:["m01","m02","m03","m04","m05","m06","m07","m08","m09","m10"]},
+   {id:"minutes-2",titre:"Le rôle de chaque partie",ressenti:["Le rôle de l'échauffement et du retour au calme","Ce que je fais dans le corps de séance"],questions:["m02","m03","m08","m09","m10","m11","m12","m13","m04","m05"]}]},
   {id:"securite",emoji:"🛡️",titre:"La sécurité",themes:["briefing","salle","placement"],quiz:[
-   {id:"securite-1",titre:"Mon briefing de sécurité",ressenti:["Ce que je dis dans mon briefing","Comment réagir en cas de douleur"],questions:["b01","b02","b03","b06","b07"]},
-   {id:"securite-2",titre:"Une salle sans danger",ressenti:["Comment préparer la salle","Comment surveiller pendant la séance"],questions:["s01","s02","s03","s05","s08"]},
-   {id:"securite-3",titre:"Bien placer les pratiquants",ressenti:["Comment placer les tapis","Où mettre la tête selon la position"],questions:["p01","p02","p03","p04","p05"]},
-   {id:"securite-4",titre:"La sécurité, tout mélangé",ressenti:["Le briefing de début de cours","La salle et le placement"],questions:["b05","s07","p06","p07","b04"]}]},
+   {id:"securite-1",titre:"Le briefing et la salle",ressenti:["Ce que je dis dans mon briefing","Comment préparer la salle","Comment réagir en cas de douleur"],questions:["b01","b02","b03","b04","b05","b06","b07","s01","s02","s03"]},
+   {id:"securite-2",titre:"La salle et le placement",ressenti:["Comment surveiller pendant la séance","Comment placer les tapis","Où mettre la tête selon la position"],questions:["s04","s05","s07","s08","p01","p02","p03","p04","p05","p06"]},
+   {id:"securite-3",titre:"La sécurité, tout mélangé",ressenti:["Le briefing de début de cours","La salle sans danger","Le placement des pratiquants"],questions:["b02","b05","b06","s01","s08","p03","p05","p06","p07","p08"]}]},
   {id:"musique",emoji:"🎵",titre:"Musique ou Tabata",themes:["musique"],quiz:[
-   {id:"musique-1",titre:"Musique ou Tabata ?",ressenti:["La différence entre musique et Tabata","Ce qui est au choix pour l'EPMSP"],questions:["t01","t02","t03","t05"]},
-   {id:"musique-2",titre:"Animer sur la musique",ressenti:["Pourquoi savoir animer sur la musique"],questions:["t01","t02","t05","t06"]}]},
+   {id:"musique-1",titre:"Musique, Tabata et passage",ressenti:["La différence entre musique et Tabata","Ce qui est au choix pour l'EPMSP","Comment se passe le passage"],questions:["t01","t02","t03","t05","t06","m01","m02","m03","j01","e02"]}]},
   {id:"revision",emoji:"🔀",titre:"Révision de la journée",themes:[],quiz:[
-   {id:"revision-1",titre:"Le tour de la journée",ressenti:["Ce qu'est l'EPMSP et comment se passe le passage","Ce que le jury observe","Comment répartir mes 20 minutes","Ce que je dois préparer"],questions:["e02","m02","j01","b07","p01"]},
-   {id:"revision-2",titre:"Spécial sécurité et passage",ressenti:["Ce que le jury observe","Mon briefing de sécurité","Le placement des pratiquants"],questions:["j03","m03","b06","s08","p04"]},
-   {id:"revision-3",titre:"Révision express",ressenti:["Les points clés de la journée"],questions:["e05","m01","t01","b01","s01"]}]}
+   {id:"revision-1",titre:"Le tour de la journée",ressenti:["Ce qu'est l'EPMSP et comment se passe le passage","Comment répartir mes 20 minutes","La sécurité et le placement"],questions:["e02","j01","m02","m03","m08","b03","b07","s07","p02","t01"]},
+   {id:"revision-2",titre:"Spécial sécurité et passage",ressenti:["Ce que le jury observe","Mon briefing de sécurité","Le placement des pratiquants"],questions:["j03","j05","m11","b06","s05","s08","p01","p04","p05","t05"]},
+   {id:"revision-3",titre:"Révision express",ressenti:["Les points clés de la journée"],questions:["e01","e05","m01","m05","b01","b02","s02","p07","t03","t06"]}]}
  ]
 };
-const QUIZ_DEFAUT_J1={"ressenti":["Ce qu'est l'EPMSP et comment se passe le passage","Ce que le jury observe","Comment répartir mes 20 minutes","Ce que je dois préparer"],"questions":["m02","j01","t01"]};
+const QUIZ_DEFAUT_J1={"ressenti":["Ce qu'est l'EPMSP et comment se passe le passage","Comment répartir mes 20 minutes","La sécurité et le placement"],"questions":["m02","j01","t01","m03","m08","b03","b07","s07","p03","p05"]};
 // </BANQUE_J1>
 
 // ===== Journées (on ajoute une journée ici à chaque intervention) =====
@@ -318,8 +314,8 @@ function questionParId(id){for(const j of JOURNEES){const q=(j.banque&&j.banque.
 function nomTheme(t){for(const j of JOURNEES){if(j.banque&&j.banque.themes&&j.banque.themes[t])return j.banque.themes[t]}return 'Autres questions'}
 function copieQ(q){const c=JSON.parse(JSON.stringify(q));delete c.journee;return c}
 function quizDepuisBanque(qz){return {ressenti:qz.ressenti.slice(),questions:qz.questions.map(id=>copieQ(questionParId(id))).filter(q=>q&&q.q)}}
-// Durée estimée : ≈ 15 s par ligne de ressenti, ≈ 40 s par question
-function dureeQuiz(z){const s=((z&&z.ressenti)||[]).length*15+((z&&z.questions)||[]).length*40;return Math.max(1,Math.round(s/60))}
+// Durée estimée : ≈ 15 s par ligne de ressenti, ≈ 25 s par question
+function dureeQuiz(z){const s=((z&&z.ressenti)||[]).length*15+((z&&z.questions)||[]).length*25;return Math.max(1,Math.round(s/60))}
 function texteDuree(z){return `⏱️ environ ${dureeQuiz(z)} min`}
 function melanger(a){a=a.slice();for(let i=a.length-1;i>0;i--){const k=Math.floor(Math.random()*(i+1));[a[i],a[k]]=[a[k],a[i]]}return a}
 function cleQ(q){return q.id||('t:'+q.q)}

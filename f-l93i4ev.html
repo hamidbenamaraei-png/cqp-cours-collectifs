@@ -572,7 +572,7 @@ function banqueQuiz(j,c,retour,choisir){
   haut();
 }
 function quizSurprise(j,retour,choisir){
-  const z={ressenti:(j.quiz.ressenti||[]).slice(0,4),questions:tirerQuestions(paquetsParTheme(j.banque.questions),5)};
+  const z={ressenti:(j.quiz.ressenti||[]).slice(0,3),questions:tirerQuestions(paquetsParTheme(j.banque.questions),10)};
   apercu({tag:j.titre,titre:'🎲 Quiz surprise',z,pool:j.banque.questions,retour,
     info:'Questions tirées au hasard dans la banque de la journée.',
     actions:[{txt:'✅ Choisir ce quiz',f:z=>choisir(z)}]});
@@ -659,7 +659,7 @@ function nouvelleRevision(){
      <div class="card"><h2>Quelles journées ?</h2>`+
      JOURNEES.filter(j=>j.banque&&j.banque.questions.length).map(j=>`<label class="check"><input type="checkbox" data-j="${j.id}" ${choix.j.includes(j.id)?'checked':''}> ${esc(j.titre)} – ${esc(j.theme)}</label>`).join('')+`</div>
      <div class="card"><h2>Combien de temps ?</h2><div class="choix">${[5,10,15].map(d=>`<button class="btn ${choix.duree===d?'':'sec'}" data-d="${d}">${d} min</button>`).join('')}</div>
-      <p class="muted" style="margin-bottom:0">Environ ${choix.duree/5*6} questions.</p>
+      <p class="muted" style="margin-bottom:0">Environ ${choix.duree*2} questions.</p>
       <label class="check"><input type="checkbox" id="rs" ${choix.ressenti?'checked':''}> Ajouter le ressenti « J'ai compris… » (facultatif)</label></div>
      <div class="err hide" id="er"></div>
      <button class="btn" id="go">🎲 Tirer les questions</button>`;
@@ -678,7 +678,7 @@ function nouvelleRevision(){
 function tirerRevision(choix){
   const js=JOURNEES.filter(j=>choix.j.includes(j.id));
   const pool=[].concat(...js.map(j=>j.banque.questions));
-  const n=choix.duree/5*6;
+  const n=choix.duree*2;
   const z={ressenti:choix.ressenti?js.slice(-4).map(j=>`Ce qu'on a vu le ${j.titre.toLowerCase()}`):[],
     questions:tirerQuestions(js.map(j=>j.banque.questions),n)};
   // titre unique : « Révision du JJ/MM »
