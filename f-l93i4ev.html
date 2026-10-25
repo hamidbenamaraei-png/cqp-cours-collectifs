@@ -310,6 +310,7 @@ function accueil(){
 }
 
 // ======= Écran : mes stagiaires =======
+function estTest(x){return !!(x&&String(x.id||'').startsWith('test-'))}
 function acceptes(){return Object.values(STAG).filter(x=>x.statut==='accepte').sort((a,b)=>(a.nom+a.prenom).localeCompare(b.nom+b.prenom,'fr'))}
 async function decider(liste,statut){
   for(const x of liste){
@@ -336,6 +337,12 @@ function mesStagiaires(msg){
   if(aut.length){h+=`<div class="card"><h2>Refusés ou supprimés (${aut.length})</h2><p class="muted" style="margin-top:0">Ils n'ont pas accès. Tu peux les réaccepter en cas d'erreur.</p>`;
     aut.forEach(x=>{h+=`<div class="row" style="align-items:center"><span>${esc(x.prenom)} ${esc(x.nom)} <span class="muted">(${x.statut==='refuse'?'refusé':'supprimé'})</span></span><span style="display:flex;gap:6px;flex:none"><button class="btn small sec" style="margin:0" data-acc="${x.id}">↩️ Réaccepter</button><button class="btn small ko" style="margin:0" data-eff="${x.id}">🗑️ Effacer</button></span></div>`});
     h+=`</div>`}
+  const tests=acc.filter(estTest), moiTest=(()=>{try{return JSON.parse(localStorage.getItem('cqp_moi')||'null')}catch(e){return null}})();
+  h+=`<div class="card j"><h2>🧪 Stagiaires de test</h2><p class="muted" style="margin-top:0">Pour essayer l'appli. Ils ne comptent pas dans tes statistiques ni dans ton résumé.</p>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span>Combien ?</span><select id="t-nb" style="width:auto">${[1,2,4,6,10].map(n=>`<option ${n===4?'selected':''}>${n}</option>`).join('')}</select><button class="btn small" style="margin:0" id="t-cree">➕ Créer</button></div>
+    ${tests.map(x=>`<div class="row" style="align-items:center"><span><b>${esc(x.prenom)} ${esc(x.nom)}</b>${moiTest&&moiTest.id===x.id?' <span class="muted">(c\'est toi sur ce téléphone)</span>':''}</span><button class="btn small sec" style="margin:0" data-moi="${x.id}">👤 Me mettre à sa place</button></div>`).join('')}
+    ${tests.length?`<button class="btn ko" id="t-sup">🗑️ Supprimer tous les stagiaires de test (${tests.length})</button>`:''}
+    <div class="ok hide" id="t-ok"></div></div>`;
   h+=`<button class="btn sec" id="maj">🔄 Actualiser</button>
   <p class="muted">Une décision met quelques minutes à arriver chez le stagiaire (le temps que Google se mette à jour). Le jour J, accepte-les dès l'accueil.</p>`;
   app.innerHTML=h;
@@ -346,6 +353,21 @@ function mesStagiaires(msg){
     try{await decider(liste,statut)}catch(e){alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");mesStagiaires();return}
     const y=window.scrollY;mesStagiaires(texte);window.scrollTo(0,y);
   };
+  const tc=document.getElementById('t-cree');
+  if(tc)tc.onclick=async()=>{
+    const n=+document.getElementById('t-nb').value, deja=acc.filter(estTest).map(x=>+x.nom||0), base=deja.length?Math.max(...deja):0, liste=[];
+    for(let k=1;k<=n;k++)liste.push({id:'test-'+nouvelId(),prenom:'Test',nom:String(base+k)});
+    tc.disabled=true;tc.textContent='…';
+    try{for(const x of liste){await envoyerForm(FORM_QUIZ,{[EQ.journee]:'stagiaires',[EQ.statut]:'demande',[EQ.contenu]:JSON.stringify({id:x.id,nom:x.nom,prenom:x.prenom})})}
+      await decider(liste,'accepte')}catch(e){alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.")}
+    mesStagiaires(`🧪 ${n} stagiaire${n>1?'s':''} de test créé${n>1?'s':''}.`);
+  };
+  app.querySelectorAll('[data-moi]').forEach(b=>b.onclick=()=>{const x=STAG[b.dataset.moi];
+    if(!confirm(`Ouvrir l'espace stagiaires sur ce téléphone en tant que « ${x.prenom} ${x.nom} » ?`))return;
+    try{localStorage.setItem('cqp_moi',JSON.stringify({id:x.id,nom:x.nom,prenom:x.prenom}))}catch(e){}
+    window.location.href='./';});
+  const ts=document.getElementById('t-sup');
+  if(ts)ts.onclick=()=>{const L=acc.filter(estTest);if(confirm(`Supprimer les ${L.length} stagiaires de test ?`))agir(ts,L,'efface',`🗑️ ${L.length} stagiaire${L.length>1?'s':''} de test supprimé${L.length>1?'s':''}.`)};
   app.querySelectorAll('[data-acc]').forEach(b=>b.onclick=()=>{const x=STAG[b.dataset.acc];agir(b,[x],'accepte',`✅ ${esc(x.prenom)} ${esc(x.nom)} est accepté.`)});
   app.querySelectorAll('[data-ref]').forEach(b=>b.onclick=()=>{const x=STAG[b.dataset.ref];agir(b,[x],'refuse',`${esc(x.prenom)} ${esc(x.nom)} est refusé.`)});
   app.querySelectorAll('[data-sup]').forEach(b=>b.onclick=()=>{const x=STAG[b.dataset.sup];
@@ -861,7 +883,7 @@ function afficher(c,tests){
   const nbTests=c.dateMin?rep.filter(l=>dateFR(l[iH])<c.dateMin).length:0;
   if(!tests&&c.dateMin)rep=rep.filter(l=>dateFR(l[iH])>=c.dateMin);
   // seulement les stagiaires acceptés (dès qu'il y en a au moins un)
-  const acc=acceptes(); let masques=0;
+  const acc=acceptes().filter(x=>!estTest(x)); let masques=0;
   if(acc.length&&!tests){const avant=rep.length;rep=rep.filter(l=>acc.some(a=>memeNom(a.prenom+' '+a.nom,(l[iP]||'')+' '+(l[iN]||''))));masques=avant-rep.length}
   const zone=document.getElementById('zone');
   let h='';

@@ -199,7 +199,9 @@ async function verifier(){
   ETAT=g.quiz; REVS=g.revisions||{}; ROUE=g.roue||null;
   NOMS={};Object.values(g.stagiaires||{}).forEach(x=>NOMS[x.id]=x.prenom);
   if(!moi.id){moi.id=nouvelId();ecrire('moi',moi);envoyerDemande();return attente(true)}
-  const s=g.stagiaires[moi.id];
+  let s=g.stagiaires[moi.id];
+  // sur le téléphone du formateur (stagiaire de test) : sa décision locale compte tout de suite
+  try{const ls=JSON.parse(localStorage.getItem('cqpf_localst')||'{}')[moi.id];if(ls&&(!s||s.statut==='attente'))s={id:moi.id,statut:ls.statut}}catch(e){}
   if(s&&s.statut==='accepte'){
     accueil();
     // un quiz chronométré était en cours : on y retourne directement
