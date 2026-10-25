@@ -1135,7 +1135,7 @@ function roueSimple(){
   <div class="card o" id="rs-zone">
     <label for="rs-nom" style="margin-top:0">Pour qui ?</label>
     <input type="text" id="rs-nom" list="rs-noms" placeholder="Écris le prénom" autocomplete="off">
-    <datalist id="rs-noms">${acc.map(x=>`<option value="${esc(x.prenom+' '+x.nom)}">`).join('')}</datalist>
+    <datalist id="rs-noms"></datalist>
     <div id="rs-boite" style="margin-top:14px"></div>
     <div class="roue-res" id="rs-res"></div>
     <button class="btn" id="rs-go">🎡 Lancer</button>
@@ -1151,8 +1151,11 @@ function roueSimple(){
   app.innerHTML=h;
   const R=creerRoue(document.getElementById('rs-boite'),cases,{titre:'Parties du cours'});
   const nom=document.getElementById('rs-nom'), res=document.getElementById('rs-res'), go=document.getElementById('rs-go'), ok=document.getElementById('rs-ok');
-  const dessinerListe=()=>{const L=liste();document.getElementById('rs-liste').innerHTML=L.length?L.map((x,k)=>`<div class="row" style="align-items:center"><span><b>${esc(x.n)}</b> → ${esc(x.r)}</span><button class="link" data-del="${k}" style="color:var(--ko)">✕</button></div>`).join(''):'<p class="muted" style="margin:0 0 8px">Personne pour l\'instant.</p>';
+  let dessinerListe=()=>{const L=liste();document.getElementById('rs-liste').innerHTML=L.length?L.map((x,k)=>`<div class="row" style="align-items:center"><span><b>${esc(x.n)}</b> → ${esc(x.r)}</span><button class="link" data-del="${k}" style="color:var(--ko)">✕</button></div>`).join(''):'<p class="muted" style="margin:0 0 8px">Personne pour l\'instant.</p>';
     app.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{const L2=liste();L2.splice(+b.dataset.del,1);ecrire('roue_liste',L2);dessinerListe()})};
+  const majNoms=()=>{const L=liste();document.getElementById('rs-noms').innerHTML=acc.map(x=>x.prenom+' '+x.nom).filter(n=>!L.some(y=>memeNom(y.n,n))).map(n=>`<option value="${esc(n)}">`).join('')};
+  const dessiner0=dessinerListe;
+  dessinerListe=()=>{dessiner0();majNoms()};
   dessinerListe();
   const son=document.getElementById('rs-son');const majSon=()=>{son.textContent=roueSonActif()?'🔊 Son':'🔇 Son coupé'};majSon();
   son.onclick=()=>{roueSonChanger(!roueSonActif());majSon()};
@@ -1160,6 +1163,8 @@ function roueSimple(){
     if(ROUE_SIMPLE_TOURNE)return;
     const qui=nom.value.trim();
     if(!qui){res.innerHTML='<small style="color:var(--ko)">Écris d\'abord le prénom</small>';nom.focus();return}
+    const deja=liste().find(y=>memeNom(y.n,qui));
+    if(deja){res.innerHTML=`<small style="color:var(--ko)">⚠️ ${esc(deja.n)} a déjà eu</small>${esc(deja.r)}`;return}
     ROUE_SIMPLE_TOURNE=true;roueAudioPret();go.disabled=true;go.textContent='La roue tourne…';res.innerHTML='';
     const i=Math.floor(Math.random()*cases.length);
     await R.tourner(i);
