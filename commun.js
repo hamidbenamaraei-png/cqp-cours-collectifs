@@ -89,7 +89,7 @@ async function etatGeneral(){
         const s0=stag[c.id];
         if(st==='demande'){
           if(!s0)stag[c.id]={id:c.id,nom:String(c.nom||'').trim(),prenom:String(c.prenom||'').trim(),statut:'attente',n:n+1,date:l[0]||''};
-        }else if(['accepte','refuse','supprime'].includes(st)){
+        }else if(['accepte','refuse','supprime','efface'].includes(st)){
           stag[c.id]=Object.assign(s0||{id:c.id,nom:String(c.nom||'').trim(),prenom:String(c.prenom||'').trim(),date:l[0]||''},{statut:st,n:n+1});
         }
         return;

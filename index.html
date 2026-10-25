@@ -135,7 +135,7 @@ async function verifier(){
   if(!moi.id){moi.id=nouvelId();ecrire('moi',moi);envoyerDemande();return attente(true)}
   const s=g.stagiaires[moi.id];
   if(s&&s.statut==='accepte')return accueil();
-  if(s&&(s.statut==='refuse'||s.statut==='supprime'))return bloque();
+  if(s&&(s.statut==='refuse'||s.statut==='supprime'||s.statut==='efface'))return bloque();
   // pas encore dans le tableau : on renvoie la demande si elle date de plus de 10 minutes
   if(!s&&Date.now()-lire('demande_at',0)>10*60*1000)envoyerDemande();
   attente(false);

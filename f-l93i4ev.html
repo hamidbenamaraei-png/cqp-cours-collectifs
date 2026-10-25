@@ -181,7 +181,7 @@ function accueil(){
   <p class="muted"><button class="link" id="rz">Pour mes tests : changer de nom dans l'espace stagiaires (sur ce téléphone)</button></p><div class="ok hide" id="rzok">✅ C'est fait : l'espace stagiaires te redemandera ton nom.</div>`;
   app.innerHTML=h;
   app.querySelectorAll('[data-j]').forEach(b=>b.onclick=()=>journee(JOURNEES.find(j=>j.id===b.dataset.j)));
-  document.getElementById('stg').onclick=mesStagiaires;
+  document.getElementById('stg').onclick=()=>mesStagiaires();
   document.getElementById('out').onclick=()=>{ecrire('ok','');ecranCode()};
   document.getElementById('rz').onclick=()=>{try{localStorage.removeItem('cqp_moi')}catch(e){};document.getElementById('rzok').classList.remove('hide')};
   haut();
@@ -209,10 +209,10 @@ function mesStagiaires(msg){
   if(att.length>1)h+=`<button class="btn ko" id="toutref">❌ Tout refuser (${att.length})</button>`;
   h+=`</div><div class="card g"><h2>Stagiaires acceptés (${acc.length})</h2>`;
   if(!acc.length)h+=`<p class="muted" style="margin:0">Personne pour l'instant.</p>`;
-  acc.forEach(x=>{h+=`<div class="row" style="align-items:center"><span><b>${esc(x.prenom)} ${esc(x.nom)}</b></span><button class="btn small ko" style="margin:0" data-sup="${x.id}">🗑️ Supprimer</button></div>`});
+  acc.forEach(x=>{h+=`<div class="stag"><b>${esc(x.prenom)} ${esc(x.nom)}</b><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn small" data-bil="${x.id}">📊 Bilan</button><button class="btn small ko" data-sup="${x.id}">🗑️ Supprimer</button></div></div>`});
   h+=`</div>`;
   if(aut.length){h+=`<div class="card"><h2>Refusés ou supprimés (${aut.length})</h2><p class="muted" style="margin-top:0">Ils n'ont pas accès. Tu peux les réaccepter en cas d'erreur.</p>`;
-    aut.forEach(x=>{h+=`<div class="row" style="align-items:center"><span>${esc(x.prenom)} ${esc(x.nom)} <span class="muted">(${x.statut==='refuse'?'refusé':'supprimé'})</span></span><button class="btn small sec" style="margin:0" data-acc="${x.id}">↩️ Réaccepter</button></div>`});
+    aut.forEach(x=>{h+=`<div class="row" style="align-items:center"><span>${esc(x.prenom)} ${esc(x.nom)} <span class="muted">(${x.statut==='refuse'?'refusé':'supprimé'})</span></span><span style="display:flex;gap:6px;flex:none"><button class="btn small sec" style="margin:0" data-acc="${x.id}">↩️ Réaccepter</button><button class="btn small ko" style="margin:0" data-eff="${x.id}">🗑️ Effacer</button></span></div>`});
     h+=`</div>`}
   h+=`<button class="btn sec" id="maj">🔄 Actualiser</button>
   <p class="muted">Une décision met quelques minutes à arriver chez le stagiaire (le temps que Google se mette à jour). Le jour J, accepte-les dès l'accueil.</p>`;
@@ -228,9 +228,52 @@ function mesStagiaires(msg){
   app.querySelectorAll('[data-ref]').forEach(b=>b.onclick=()=>{const x=STAG[b.dataset.ref];agir(b,[x],'refuse',`${esc(x.prenom)} ${esc(x.nom)} est refusé.`)});
   app.querySelectorAll('[data-sup]').forEach(b=>b.onclick=()=>{const x=STAG[b.dataset.sup];
     if(confirm(`Supprimer ${x.prenom} ${x.nom} ?\n\nIl n'aura plus accès à l'espace stagiaires et ses réponses ne compteront plus dans tes statistiques. Tu pourras le réaccepter plus tard.`))agir(b,[x],'supprime',`🗑️ ${esc(x.prenom)} ${esc(x.nom)} est supprimé.`)});
+  app.querySelectorAll('[data-bil]').forEach(b=>b.onclick=()=>bilanStagiaire(STAG[b.dataset.bil]));
+  app.querySelectorAll('[data-eff]').forEach(b=>b.onclick=()=>{const x=STAG[b.dataset.eff];
+    if(confirm(`Effacer ${x.prenom} ${x.nom} de ta liste ?`))agir(b,[x],'efface',`🗑️ ${esc(x.prenom)} ${esc(x.nom)} est effacé de ta liste.`)});
   const tr=document.getElementById('toutref');
   if(tr)tr.onclick=()=>{if(confirm(`Refuser les ${att.length} demandes en attente ?`))agir(tr,att,'refuse',`${att.length} demandes refusées.`)};
   haut();
+}
+
+// ======= Écran : bilan d'un stagiaire =======
+async function bilanStagiaire(x){
+  app.innerHTML=`<button class="back" id="bk">← Retour</button><div class="tag">Bilan du stagiaire</div><h1>${esc(x.prenom)} ${esc(x.nom)}</h1><div id="zb"><p class="muted">Chargement…</p></div>`;
+  document.getElementById('bk').onclick=()=>mesStagiaires();
+  haut();
+  let L;
+  try{L=await lireCSV(CSV_REPONSES)}catch(e){document.getElementById('zb').innerHTML=`<div class="card r"><h2>Impossible de lire les réponses</h2><p>Vérifie ta connexion internet, puis réessaie.</p><button class="btn" id="re">Réessayer</button></div>`;document.getElementById('re').onclick=()=>bilanStagiaire(x);return}
+  const iH=0,iN=1,iP=2,iJ=3,iR=4,iQ=5,iD=6;
+  const lignesS=L.slice(1).filter(l=>memeNom(x.prenom+' '+x.nom,(l[iP]||'')+' '+(l[iN]||'')));
+  let h='';
+  if(!lignesS.length)h=`<div class="card"><p class="muted" style="margin:0">Pas encore de réponse pour ce stagiaire.</p></div>`;
+  JOURNEES.slice().reverse().forEach(j=>{
+    const ls=lignesS.filter(l=>(l[iJ]||'').trim().startsWith(j.titre));
+    if(!ls.length)return;
+    const z=quizDe(j);
+    ls.forEach((l,n)=>{
+      const m=(l[iQ]||'').match(/Score\s*(\d+)\/(\d+)/);const sc=m?+m[1]:0, tot=m?+m[2]:z.questions.length;
+      const pap=/\(papier\)/.test(l[iQ]||'');
+      h+=`<div class="card ${classe(sc,tot)==='p-ok'?'g':classe(sc,tot)==='p-moy'?'j':'r'}">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><div><div class="tag" style="color:var(--soft)">${esc(j.titre)}${ls.length>1?` · envoi ${n+1}`:''}</div><h2 style="margin:4px 0 0">${esc(j.theme)}</h2></div><span class="pill ${classe(sc,tot)}">${sc}/${tot}</span></div>
+        <p class="muted" style="margin:6px 0 0">Envoyé le ${esc(l[iH]||'')}${pap?' · feuille papier':''}</p>
+        <label>Ressenti « J'ai compris… »</label>`;
+      (l[iR]||'').split('|').forEach(p=>{const k=p.match(/(.+?)\s*:\s*(\d)\/5/);if(k)h+=`<div class="row"><span>${esc(k[1].trim())}</span><span class="pill ${classe(+k[2],5)}">${k[2]}/5</span></div>`});
+      h+=`<label>Ses réponses</label>`;
+      z.questions.forEach((q,i)=>{
+        const ok=new RegExp('Q'+(i+1)+'\\s*✅').test(l[iQ]||'');
+        const ko=(l[iQ]||'').match(new RegExp('Q'+(i+1)+'\\s*❌\\s*\\(([^)]*)\\)'));
+        h+=`<div class="stag"><b>${i+1}. ${esc(q.q)}</b>`;
+        if(ok)h+=`<div class="d">✅ ${esc(q.o[q.b])}</div>`;
+        else if(ko)h+=`<div class="d">❌ A répondu : ${esc(ko[1])}</div><div class="d" style="color:var(--ok)">Bonne réponse : ${esc(q.o[q.b])}</div>`;
+        else h+=`<div class="d muted">Pas de réponse</div>`;
+        h+=`</div>`;
+      });
+      const d=(l[iD]||'').trim();
+      h+=`<label>Difficulté signalée</label><p style="margin:0" class="${d?'':'muted'}">${d?esc(d):'Aucune.'}</p></div>`;
+    });
+  });
+  document.getElementById('zb').innerHTML=h;
 }
 
 // ======= Écran : une journée (le menu) =======
