@@ -61,6 +61,22 @@ textarea{min-height:90px;resize:vertical}
 .bonne.on{background:var(--ok);border-color:var(--ok);color:#0b2416}
 .qed{background:#141b33;border-radius:14px;padding:14px;margin:14px 0;border-left:4px solid var(--or)}
 .qed textarea,.qed input{background:#1c2442}
+.verrou{flex:none;padding:8px 12px;border-radius:10px;border:2px solid var(--line);background:#141b33;color:var(--soft);font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+.verrou.on{background:#3a321a;border-color:var(--ja);color:var(--ja)}
+.apq{background:#141b33;border-radius:14px;padding:14px;margin:12px 0;border-left:4px solid var(--bl)}
+.apq.lock{border-left-color:var(--ja)}
+.apq .bon{color:var(--ok);font-weight:700}
+.apq .th{font-size:13px;color:var(--mute);margin-top:6px}
+.choix{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.choix .btn{flex:1 1 30%;margin:0}
+.duree{display:inline-block;margin-top:6px;padding:3px 10px;border-radius:999px;background:#141b33;color:var(--soft);font-size:14px;font-weight:700}
+/* Barre de dictée, collée en bas sur tous les écrans */
+#barre-dictee{position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;gap:8px;align-items:center;padding:10px 12px;background:var(--ko);color:#fff;box-shadow:0 -4px 14px rgba(0,0,0,.4)}
+#barre-dictee.coupe{background:#3a321a;color:var(--ja)}
+#barre-dictee button{flex:1;padding:12px;border:0;border-radius:12px;font-weight:800;font-size:16px;cursor:pointer;font-family:inherit;background:#fff;color:#10162b}
+#barre-dictee button.sec{flex:none;background:#2a3566;color:#fff}
+#barre-dictee small{display:block;font-weight:600;font-size:12px}
+body.avec-barre .wrap{padding-bottom:120px}
 /* Feuille papier */
 .feuille{background:#fff;color:#111;border-radius:6px;padding:26px 24px;font-size:15px;line-height:1.4}
 .feuille h3{margin:0 0 4px;font-size:19px}
@@ -95,6 +111,10 @@ textarea{min-height:90px;resize:vertical}
 const CODE_HASH = '9de007567a93e86a677452886d8b9326ecf5a0726172be9c57b017546bb21146';
 // Lien du groupe WhatsApp des formateurs : vide = WhatsApp demande à qui envoyer
 const WHATSAPP_GROUPE = '';
+// Tableau des réponses des stagiaires (publié en CSV). Il n'est lu QUE sur cette page :
+// les stagiaires n'y ont pas accès (il contient les réponses de tout le monde et tes observations).
+const CSV_REPONSES = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ0Q6CmVaNRB_wzqusRfYaLQjon3iYJ9qjfPRGaimeo687QAkNxIeem81Mf_HeHGIdTqe3AsVerGOnx/pub?gid=1231707561&single=true&output=csv';
+const DUREES_CHRONO = [3,5,7,10];
 
 // ======= Outils =======
 function lire(k,d){try{const v=localStorage.getItem('cqpf_'+k);return v?JSON.parse(v):d}catch(e){return d}}
@@ -111,16 +131,28 @@ function ouvrirWhatsApp(txt,groupe){
   window.location.href=url;
 }
 async function copier(txt){try{await navigator.clipboard.writeText(txt);return true}catch(e){return false}}
+const copie = x => JSON.parse(JSON.stringify(x));
+// Les lignes « __obs__ » du tableau des réponses sont tes observations, jamais un stagiaire
+function estObs(l){return (l[1]||'').trim()==='__obs__'}
+
+// ======= Le tableau des réponses (les observations sont mises à part) =======
+let lignes=[], OBS=[];
+async function chargerReponses(){
+  const L=await lireCSV(CSV_REPONSES);
+  lignes=L.length?[L[0]].concat(L.slice(1).filter(l=>!estObs(l))):[];
+  OBS=L.slice(1).filter(estObs);
+  return lignes;
+}
 
 // ======= État des quiz (tableau Google + ce que tu viens de faire sur ce téléphone) =======
 // Le tableau Google met quelques minutes à se mettre à jour : pendant 15 min, ce téléphone
 // se fie à ce que tu viens d'enregistrer.
-let ETAT = null, STAG = {};
+let ETAT = null, STAG = {}, REVS = {};
 async function chargerEtat(){
   let g=null;
   try{g=await etatGeneral()}catch(e){g=null}
-  if(g){ETAT=g.quiz;STAG=g.stagiaires}
-  else{ETAT={};STAG={};JOURNEES.forEach(j=>ETAT[j.id]={quiz:j.quiz,ouvert:false,horsLigne:true})}
+  if(g){ETAT=g.quiz;STAG=g.stagiaires;REVS=g.revisions||{}}
+  else{ETAT={};STAG={};REVS={};JOURNEES.forEach(j=>ETAT[j.id]={quiz:j.quiz,ouvert:false,horsLigne:true})}
   // décisions prises sur ce téléphone depuis moins de 15 min (le temps que Google se mette à jour)
   const ls=lire('localst',{});
   Object.entries(ls).forEach(([id,v])=>{if(Date.now()-v.at<15*60*1000){STAG[id]=Object.assign(STAG[id]||{id,nom:v.nom,prenom:v.prenom},{statut:v.statut})}});
@@ -128,15 +160,47 @@ async function chargerEtat(){
     const loc=lire('local_'+j.id,null);
     if(loc && Date.now()-loc.at<15*60*1000){
       if(loc.quiz)ETAT[j.id].quiz=loc.quiz;
-      if(typeof loc.ouvert==='boolean')ETAT[j.id].ouvert=loc.ouvert;
+      if(typeof loc.ouvert==='boolean'){ETAT[j.id].ouvert=loc.ouvert;if(loc.ouvert){ETAT[j.id].duree=loc.duree||0;ETAT[j.id].ouvertAt=loc.ouvertAt||null}}
     }
   });
+  const lr=lire('local_revs',{});
+  Object.entries(lr).forEach(([id,v])=>{if(Date.now()-v.at<15*60*1000){const c=Object.assign({},v);delete c.at;REVS[id]=Object.assign(REVS[id]||{id,journees:[],ouvert:false,duree:0},c)}});
 }
 function noterLocal(id,champ,val){
-  const loc=lire('local_'+id,{}); if(!loc.at||Date.now()-loc.at>15*60*1000){delete loc.quiz;delete loc.ouvert}
-  loc[champ]=val; loc.at=Date.now(); ecrire('local_'+id,loc);
+  let loc=lire('local_'+id,{}); if(!loc.at||Date.now()-loc.at>15*60*1000)loc={};
+  if(typeof champ==='object')Object.assign(loc,champ);else loc[champ]=val;
+  loc.at=Date.now(); ecrire('local_'+id,loc);
+}
+function noterLocalRev(id,champs){
+  const lr=lire('local_revs',{});
+  let v=lr[id]; if(!v||Date.now()-v.at>15*60*1000)v={};
+  lr[id]=Object.assign(v,champs,{at:Date.now()});
+  Object.keys(lr).forEach(k=>{if(Date.now()-lr[k].at>24*3600*1000)delete lr[k]});
+  ecrire('local_revs',lr);
+  REVS[id]=Object.assign(REVS[id]||{id,journees:[],ouvert:false,duree:0},champs);
 }
 function quizDe(j){return (ETAT&&ETAT[j.id]&&ETAT[j.id].quiz)||j.quiz}
+// Phrase d'état d'un quiz (journée ou révision)
+function etatTexte(e){
+  if(estOuvert(e))return e.duree?`Quiz ouvert · ⏱️ ${e.duree} min · se ferme tout seul à ${heureParis(finQuiz(e))}`:'Quiz ouvert aux stagiaires (sans chrono)';
+  if(e&&e.ouvert&&finQuiz(e))return `Quiz fermé tout seul à ${heureParis(finQuiz(e))} (temps fini)`;
+  return 'Quiz caché aux stagiaires';
+}
+// Choix de la durée du chrono avant d'ouvrir un quiz
+function choixDuree(zone,ouvrir){
+  zone.innerHTML=`<div class="card o" style="margin-top:12px"><h2>⏱️ Combien de temps pour répondre ?</h2>
+    <p class="muted" style="margin-top:0">Le chrono démarre quand chaque stagiaire ouvre le quiz : tout le monde a le même temps. Le quiz se ferme pour tous 15 minutes + cette durée après l'ouverture.</p>
+    <div class="choix">${DUREES_CHRONO.map(d=>`<button class="btn" data-d="${d}">${d} min</button>`).join('')}</div>
+    <button class="btn sec" data-d="0">Sans chrono</button></div>`;
+  zone.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{zone.querySelectorAll('[data-d]').forEach(x=>x.disabled=true);ouvrir(+b.dataset.d)});
+  zone.scrollIntoView({behavior:'smooth',block:'center'});
+}
+function messageWhatsApp(titre,e){
+  let t=`Hello la team ! 👋\n${titre} est ouvert ! 📝\n`;
+  if(e.duree){const avant=heureParis((e.ouvertAt||Date.now())+15*60000);t+=`⏱️ Vous aurez ${e.duree} minutes une fois le quiz commencé. Commencez-le avant ${avant}.\n`}
+  else t+=`Prenez 2-3 minutes pour le remplir.\n`;
+  return t+`C'est sur votre espace stagiaires :\n${LIEN_STAGIAIRES}\nMerci ! 💪`;
+}
 
 // ======= Écran : code =======
 function ecranCode(){
@@ -172,16 +236,21 @@ function accueil(){
   h+=`<div class="card ${nAtt?'o':'g'}"><h2>👥 Mes stagiaires</h2>
     <p style="margin:0">${nAcc} stagiaire${nAcc>1?'s':''} accepté${nAcc>1?'s':''}${nAtt?` · <b style="color:var(--or)">${nAtt} demande${nAtt>1?'s':''} en attente</b>`:''}</p>
     <button class="btn ${nAtt?'':'sec'}" id="stg">${nAtt?'Voir les demandes':'Gérer mes stagiaires'}</button></div>`;
+  const rc=revisionCourante(REVS), ro=rc&&estOuvert(rc);
+  h+=`<div class="card j"><h2>🧠 Quiz de révision</h2>
+    <p style="margin:0" class="${rc?'':'muted'}">${rc?`${esc(rc.titre)} · ${ro?'<b style="color:var(--ok)">ouvert</b>':'caché aux stagiaires'}`:'Des questions de toutes les journées, depuis le début.'}</p>
+    <button class="btn sec" id="rev">Ouvrir les révisions</button></div>`;
   JOURNEES.slice().reverse().forEach(j=>{
-    const o=ETAT[j.id].ouvert;
+    const o=estOuvert(ETAT[j.id]);
     h+=`<div class="card"><div class="tag" style="color:var(--soft)">${esc(j.titre)}</div><h2 style="margin-top:4px">${esc(j.theme)}</h2>
-    <div class="statut" style="font-size:15px"><span class="dot" style="background:${o?'var(--ok)':'var(--mute)'}"></span>${o?'Quiz ouvert aux stagiaires':'Quiz caché aux stagiaires'}</div>
+    <div class="statut" style="font-size:15px"><span class="dot" style="background:${o?'var(--ok)':'var(--mute)'}"></span>${esc(etatTexte(ETAT[j.id]))}</div>
     <button class="btn" data-j="${j.id}">Ouvrir cette journée</button></div>`});
   h+=`<p class="muted"><a href="./" style="color:var(--mute)">Voir l'espace stagiaires</a> · <button class="link" id="out">Se déconnecter</button></p>
   <p class="muted"><button class="link" id="rz">Pour mes tests : changer de nom dans l'espace stagiaires (sur ce téléphone)</button></p><div class="ok hide" id="rzok">✅ C'est fait : l'espace stagiaires te redemandera ton nom.</div>`;
   app.innerHTML=h;
   app.querySelectorAll('[data-j]').forEach(b=>b.onclick=()=>journee(JOURNEES.find(j=>j.id===b.dataset.j)));
   document.getElementById('stg').onclick=()=>mesStagiaires();
+  document.getElementById('rev').onclick=()=>revisionEcran();
   document.getElementById('out').onclick=()=>{ecrire('ok','');ecranCode()};
   document.getElementById('rz').onclick=()=>{try{localStorage.removeItem('cqp_moi')}catch(e){};document.getElementById('rzok').classList.remove('hide')};
   haut();
@@ -236,58 +305,101 @@ function mesStagiaires(msg){
   haut();
 }
 
+// ======= Lecture d'une ligne de réponse =======
+// La question n°i d'une ligne : celle de la banque si la ligne garde son numéro, sinon celle du quiz
+function questionDe(R,i,z){const id=R.ids[i];const b=id&&questionParId(id);return b||(z&&z.questions[i])||null}
+function quizDeLigne(lab){
+  const j=JOURNEES.find(j=>lab.startsWith(j.titre));
+  if(j)return {j,z:quizDe(j),tag:j.titre,titre:j.theme};
+  const r=Object.values(REVS).find(r=>r.titre===lab);
+  if(r)return {rev:r,z:r.quiz,tag:'Révision',titre:r.titre};
+  if(/^Révision/.test(lab))return {z:{ressenti:[],questions:[]},tag:'Révision',titre:lab};
+  return null;
+}
+// Tout l'historique d'un stagiaire, reconstruit depuis le tableau des réponses (feuilles papier comprises)
+function historiqueStagiaire(x){
+  return lignes.slice(1).filter(l=>!estObs(l)&&memeNom(x.prenom+' '+x.nom,(l[2]||'')+' '+(l[1]||''))).map(l=>{
+    const lab=(l[3]||'').trim(), info=quizDeLigne(lab);
+    if(!info)return null;
+    const R=lireReponses(l[5]), items=[];
+    for(let i=0;i<R.total;i++){const e=R.etats[i];items.push({q:questionDe(R,i,info.z),etat:e?e.etat:'?',rep:e?e.rep:null})}
+    return Object.assign({l:lab,d:horoVersMs(l[0])||0,h:l[0]||'',R,items,rs:lireRessenti(l[4]),dif:(l[6]||'').trim()},info);
+  }).filter(Boolean).sort((a,b)=>a.d-b.d);
+}
+
 // ======= Écran : bilan d'un stagiaire =======
 async function bilanStagiaire(x){
   app.innerHTML=`<button class="back" id="bk">← Retour</button><div class="tag">Bilan du stagiaire</div><h1>${esc(x.prenom)} ${esc(x.nom)}</h1><div id="zb"><p class="muted">Chargement…</p></div>`;
   document.getElementById('bk').onclick=()=>mesStagiaires();
   haut();
-  let L;
-  try{L=await lireCSV(CSV_REPONSES)}catch(e){document.getElementById('zb').innerHTML=`<div class="card r"><h2>Impossible de lire les réponses</h2><p>Vérifie ta connexion internet, puis réessaie.</p><button class="btn" id="re">Réessayer</button></div>`;document.getElementById('re').onclick=()=>bilanStagiaire(x);return}
-  const iH=0,iN=1,iP=2,iJ=3,iR=4,iQ=5,iD=6;
-  const lignesS=L.slice(1).filter(l=>memeNom(x.prenom+' '+x.nom,(l[iP]||'')+' '+(l[iN]||'')));
-  let h='';
-  if(!lignesS.length)h=`<div class="card"><p class="muted" style="margin:0">Pas encore de réponse pour ce stagiaire.</p></div>`;
-  JOURNEES.slice().reverse().forEach(j=>{
-    const ls=lignesS.filter(l=>(l[iJ]||'').trim().startsWith(j.titre));
-    if(!ls.length)return;
-    const z=quizDe(j);
-    ls.forEach((l,n)=>{
-      const m=(l[iQ]||'').match(/Score\s*(\d+)\/(\d+)/);const sc=m?+m[1]:0, tot=m?+m[2]:z.questions.length;
-      const pap=/\(papier\)/.test(l[iQ]||'');
-      h+=`<div class="card ${classe(sc,tot)==='p-ok'?'g':classe(sc,tot)==='p-moy'?'j':'r'}">
-        <div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><div><div class="tag" style="color:var(--soft)">${esc(j.titre)}${ls.length>1?` · envoi ${n+1}`:''}</div><h2 style="margin:4px 0 0">${esc(j.theme)}</h2></div><span class="pill ${classe(sc,tot)}">${sc}/${tot}</span></div>
-        <p class="muted" style="margin:6px 0 0">Envoyé le ${esc(l[iH]||'')}${pap?' · feuille papier':''}</p>
-        <label>Ressenti « J'ai compris… »</label>`;
-      (l[iR]||'').split('|').forEach(p=>{const k=p.match(/(.+?)\s*:\s*(\d)\/5/);if(k)h+=`<div class="row"><span>${esc(k[1].trim())}</span><span class="pill ${classe(+k[2],5)}">${k[2]}/5</span></div>`});
-      h+=`<label>Ses réponses</label>`;
-      z.questions.forEach((q,i)=>{
-        const ok=new RegExp('Q'+(i+1)+'\\s*✅').test(l[iQ]||'');
-        const ko=(l[iQ]||'').match(new RegExp('Q'+(i+1)+'\\s*❌\\s*\\(([^)]*)\\)'));
-        h+=`<div class="stag"><b>${i+1}. ${esc(q.q)}</b>`;
-        if(ok)h+=`<div class="d">✅ ${esc(q.o[q.b])}</div>`;
-        else if(ko)h+=`<div class="d">❌ A répondu : ${esc(ko[1])}</div><div class="d" style="color:var(--ok)">Bonne réponse : ${esc(q.o[q.b])}</div>`;
-        else h+=`<div class="d muted">Pas de réponse</div>`;
-        h+=`</div>`;
-      });
-      const d=(l[iD]||'').trim();
-      h+=`<label>Difficulté signalée</label><p style="margin:0" class="${d?'':'muted'}">${d?esc(d):'Aucune.'}</p></div>`;
+  try{await chargerReponses()}catch(e){document.getElementById('zb').innerHTML=`<div class="card r"><h2>Impossible de lire les réponses</h2><p>Vérifie ta connexion internet, puis réessaie.</p><button class="btn" id="re">Réessayer</button></div>`;document.getElementById('re').onclick=()=>bilanStagiaire(x);return}
+  const H=historiqueStagiaire(x);
+  let h=`<div class="card j"><h2>📲 Nouveau téléphone ?</h2><p class="muted" style="margin-top:0">Envoie-lui un lien qui récupère son espace et son évolution sur son nouveau téléphone (valable 7 jours, à ouvrir une seule fois).</p>
+    <button class="btn wa" id="tel">📲 Envoyer son historique sur son nouveau téléphone</button><div class="muted hide" id="telinfo" style="margin-top:8px"></div></div>`;
+  if(!H.length)h+=`<div class="card"><p class="muted" style="margin:0">Pas encore de réponse pour ce stagiaire.</p></div>`;
+  const nb={};H.forEach(e=>nb[e.l]=(nb[e.l]||0)+1);const vu={};
+  H.slice().reverse().forEach(e=>{
+    vu[e.l]=(vu[e.l]||0)+1;
+    const sc=e.R.score||0, tot=e.R.total||e.z.questions.length, c=classe(sc,tot);
+    h+=`<div class="card ${c==='p-ok'?'g':c==='p-moy'?'j':'r'}">
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><div><div class="tag" style="color:var(--soft)">${esc(e.tag)}${nb[e.l]>1?` · envoi ${nb[e.l]-vu[e.l]+1}`:''}</div><h2 style="margin:4px 0 0">${esc(e.titre)}</h2></div><span class="pill ${c}">${sc}/${tot}</span></div>
+      <p class="muted" style="margin:6px 0 0">Envoyé le ${esc(e.h)}${e.R.papier?' · feuille papier':''}</p>
+      <label>Ressenti « J'ai compris… »</label>`;
+    e.rs.forEach(k=>{h+=`<div class="row"><span>${esc(k.t)}</span><span class="pill ${k.n?classe(k.n,5):'p-ko'}">${k.n?k.n+'/5':'⏳ -'}</span></div>`});
+    if(!e.rs.length)h+=`<p class="muted" style="margin:0">Pas de ressenti dans ce quiz.</p>`;
+    h+=`<label>Ses réponses</label>`;
+    e.items.forEach((it,i)=>{
+      const q=it.q;
+      h+=`<div class="stag"><b>${i+1}. ${esc(q?q.q:'Question '+(i+1))}</b>`;
+      if(it.etat==='ok')h+=`<div class="d">✅ ${esc(q?q.o[q.b]:'Bonne réponse')}</div>`;
+      else if(it.etat==='ko')h+=`<div class="d">❌ A répondu : ${esc(it.rep)}</div>${q?`<div class="d" style="color:var(--ok)">Bonne réponse : ${esc(q.o[q.b])}</div>`:''}`;
+      else if(it.etat==='na')h+=`<div class="d" style="color:var(--ja)">⏳ Pas répondu (temps fini)</div>${q?`<div class="d" style="color:var(--ok)">Bonne réponse : ${esc(q.o[q.b])}</div>`:''}`;
+      else h+=`<div class="d muted">Pas de réponse</div>`;
+      h+=`</div>`;
     });
+    h+=`<label>Difficulté signalée</label><p style="margin:0" class="${e.dif?'':'muted'}">${e.dif?esc(e.dif):'Aucune.'}</p></div>`;
   });
   document.getElementById('zb').innerHTML=h;
+  document.getElementById('tel').onclick=async()=>{
+    const b=document.getElementById('tel'), info=document.getElementById('telinfo');
+    b.disabled=true;
+    let lien;
+    try{lien=await lienTransfert(x,H)}catch(e){b.disabled=false;info.textContent="Je n'ai pas pu fabriquer le lien. Réessaie.";info.classList.remove('hide');return}
+    b.disabled=false;
+    info.textContent=`✅ Lien prêt (${H.length} quiz). WhatsApp va s'ouvrir : choisis ${x.prenom}, puis envoie.`;info.classList.remove('hide');
+    setTimeout(()=>ouvrirWhatsApp(`Voici ton lien pour retrouver ton espace et ton évolution sur ton nouveau téléphone (à ouvrir une seule fois) : ${lien}`),400);
+  };
+}
+// Fabrique le lien #t=… (les questions de la banque sont envoyées par leur numéro seulement)
+async function lienTransfert(x,H){
+  const ref=q=>(q.id&&questionParId(q.id))?q.id:{q:q.q,o:q.o,b:q.b,e:q.e||'',t:q.theme||'autre'};
+  const fab=(niveau)=>({v:1,c:Math.round(Date.now()/1000),m:[x.id,x.nom,x.prenom],
+    h:H.slice(niveau>=3?-15:0).map(e=>[e.l,Math.round(e.d/1000),
+      e.items.filter(it=>it.q&&it.etat!=='?').map(it=>{
+        const s=it.etat==='ok'?1:it.etat==='na'?2:0; let r=ref(it.q);
+        if(niveau>=1&&typeof r==='object')r=Object.assign({},r,{e:''});
+        if(s!==0)return [r,s];
+        const k=it.q.o.indexOf(it.rep);return [r,s,k>=0?k:String(it.rep||'')];
+      }),
+      niveau>=2?[]:e.rs.map(k=>[k.t,k.n])])});
+  let t='';
+  for(let n=0;n<=3;n++){t=await encoderLien(fab(n));if(t.length<7500)break}
+  return LIEN_STAGIAIRES+'#t='+t;
 }
 
 // ======= Écran : une journée (le menu) =======
 function journee(j){
-  const o=ETAT[j.id].ouvert;
+  const e=ETAT[j.id], o=estOuvert(e);
   app.innerHTML=`<button class="back" id="bk">← Retour</button>
   <div class="tag">${esc(j.titre)}</div><h1>${esc(j.theme)}</h1>
   <div class="card ${o?'g':'j'}">
-   <div class="statut"><span class="dot" style="background:${o?'var(--ok)':'var(--mute)'}"></span>${o?'Quiz ouvert aux stagiaires':'Quiz caché aux stagiaires'}</div>
+   <div class="statut"><span class="dot" style="background:${o?'var(--ok)':'var(--mute)'}"></span>${esc(etatTexte(e))}</div>
    <p class="muted" style="margin:6px 0 0">${o?'Les stagiaires voient le bouton « Petit bilan de ma journée ».':'Les stagiaires ne voient pas encore le quiz. Ouvre-le quand tu veux, par exemple en fin de journée.'}</p>
    ${o?`<button class="btn wa" id="prev">📲 Prévenir les stagiaires sur WhatsApp</button><button class="btn ko" id="tog">🔒 Fermer le quiz</button>`
       :`<button class="btn" id="tog">🔓 Ouvrir le quiz aux stagiaires</button>`}
+   <div id="dur"></div>
    <div class="ok hide" id="togok"></div>
-   ${ETAT[j.id].horsLigne?`<div class="err">Je n'ai pas pu lire ton tableau des quiz. Vérifie ta connexion internet.</div>`:''}
+   ${e.horsLigne?`<div class="err">Je n'ai pas pu lire ton tableau des quiz. Vérifie ta connexion internet.</div>`:''}
   </div>
   <button class="btn sec" id="m1">📊 Réponses et résumé de la journée</button>
   <button class="btn sec" id="m2">📝 Mon quiz du jour</button>
@@ -295,24 +407,27 @@ function journee(j){
   <button class="btn sec" id="m4">🖨️ Version papier (PDF)</button>
   <button class="btn sec" id="m5">✍️ Saisir une réponse papier</button>`;
   document.getElementById('bk').onclick=accueil;
-  document.getElementById('m1').onclick=()=>reponses(j);
+  document.getElementById('m1').onclick=()=>reponses(cibleJournee(j));
   document.getElementById('m2').onclick=()=>monQuiz(j);
   document.getElementById('m3').onclick=()=>diapos(j);
   document.getElementById('m4').onclick=()=>papier(j,false);
   document.getElementById('m5').onclick=()=>saisie(j);
   const prev=document.getElementById('prev');
-  if(prev)prev.onclick=()=>ouvrirWhatsApp(`Hello la team ! 👋\nLe petit bilan de la journée (${j.titre} – ${j.theme}) est ouvert ! 📝\nPrenez 2-3 minutes pour le remplir sur votre espace stagiaires :\n${LIEN_STAGIAIRES}\nMerci ! 💪`);
-  document.getElementById('tog').onclick=async()=>{
-    const b=document.getElementById('tog'); b.disabled=true; b.textContent='Un instant…';
-    const nouveau=!o;
-    try{await envoyerForm(FORM_QUIZ,{[EQ.journee]:j.id,[EQ.statut]:nouveau?'ouvert':'ferme',[EQ.contenu]:''})}
-    catch(e){b.disabled=false;b.textContent=o?'🔒 Fermer le quiz':'🔓 Ouvrir le quiz aux stagiaires';alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");return}
-    ETAT[j.id].ouvert=nouveau; noterLocal(j.id,'ouvert',nouveau);
+  if(prev)prev.onclick=()=>ouvrirWhatsApp(messageWhatsApp(`Le petit bilan de la journée (${j.titre} – ${j.theme})`,e));
+  const tog=document.getElementById('tog');
+  const changer=async(nouveau,duree)=>{
+    tog.disabled=true; tog.textContent='Un instant…';
+    try{await envoyerForm(FORM_QUIZ,{[EQ.journee]:j.id,[EQ.statut]:nouveau?'ouvert':'ferme',[EQ.contenu]:nouveau?JSON.stringify({duree}):''})}
+    catch(err){alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");journee(j);return}
+    const at=Date.now();
+    Object.assign(ETAT[j.id],{ouvert:nouveau},nouveau?{duree,ouvertAt:at}:{});
+    noterLocal(j.id,nouveau?{ouvert:true,duree,ouvertAt:at}:{ouvert:false});
     journee(j);
     const t=document.getElementById('togok');
-    t.textContent=nouveau?"✅ Quiz ouvert. Il apparaîtra chez les stagiaires d'ici quelques minutes (le temps que Google se mette à jour).":"✅ Quiz fermé. Il disparaîtra chez les stagiaires d'ici quelques minutes.";
+    t.textContent=nouveau?`✅ Quiz ouvert${duree?` avec un chrono de ${duree} min`:''}. Il apparaîtra chez les stagiaires d'ici quelques minutes (le temps que Google se mette à jour).`:"✅ Quiz fermé. Il disparaîtra chez les stagiaires d'ici quelques minutes.";
     t.classList.remove('hide');
   };
+  tog.onclick=()=>{if(o)changer(false);else choixDuree(document.getElementById('dur'),d=>changer(true,d))};
   haut();
 }
 
@@ -329,11 +444,38 @@ function diapos(j){
 }
 
 // ======= Écran : mon quiz du jour (voir + modifier) =======
-function monQuiz(j){
-  const z=JSON.parse(JSON.stringify(quizDe(j)));
+function monQuiz(j,zDepart,msg){
+  editeur({tag:j.titre,titre:'Mon quiz du jour',z:zDepart||copie(quizDe(j)),msg,banque:j,max:5,
+    retour:()=>journee(j),
+    reouvrir:(z,m)=>monQuiz(j,z,m),
+    defaut:()=>copie(j.quiz), defautTexte:'↩️ Revenir au quiz préparé avec Claude',
+    note:'Si le quiz est déjà ouvert, les changements s\'appliquent aux stagiaires qui ne l\'ont pas encore rempli.',
+    enregistrer:async propre=>{
+      await envoyerForm(FORM_QUIZ,{[EQ.journee]:j.id,[EQ.statut]:'quiz',[EQ.contenu]:JSON.stringify(propre)});
+      ETAT[j.id].quiz=propre; noterLocal(j.id,'quiz',propre);
+      return `✅ Quiz enregistré${estOuvert(ETAT[j.id])?" : les stagiaires verront la nouvelle version d'ici quelques minutes.":". Il reste caché tant que tu ne l'as pas ouvert."}`;
+    }});
+}
+// Éditeur de quiz (journée ou révision)
+function nettoyer(z){
+  return {ressenti:z.ressenti.map(t=>t.trim()).filter(Boolean),
+    questions:z.questions.map(q=>{const o=[];let b=-1;q.o.forEach((t,k)=>{if(t.trim()){if(k===q.b)b=o.length;o.push(t.trim())}});
+      const r={q:q.q.trim(),o,b,e:(q.e||'').trim()};
+      if(q.theme)r.theme=q.theme;
+      // on garde le numéro de la banque seulement si la question n'a pas été changée
+      const bq=q.id&&questionParId(q.id);
+      if(bq&&bq.q===r.q&&JSON.stringify(bq.o)===JSON.stringify(r.o)&&bq.b===r.b)r.id=q.id;
+      return r})};
+}
+function editeur(cfg){
+  const z=cfg.z;
   const dessiner=()=>{
-    let h=`<button class="back" id="bk">← Retour</button><div class="tag">${esc(j.titre)}</div><h1>Mon quiz du jour</h1>
+    let h=`<button class="back" id="bk">← Retour</button><div class="tag">${esc(cfg.tag)}</div><h1>${esc(cfg.titre)}</h1>
+    ${cfg.msg?`<div class="ok" style="margin:-6px 0 14px">${esc(cfg.msg)}</div>`:''}
+    ${cfg.banque&&cfg.banque.banque?`<div class="card j"><h2>Pas d'idée ?</h2><p class="muted" style="margin-top:0">Des quiz tout prêts, faits à partir des diapos de la journée.</p>
+      <button class="btn" id="bq">📚 Choisir un quiz tout prêt</button><button class="btn sec" id="sur">🎲 Quiz surprise</button></div>`:''}
     <p class="muted" style="margin-top:-8px">Pour dicter : touche une case, puis le micro 🎤 de ton clavier. Touche ✓ pour choisir la bonne réponse.</p>
+    <p><span class="duree">${texteDuree(z)}</span>${cfg.max&&dureeQuiz(z)>cfg.max?` <span style="color:var(--ja);font-size:15px">Plus de ${cfg.max} minutes : pense à enlever une question ou une ligne.</span>`:''}</p>
     <div class="card o"><h2>Ressenti « J'ai compris… »</h2><p class="muted" style="margin-top:0">Les stagiaires notent chaque ligne de 1 à 5.</p>`;
     z.ressenti.forEach((t,i)=>{h+=`<div class="ligne"><input type="text" data-rs="${i}" value="${esc(t)}"><button class="x" data-rsx="${i}" title="Supprimer">✕</button></div>`});
     h+=`<button class="btn small sec" id="addr">+ Ajouter une ligne</button></div>
@@ -348,12 +490,12 @@ function monQuiz(j){
     });
     h+=`<button class="btn small sec" id="addq">+ Ajouter une question</button></div>
     <div class="err hide" id="er"></div>
-    <button class="btn" id="sav">💾 Enregistrer le quiz</button>
+    <button class="btn" id="sav">💾 ${esc(cfg.texteEnregistrer||'Enregistrer le quiz')}</button>
     <div class="ok hide" id="okk"></div>
-    <button class="btn sec" id="def">↩️ Revenir au quiz préparé avec Claude</button>
-    <p class="muted">Si le quiz est déjà ouvert, les changements s'appliquent aux stagiaires qui ne l'ont pas encore rempli.</p>`;
+    ${cfg.defaut?`<button class="btn sec" id="def">${esc(cfg.defautTexte)}</button>`:''}
+    ${cfg.note?`<p class="muted">${esc(cfg.note)}</p>`:''}`;
     app.innerHTML=h;
-    document.getElementById('bk').onclick=()=>journee(j);
+    document.getElementById('bk').onclick=cfg.retour;
     // lecture des champs avant chaque action
     const lireChamps=()=>{
       app.querySelectorAll('[data-rs]').forEach(e=>z.ressenti[+e.dataset.rs]=e.value);
@@ -361,7 +503,12 @@ function monQuiz(j){
       app.querySelectorAll('[data-qe]').forEach(e=>z.questions[+e.dataset.qe].e=e.value);
       app.querySelectorAll('[data-qo]').forEach(e=>{const [i,k]=e.dataset.qo.split(':').map(Number);z.questions[i].o[k]=e.value});
     };
-    const re=f=>()=>{lireChamps();f();const y=window.scrollY;dessiner();window.scrollTo(0,y)};
+    const re=f=>()=>{lireChamps();f();const y=window.scrollY;cfg.msg='';dessiner();window.scrollTo(0,y)};
+    const bq=document.getElementById('bq');
+    if(bq){
+      bq.onclick=()=>{lireChamps();banqueCategories(cfg.banque,()=>cfg.reouvrir(z),(zc,titre)=>cfg.reouvrir(zc,`📚 Quiz « ${titre} » chargé. Vérifie-le, puis touche 💾 Enregistrer le quiz.`))};
+      document.getElementById('sur').onclick=()=>{lireChamps();quizSurprise(cfg.banque,()=>cfg.reouvrir(z),(zc)=>cfg.reouvrir(zc,'🎲 Quiz surprise chargé. Vérifie-le, puis touche 💾 Enregistrer le quiz.'))};
+    }
     document.getElementById('addr').onclick=re(()=>z.ressenti.push(''));
     app.querySelectorAll('[data-rsx]').forEach(b=>b.onclick=re(()=>z.ressenti.splice(+b.dataset.rsx,1)));
     document.getElementById('addq').onclick=re(()=>z.questions.push({q:'',o:['','',''],b:-1,e:''}));
@@ -369,12 +516,12 @@ function monQuiz(j){
     app.querySelectorAll('[data-qb]').forEach(b=>b.onclick=re(()=>{const [i,k]=b.dataset.qb.split(':').map(Number);z.questions[i].b=k}));
     app.querySelectorAll('[data-qoa]').forEach(b=>b.onclick=re(()=>z.questions[+b.dataset.qoa].o.push('')));
     app.querySelectorAll('[data-qox]').forEach(b=>b.onclick=re(()=>{const [i,k]=b.dataset.qox.split(':').map(Number);const q=z.questions[i];q.o.splice(k,1);if(q.b===k)q.b=-1;else if(q.b>k)q.b--}));
-    document.getElementById('def').onclick=()=>{if(confirm('Remettre le quiz préparé avec Claude ? Tes changements non enregistrés seront perdus.')){const d=JSON.parse(JSON.stringify(j.quiz));z.ressenti=d.ressenti;z.questions=d.questions;dessiner()}};
+    const def=document.getElementById('def');
+    if(def)def.onclick=()=>{if(confirm('Remettre le quiz préparé avec Claude ? Tes changements non enregistrés seront perdus.')){const d=cfg.defaut();z.ressenti=d.ressenti;z.questions=d.questions;cfg.msg='';dessiner()}};
     document.getElementById('sav').onclick=async()=>{
       lireChamps();
       const er=document.getElementById('er');
-      const propre={ressenti:z.ressenti.map(t=>t.trim()).filter(Boolean),
-        questions:z.questions.map(q=>{const o=[];let b=-1;q.o.forEach((t,k)=>{if(t.trim()){if(k===q.b)b=o.length;o.push(t.trim())}});return {q:q.q.trim(),o,b,e:(q.e||'').trim()}})};
+      const propre=nettoyer(z);
       const pb=[];
       if(!propre.questions.length)pb.push('Ajoute au moins une question.');
       propre.questions.forEach((q,i)=>{
@@ -382,18 +529,177 @@ function monQuiz(j){
         if(q.o.length<2)pb.push(`Question ${i+1} : il faut au moins 2 réponses.`);
         if(q.b<0)pb.push(`Question ${i+1} : touche ✓ pour choisir la bonne réponse.`);
       });
+      propre.ressenti.forEach((t,i)=>{if(/[:|]/.test(t))pb.push(`Ressenti, ligne ${i+1} : n'utilise pas les signes « : » ni « | ».`)});
       if(pb.length){er.innerHTML=pb.map(esc).join('<br>');er.classList.remove('hide');er.scrollIntoView({behavior:'smooth',block:'center'});return}
       er.classList.add('hide');
       const b=document.getElementById('sav');b.disabled=true;b.textContent='Enregistrement…';
-      try{await envoyerForm(FORM_QUIZ,{[EQ.journee]:j.id,[EQ.statut]:'quiz',[EQ.contenu]:JSON.stringify(propre)})}
-      catch(e){b.disabled=false;b.textContent='💾 Enregistrer le quiz';er.textContent="L'enregistrement n'a pas marché. Vérifie ta connexion internet et réessaie.";er.classList.remove('hide');return}
-      ETAT[j.id].quiz=propre; noterLocal(j.id,'quiz',propre);
-      z.ressenti=propre.ressenti; z.questions=propre.questions;
+      let m;
+      try{m=await cfg.enregistrer(propre)}
+      catch(e){b.disabled=false;b.textContent='💾 '+(cfg.texteEnregistrer||'Enregistrer le quiz');er.textContent="L'enregistrement n'a pas marché. Vérifie ta connexion internet et réessaie.";er.classList.remove('hide');return}
+      if(cfg.apres)return cfg.apres(m);
+      z.ressenti=propre.ressenti; z.questions=propre.questions; cfg.msg='';
       dessiner();
-      const ok=document.getElementById('okk');ok.textContent=`✅ Quiz enregistré${ETAT[j.id].ouvert?" : les stagiaires verront la nouvelle version d'ici quelques minutes.":". Il reste caché tant que tu ne l'as pas ouvert."}`;ok.classList.remove('hide');ok.scrollIntoView({behavior:'smooth',block:'center'});
+      const ok=document.getElementById('okk');ok.textContent=m;ok.classList.remove('hide');ok.scrollIntoView({behavior:'smooth',block:'center'});
     };
   };
   dessiner(); haut();
+}
+
+// ======= Quiz tout prêts : catégories → quiz → aperçu =======
+function banqueCategories(j,retour,choisir){
+  const B=j.banque;
+  let h=`<button class="back" id="bk">← Retour</button><div class="tag">${esc(j.titre)}</div><h1>📚 Quiz tout prêts</h1>
+   <p class="muted" style="margin-top:-8px">Choisis un thème. Chaque quiz dure 5 minutes au plus.</p>`;
+  B.categories.forEach((c,i)=>{h+=`<button class="btn sec" data-c="${i}" style="text-align:left">${c.emoji} ${esc(c.titre)} <span class="muted" style="float:right">${c.quiz.length} quiz</span></button>`});
+  h+=`<button class="btn" id="sur" style="margin-top:22px">🎲 Quiz surprise</button>`;
+  app.innerHTML=h;
+  document.getElementById('bk').onclick=retour;
+  app.querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>banqueQuiz(j,B.categories[+b.dataset.c],retour,choisir));
+  document.getElementById('sur').onclick=()=>quizSurprise(j,()=>banqueCategories(j,retour,choisir),z=>choisir(z,'Quiz surprise'));
+  haut();
+}
+function banqueQuiz(j,c,retour,choisir){
+  let h=`<button class="back" id="bk">← Retour</button><div class="tag">${esc(j.titre)} · ${c.emoji} ${esc(c.titre)}</div><h1>Choisis un quiz</h1>`;
+  c.quiz.forEach((qz,i)=>{const z=quizDepuisBanque(qz);
+    h+=`<div class="card"><h2>${esc(qz.titre)}</h2><p class="muted" style="margin:0">${z.questions.length} questions · ${z.ressenti.length} ligne${z.ressenti.length>1?'s':''} de ressenti</p><span class="duree">${texteDuree(z)}</span>
+     <button class="btn sec" data-z="${i}">👀 Voir les questions</button></div>`});
+  app.innerHTML=h;
+  const ici=()=>banqueQuiz(j,c,retour,choisir);
+  document.getElementById('bk').onclick=()=>banqueCategories(j,retour,choisir);
+  app.querySelectorAll('[data-z]').forEach(b=>b.onclick=()=>{const qz=c.quiz[+b.dataset.z];
+    apercu({tag:`${c.emoji} ${c.titre}`,titre:qz.titre,z:quizDepuisBanque(qz),pool:j.banque.questions,retour:ici,
+      actions:[{txt:'✅ Choisir ce quiz',f:z=>choisir(z,qz.titre)}]})});
+  haut();
+}
+function quizSurprise(j,retour,choisir){
+  const z={ressenti:(j.quiz.ressenti||[]).slice(0,4),questions:tirerQuestions(paquetsParTheme(j.banque.questions),5)};
+  apercu({tag:j.titre,titre:'🎲 Quiz surprise',z,pool:j.banque.questions,retour,
+    info:'Questions tirées au hasard dans la banque de la journée.',
+    actions:[{txt:'✅ Choisir ce quiz',f:z=>choisir(z)}]});
+}
+// Aperçu : bonnes réponses visibles, 🔒 pour garder une question, 🔄 pour changer les autres
+function apercu(cfg){
+  const z=copie(cfg.z), verrous=z.questions.map(()=>false), vus=new Set();
+  const dessiner=()=>{
+    let h=`<button class="back" id="bk">← Retour</button><div class="tag">${esc(cfg.tag)}</div><h1>${esc(cfg.titre)}</h1>
+     ${cfg.info?`<p class="muted" style="margin-top:-8px">${esc(cfg.info)}</p>`:''}
+     <p><span class="duree">${texteDuree(z)}</span> <span class="muted">· ${z.questions.length} questions</span></p>`;
+    if(z.ressenti.length)h+=`<div class="card o"><h2>Ressenti « J'ai compris… »</h2>${z.ressenti.map(t=>`<div class="row"><span>${esc(t)}</span></div>`).join('')}</div>`;
+    h+=`<div class="card"><h2>Les questions</h2><p class="muted" style="margin-top:0">✓ = bonne réponse. Touche 🔒 pour garder une question, puis 🔄 pour changer les autres.</p>`;
+    z.questions.forEach((q,i)=>{
+      h+=`<div class="apq ${verrous[i]?'lock':''}"><div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><b>${i+1}. ${esc(q.q)}</b>
+        <button class="verrou ${verrous[i]?'on':''}" data-v="${i}">${verrous[i]?'🔒 Gardée':'🔒 Garder'}</button></div>
+        ${q.o.map((o,k)=>`<div class="${k===q.b?'bon':'muted'}" style="margin-top:6px">${k===q.b?'✓':'•'} ${esc(o)}</div>`).join('')}
+        ${q.e?`<div class="expl">💡 ${esc(q.e)}</div>`:''}
+        <div class="th">Thème : ${esc(nomTheme(q.theme))}</div></div>`});
+    h+=`</div><button class="btn sec" id="autre">🔄 Autre proposition</button>
+      <div class="muted hide" id="autreinfo" style="margin-top:6px"></div>
+      ${cfg.actions.map((a,i)=>`<button class="btn ${a.cls||''}" data-a="${i}">${a.txt}</button>`).join('')}`;
+    app.innerHTML=h;
+    document.getElementById('bk').onclick=cfg.retour;
+    app.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{verrous[+b.dataset.v]=!verrous[+b.dataset.v];const y=window.scrollY;dessiner();window.scrollTo(0,y)});
+    document.getElementById('autre').onclick=()=>{
+      if(verrous.every(Boolean)){const i=document.getElementById('autreinfo');i.textContent='Toutes les questions sont gardées 🔒 : enlève un cadenas pour en changer.';i.classList.remove('hide');return}
+      z.questions=autreProposition(z.questions,verrous,cfg.pool,vus);const y=window.scrollY;dessiner();window.scrollTo(0,y)};
+    app.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>cfg.actions[+b.dataset.a].f(copie(z)));
+  };
+  dessiner(); haut();
+}
+
+// ======= Quiz de révision =======
+function revisionEcran(msg){
+  const rc=revisionCourante(REVS);
+  const autres=Object.values(REVS).filter(r=>!rc||r.id!==rc.id).sort((a,b)=>b.cree-a.cree);
+  let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>🧠 Quiz de révision</h1>
+   ${msg?`<div class="ok" style="margin:-6px 0 14px">${esc(msg)}</div>`:''}`;
+  if(rc){const o=estOuvert(rc);
+    h+=`<div class="card ${o?'g':'j'}"><div class="tag" style="color:var(--soft)">Révision en cours</div><h2 style="margin-top:4px">${esc(rc.titre)}</h2>
+     <div class="statut" style="font-size:16px"><span class="dot" style="background:${o?'var(--ok)':'var(--mute)'}"></span>${esc(etatTexte(rc))}</div>
+     <p class="muted" style="margin:6px 0 0">${rc.quiz.questions.length} questions · ${texteDuree(rc.quiz)}${(rc.journees||[]).length?` · ${rc.journees.map(id=>{const j=JOURNEES.find(x=>x.id===id);return j?j.titre:id}).join(', ')}`:''}</p>
+     ${o?`<button class="btn wa" id="prev">📲 Prévenir les stagiaires sur WhatsApp</button><button class="btn ko" id="tog">🔒 Fermer la révision</button>`:`<button class="btn" id="tog">🔓 Ouvrir aux stagiaires</button>`}
+     <div id="dur"></div><div class="ok hide" id="togok"></div>
+     <button class="btn sec" id="rep">📊 Réponses et résumé</button>
+     <button class="btn sec" id="mod">✏️ Modifier ce quiz</button></div>`}
+  h+=`<div class="card o"><h2>🆕 Nouvelle révision</h2><p class="muted" style="margin-top:0">Des questions tirées au hasard dans les journées que tu choisis.${rc?' La révision en cours sera fermée.':''}</p><button class="btn" id="new">Préparer une nouvelle révision</button></div>`;
+  if(autres.length){h+=`<div class="card"><h2>Historique</h2>`+autres.map(r=>`<div class="row" style="align-items:center"><span>${esc(r.titre)} <span class="muted">· ${r.quiz.questions.length} questions</span></span><button class="btn small sec" style="margin:0" data-r="${esc(r.id)}">📊 Réponses</button></div>`).join('')+`</div>`}
+  h+=`<button class="btn sec" id="maj">🔄 Actualiser</button>`;
+  app.innerHTML=h;
+  document.getElementById('bk').onclick=accueil;
+  document.getElementById('new').onclick=()=>nouvelleRevision();
+  document.getElementById('maj').onclick=async()=>{app.innerHTML=`<p class="muted">Chargement…</p>`;await chargerEtat();revisionEcran()};
+  app.querySelectorAll('[data-r]').forEach(b=>b.onclick=()=>reponses(cibleRevision(REVS[b.dataset.r])));
+  if(rc){
+    const o=estOuvert(rc);
+    document.getElementById('rep').onclick=()=>reponses(cibleRevision(rc));
+    document.getElementById('mod').onclick=()=>editeur({tag:'Révision',titre:rc.titre,z:copie(rc.quiz),retour:()=>revisionEcran(),reouvrir:()=>revisionEcran(),
+      note:'Si la révision est déjà ouverte, les changements s\'appliquent aux stagiaires qui ne l\'ont pas encore commencée.',
+      enregistrer:async propre=>{await enregistrerRevision(rc,propre);return '✅ Révision enregistrée.'}});
+    const prev=document.getElementById('prev');
+    if(prev)prev.onclick=()=>ouvrirWhatsApp(messageWhatsApp(`Le quiz de révision (${rc.titre}) 🧠`,rc));
+    const tog=document.getElementById('tog');
+    const changer=async(nouveau,duree)=>{
+      tog.disabled=true;tog.textContent='Un instant…';
+      try{await envoyerForm(FORM_QUIZ,{[EQ.journee]:'revision',[EQ.statut]:nouveau?'ouvert':'ferme',[EQ.contenu]:JSON.stringify(nouveau?{id:rc.id,duree}:{id:rc.id})})}
+      catch(e){alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");revisionEcran();return}
+      noterLocalRev(rc.id,nouveau?{ouvert:true,duree,ouvertAt:Date.now()}:{ouvert:false});
+      revisionEcran(nouveau?`✅ Révision ouverte${duree?` avec un chrono de ${duree} min`:''}. Elle apparaîtra chez les stagiaires d'ici quelques minutes.`:'✅ Révision fermée.');
+    };
+    tog.onclick=()=>{if(o)changer(false);else choixDuree(document.getElementById('dur'),d=>changer(true,d))};
+  }
+  haut();
+}
+async function enregistrerRevision(r,propre){
+  await envoyerForm(FORM_QUIZ,{[EQ.journee]:'revision',[EQ.statut]:'quiz',[EQ.contenu]:JSON.stringify({id:r.id,titre:r.titre,journees:r.journees||[],quiz:propre})});
+  noterLocalRev(r.id,{titre:r.titre,journees:r.journees||[],quiz:propre,cree:r.cree||Date.now()});
+}
+function nouvelleRevision(){
+  const choix={j:JOURNEES.map(j=>j.id).filter(id=>{const j=JOURNEES.find(x=>x.id===id);return j.banque&&j.banque.questions.length}),duree:5,ressenti:false};
+  const dessiner=()=>{
+    let h=`<button class="back" id="bk">← Retour</button><div class="tag">Quiz de révision</div><h1>🆕 Nouvelle révision</h1>
+     <div class="card"><h2>Quelles journées ?</h2>`+
+     JOURNEES.filter(j=>j.banque&&j.banque.questions.length).map(j=>`<label class="check"><input type="checkbox" data-j="${j.id}" ${choix.j.includes(j.id)?'checked':''}> ${esc(j.titre)} – ${esc(j.theme)}</label>`).join('')+`</div>
+     <div class="card"><h2>Combien de temps ?</h2><div class="choix">${[5,10,15].map(d=>`<button class="btn ${choix.duree===d?'':'sec'}" data-d="${d}">${d} min</button>`).join('')}</div>
+      <p class="muted" style="margin-bottom:0">Environ ${choix.duree/5*6} questions.</p>
+      <label class="check"><input type="checkbox" id="rs" ${choix.ressenti?'checked':''}> Ajouter le ressenti « J'ai compris… » (facultatif)</label></div>
+     <div class="err hide" id="er"></div>
+     <button class="btn" id="go">🎲 Tirer les questions</button>`;
+    app.innerHTML=h;
+    document.getElementById('bk').onclick=()=>revisionEcran();
+    app.querySelectorAll('[data-j]').forEach(c=>c.onchange=()=>{choix.j=[...app.querySelectorAll('[data-j]')].filter(x=>x.checked).map(x=>x.dataset.j)});
+    app.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{choix.duree=+b.dataset.d;dessiner()});
+    document.getElementById('rs').onchange=e=>{choix.ressenti=e.target.checked};
+    document.getElementById('go').onclick=()=>{
+      if(!choix.j.length){const er=document.getElementById('er');er.textContent='Coche au moins une journée.';er.classList.remove('hide');return}
+      tirerRevision(choix);
+    };
+  };
+  dessiner(); haut();
+}
+function tirerRevision(choix){
+  const js=JOURNEES.filter(j=>choix.j.includes(j.id));
+  const pool=[].concat(...js.map(j=>j.banque.questions));
+  const n=choix.duree/5*6;
+  const z={ressenti:choix.ressenti?js.slice(-4).map(j=>`Ce qu'on a vu le ${j.titre.toLowerCase()}`):[],
+    questions:tirerQuestions(js.map(j=>j.banque.questions),n)};
+  // titre unique : « Révision du JJ/MM »
+  let titre=`Révision du ${jjmm(Date.now())}`, k=2;
+  while(Object.values(REVS).some(r=>r.titre===titre))titre=`Révision du ${jjmm(Date.now())} n°${k++}`;
+  const r={id:nouvelId(),titre,journees:choix.j,cree:Date.now()};
+  const sauver=async propre=>{
+    const avant=revisionCourante(REVS);
+    if(avant&&avant.ouvert){await envoyerForm(FORM_QUIZ,{[EQ.journee]:'revision',[EQ.statut]:'ferme',[EQ.contenu]:JSON.stringify({id:avant.id})});noterLocalRev(avant.id,{ouvert:false})}
+    await enregistrerRevision(r,propre);
+    return `✅ ${titre} enregistrée. Ouvre-la aux stagiaires quand tu veux.`;
+  };
+  const apres=m=>revisionEcran(m);
+  apercu({tag:'Quiz de révision',titre,z,pool,retour:()=>nouvelleRevision(),
+    info:`${js.map(j=>j.titre).join(', ')} · tirage mélangé.`,
+    actions:[
+      {txt:'✏️ Modifier avant d\'enregistrer',cls:'sec',f:zz=>editeur({tag:'Quiz de révision',titre,z:zz,retour:()=>revisionEcran(),reouvrir:()=>revisionEcran(),texteEnregistrer:'Enregistrer la révision',enregistrer:sauver,apres})},
+      {txt:'💾 Enregistrer la révision',f:async zz=>{
+        const p=nettoyer(zz);
+        try{apres(await sauver(p))}catch(e){alert("L'enregistrement n'a pas marché. Vérifie ta connexion internet et réessaie.")}
+      }}]});
 }
 
 // ======= Écran : version papier =======
@@ -444,103 +750,137 @@ function saisie(j){
   document.getElementById('env').onclick=async()=>{
     const er=document.getElementById('er'), nom=document.getElementById('n').value.trim(), prenom=document.getElementById('p').value.trim();
     if(!nom||!prenom){er.textContent='Choisis le stagiaire (ou écris son nom et son prénom).';er.classList.remove('hide');return}
+    if(nom==='__obs__'){er.textContent='Ce nom est réservé.';er.classList.remove('hide');return}
     if(r.includes(0)||rep.includes(-1)){er.textContent='Remplis tout le ressenti et toutes les questions (si une case est vide sur la feuille, choisis la plus proche ou laisse la feuille de côté).';er.classList.remove('hide');return}
     er.classList.add('hide');
-    const bon=rep.filter((k,i)=>k===z.questions[i].b).length;
-    const champs={[E.nom]:nom,[E.prenom]:prenom,[E.journee]:`${j.titre} – ${j.theme}`,
-      [E.ressenti]:z.ressenti.map((t,i)=>`${t} : ${r[i]}/5`).join(' | '),
-      [E.reponses]:z.questions.map((q,i)=>`Q${i+1} ${rep[i]===q.b?'✅':'❌ ('+q.o[rep[i]]+')'}`).join(' | ')+` — Score ${bon}/${z.questions.length} (papier)`,
-      [E.difficulte]:document.getElementById('dif').value.trim()};
+    const t=texteReponses(z,r,rep,true);
+    const champs={[E.nom]:nom,[E.prenom]:prenom,[E.journee]:`${j.titre} – ${j.theme}`,[E.ressenti]:t.ressenti,[E.reponses]:t.reponses,[E.difficulte]:document.getElementById('dif').value.trim()};
     const b=document.getElementById('env');b.disabled=true;b.textContent='Envoi…';
     try{await envoyerForm(FORM,champs)}catch(e){b.disabled=false;b.textContent='Envoyer cette feuille';er.textContent="L'envoi n'a pas marché. Vérifie ta connexion internet et réessaie.";er.classList.remove('hide');return}
     b.classList.add('hide');
-    document.getElementById('fin').innerHTML=`<div class="card g"><div class="ok" style="margin:0">✅ Feuille de ${esc(prenom)} ${esc(nom)} enregistrée (${bon}/${z.questions.length}).</div><p class="muted">Elle apparaîtra dans les réponses d'ici quelques minutes.</p><button class="btn" id="aut">✍️ Saisir une autre feuille</button><button class="btn sec" id="ret">← Retour à la journée</button></div>`;
+    document.getElementById('fin').innerHTML=`<div class="card g"><div class="ok" style="margin:0">✅ Feuille de ${esc(prenom)} ${esc(nom)} enregistrée (${t.bon}/${z.questions.length}).</div><p class="muted">Elle apparaîtra dans les réponses d'ici quelques minutes.</p><button class="btn" id="aut">✍️ Saisir une autre feuille</button><button class="btn sec" id="ret">← Retour à la journée</button></div>`;
     document.getElementById('aut').onclick=()=>saisie(j);document.getElementById('ret').onclick=()=>journee(j);
     document.getElementById('fin').scrollIntoView({behavior:'smooth'});
   };
   haut();
 }
 
-// ======= Écran : réponses et résumé =======
-let lignes=[];
-async function reponses(j){
+// ======= Écran : réponses et résumé (journée ou révision) =======
+function cibleJournee(j){
+  return {cle:j.id,tag:j.titre,titre:j.titre,sousTitre:j.theme,z:quizDe(j),dateMin:j.id,
+    filtre:l=>(l[3]||'').trim().startsWith(j.titre),retour:()=>journee(j),testTexte:`d'avant le ${j.titre.toLowerCase()}`};
+}
+function cibleRevision(r){
+  return {cle:'rev_'+r.id,tag:'Révision',titre:r.titre,sousTitre:'Quiz de révision',z:r.quiz,dateMin:null,
+    filtre:l=>(l[3]||'').trim()===r.titre,retour:()=>revisionEcran()};
+}
+async function reponses(c){
   app.innerHTML=`<button class="back" id="bk">← Retour</button>
-  <div class="tag">${esc(j.titre)}</div><h1>Réponses et résumé</h1><div id="zone"><p class="muted">Chargement des réponses…</p></div>`;
-  document.getElementById('bk').onclick=()=>journee(j);
+  <div class="tag">${esc(c.tag)}</div><h1>Réponses et résumé</h1><div id="zone"><p class="muted">Chargement des réponses…</p></div>`;
+  document.getElementById('bk').onclick=c.retour;
   haut();
-  try{lignes=await lireCSV(CSV_REPONSES)}
+  try{await chargerReponses()}
   catch(e){
     document.getElementById('zone').innerHTML=`<div class="card r"><h2>Impossible de lire les réponses</h2><p>Vérifie ta connexion internet, puis réessaie.</p><button class="btn" id="re">Réessayer</button></div>`;
-    document.getElementById('re').onclick=()=>reponses(j);return;
+    document.getElementById('re').onclick=()=>reponses(c);return;
   }
-  afficher(j,false);
+  afficher(c,false);
 }
 
-function afficher(j,tests){
-  const z=quizDe(j), nq=z.questions.length;
+function afficher(c,tests){
+  const z=c.z, nq=z.questions.length;
   const iH=0,iN=1,iP=2,iJ=3,iR=4,iQ=5,iD=6;
-  let rep=lignes.slice(1).filter(l=>(l[iJ]||'').trim().startsWith(j.titre));
-  const nbTests=rep.filter(l=>dateFR(l[iH])<j.id).length;
-  if(!tests)rep=rep.filter(l=>dateFR(l[iH])>=j.id);
+  let rep=lignes.slice(1).filter(l=>!estObs(l)&&c.filtre(l));
+  const nbTests=c.dateMin?rep.filter(l=>dateFR(l[iH])<c.dateMin).length:0;
+  if(!tests&&c.dateMin)rep=rep.filter(l=>dateFR(l[iH])>=c.dateMin);
   // seulement les stagiaires acceptés (dès qu'il y en a au moins un)
   const acc=acceptes(); let masques=0;
   if(acc.length&&!tests){const avant=rep.length;rep=rep.filter(l=>acc.some(a=>memeNom(a.prenom+' '+a.nom,(l[iP]||'')+' '+(l[iN]||''))));masques=avant-rep.length}
   const zone=document.getElementById('zone');
   let h='';
   if(masques)h+=`<p class="muted">${masques} réponse${masques>1?'s':''} de personnes non acceptées ou supprimées ${masques>1?'sont masquées':'est masquée'}.</p>`;
-  if(nbTests)h+=`<label class="check"><input type="checkbox" id="tst" ${tests?'checked':''}> Afficher aussi les réponses de test d'avant le ${esc(j.titre.toLowerCase())} (${nbTests})</label>`;
+  if(nbTests)h+=`<label class="check"><input type="checkbox" id="tst" ${tests?'checked':''}> Afficher aussi les réponses de test ${esc(c.testTexte)} (${nbTests})</label>`;
   if(!rep.length){
-    h+=`<div class="card"><h2>Pas encore de réponses</h2><p class="muted">Les réponses arrivent dès qu'un stagiaire envoie son petit bilan (ou que tu saisis une feuille papier).</p><button class="btn sec" id="maj">🔄 Actualiser</button></div>`;
+    h+=`<div class="card"><h2>Pas encore de réponses</h2><p class="muted">Les réponses arrivent dès qu'un stagiaire envoie son quiz${c.dateMin?' (ou que tu saisis une feuille papier)':''}.</p><button class="btn sec" id="maj">🔄 Actualiser</button></div>`;
     zone.innerHTML=h;
-    document.getElementById('maj').onclick=()=>reponses(j);
-    if(nbTests)document.getElementById('tst').onchange=e=>afficher(j,e.target.checked);
-    observations(j,null,zone);return;
+    document.getElementById('maj').onclick=()=>reponses(c);
+    if(nbTests)document.getElementById('tst').onchange=e=>afficher(c,e.target.checked);
+    observations(c,null,zone);return;
   }
+  const RR=rep.map(l=>lireReponses(l[iQ]));
   const res={};
-  rep.forEach(l=>(l[iR]||'').split('|').forEach(p=>{const m=p.match(/(.+?)\s*:\s*(\d)\/5/);if(m){const k=m[1].trim();(res[k]=res[k]||[]).push(+m[2])}}));
+  rep.forEach(l=>lireRessenti(l[iR]).forEach(x=>{if(x.n)(res[x.t]=res[x.t]||[]).push(x.n)}));
   const moy=Object.entries(res).map(([k,v])=>({k,m:v.reduce((a,b)=>a+b,0)/v.length}));
-  const bonnes=Array(nq).fill(0);
-  rep.forEach(l=>{for(let i=0;i<nq;i++){if(new RegExp('Q'+(i+1)+'\\s*✅').test(l[iQ]||''))bonnes[i]++}});
+  const bonnes=Array(nq).fill(0), sansRep=Array(nq).fill(0);
+  RR.forEach(R=>{for(let i=0;i<nq;i++){const e=R.etats[i];if(e&&e.etat==='ok')bonnes[i]++;if(e&&e.etat==='na')sansRep[i]++}});
   const diffs=rep.map(l=>({n:`${(l[iP]||'').trim()} ${(l[iN]||'').trim()}`.trim(),d:(l[iD]||'').trim()})).filter(x=>x.d);
-  const scoreTot=rep.reduce((a,l)=>{const m=(l[iQ]||'').match(/Score\s*(\d+)\/(\d+)/);return a+(m?+m[1]:0)},0);
+  const scoreTot=RR.reduce((a,R)=>a+(R.score||0),0);
+  const qTexte=(R,i)=>{const q=questionDe(R,i,z);return q?q.q:'Question '+(i+1)};
 
   h+=`<div class="card o" style="display:flex;justify-content:space-between;align-items:center">
      <div><div class="big">${rep.length}</div><div class="muted">stagiaire${rep.length>1?'s ont':' a'} répondu</div></div>
      <div style="text-align:right"><div class="big">${(scoreTot/rep.length).toFixed(1)}<span style="font-size:20px">/${nq}</span></div><div class="muted">score moyen</div></div></div>`;
-  h+=`<div class="card"><h2>Ressenti « J'ai compris… »</h2><p class="muted" style="margin-top:0">Moyenne sur 5</p>`+
+  if(moy.length)h+=`<div class="card"><h2>Ressenti « J'ai compris… »</h2><p class="muted" style="margin-top:0">Moyenne sur 5</p>`+
      moy.map(x=>`<div class="row"><span>${esc(x.k)}</span><span class="pill ${classe(x.m,5)}">${x.m.toFixed(1)}</span></div>`).join('')+`</div>`;
-  h+=`<div class="card"><h2>Les questions</h2><p class="muted" style="margin-top:0">Bonnes réponses</p>`+
-     z.questions.map((q,i)=>`<div class="row"><span>${i+1}. ${esc(q.q)}</span><span class="pill ${classe(bonnes[i],rep.length)}">${bonnes[i]}/${rep.length}</span></div>`).join('')+`</div>`;
+  h+=`<div class="card"><h2>Les questions</h2><p class="muted" style="margin-top:0">Bonnes réponses${sansRep.some(Boolean)?' · ⏳ = pas répondu (temps fini)':''}</p>`+
+     z.questions.map((q,i)=>`<div class="row"><span>${i+1}. ${esc(q.q)}${sansRep[i]?` <span style="color:var(--ja)">· ⏳ ${sansRep[i]}</span>`:''}</span><span class="pill ${classe(bonnes[i],rep.length)}">${bonnes[i]}/${rep.length}</span></div>`).join('')+`</div>`;
   h+=`<div class="card ${diffs.length?'r':'g'}"><h2>Difficultés signalées</h2>`+
      (diffs.length?diffs.map(x=>`<div class="stag"><b>${esc(x.n)}</b><div class="d">${esc(x.d)}</div></div>`).join(''):`<p class="muted" style="margin:0">Aucune difficulté signalée.</p>`)+`</div>`;
-  h+=`<div class="card"><h2>Détail par stagiaire</h2>`+rep.map(l=>{
-       const m=(l[iQ]||'').match(/Score\s*(\d+)\/(\d+)/);const sc=m?+m[1]:0;
-       const rs=(l[iR]||'').split('|').map(p=>{const k=p.match(/:\s*(\d)\/5/);return k?k[1]:'?'}).join(' · ');
-       const erreurs=[...(l[iQ]||'').matchAll(/Q(\d+)\s*❌\s*\(([^)]*)\)/g)].map(x=>{const q=z.questions[+x[1]-1];return `<div class="d">❌ ${esc(q?q.q:'Question '+x[1])}<br><span style="color:var(--mute)">→ a répondu : ${esc(x[2])}</span></div>`}).join('');
-       const pap=/\(papier\)/.test(l[iQ]||'')?' <span class="muted">(papier)</span>':'';
+  h+=`<div class="card"><h2>Détail par stagiaire</h2>`+rep.map((l,n)=>{
+       const R=RR[n], sc=R.score||0;
+       const rs=lireRessenti(l[iR]).map(x=>x.n||'-').join(' · ');
+       const erreurs=R.etats.map((e,i)=>!e?'':e.etat==='ko'?`<div class="d">❌ ${esc(qTexte(R,i))}<br><span style="color:var(--mute)">→ a répondu : ${esc(e.rep)}</span></div>`
+         :e.etat==='na'?`<div class="d">⏳ ${esc(qTexte(R,i))}<br><span style="color:var(--mute)">→ pas répondu (temps fini)</span></div>`:'').join('');
+       const pap=R.papier?' <span class="muted">(papier)</span>':'';
        return `<div class="stag"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(((l[iP]||'')+' '+(l[iN]||'')).trim())}${pap}</b><span class="pill ${classe(sc,nq)}">${sc}/${nq}</span></div>
-       <div class="d">Ressenti : ${esc(rs)}</div>${erreurs}</div>`}).join('')+
+       ${rs?`<div class="d">Ressenti : ${esc(rs)}</div>`:''}${erreurs}</div>`}).join('')+
      `<button class="btn sec" id="maj">🔄 Actualiser les réponses</button></div>`;
   zone.innerHTML=h;
-  document.getElementById('maj').onclick=()=>reponses(j);
-  if(nbTests)document.getElementById('tst').onchange=e=>afficher(j,e.target.checked);
-  const eleves=rep.map(l=>{
-    const nom=((l[iP]||'')+' '+(l[iN]||'')).trim();
+  document.getElementById('maj').onclick=()=>reponses(c);
+  if(nbTests)document.getElementById('tst').onchange=e=>afficher(c,e.target.checked);
+  const eleves=rep.map((l,n)=>{
+    const R=RR[n], nom=((l[iP]||'')+' '+(l[iN]||'')).trim();
     const pts=[];
-    [...(l[iQ]||'').matchAll(/Q(\d+)\s*❌\s*\(([^)]*)\)/g)].forEach(x=>{const q=z.questions[+x[1]-1];pts.push(`s'est trompé(e) sur « ${q?q.q:'question '+x[1]} » (a répondu : ${x[2]})`)});
-    (l[iR]||'').split('|').forEach(p=>{const m=p.match(/(.+?)\s*:\s*(\d)\/5/);if(m&&+m[2]<=2)pts.push(`ressenti faible sur « ${m[1].trim()} » (${m[2]}/5)`)});
+    R.etats.forEach((e,i)=>{if(!e)return;
+      if(e.etat==='ko')pts.push(`s'est trompé(e) sur « ${qTexte(R,i)} » (a répondu : ${e.rep})`);
+      if(e.etat==='na')pts.push(`n'a pas répondu à « ${qTexte(R,i)} » (temps fini)`)});
+    lireRessenti(l[iR]).forEach(x=>{if(x.n&&x.n<=2)pts.push(`ressenti faible sur « ${x.t} » (${x.n}/5)`)});
     const d=(l[iD]||'').trim(); if(d)pts.push(`a écrit : « ${d} »`);
     return {nom,pts};
   }).filter(x=>x.pts.length);
-  observations(j,{n:rep.length,moy,bonnes,diffs,scoreTot,eleves},zone);
+  observations(c,{n:rep.length,moy,bonnes,sansRep,diffs,scoreTot,eleves},zone);
 }
 
-// ======= Mes observations + résumé =======
-function observations(j,st,zone){
+// ======= Mes observations : gardées sur ce téléphone ET sauvegardées en ligne =======
+// En ligne : une ligne du formulaire des réponses avec Nom = « __obs__ », Prénom = la journée
+// (ou la révision), Difficulté = le texte complet. Ce tableau n'est lu que par cette page.
+const OBS_MINUTEURS={}, OBS_LABELS={};
+function etatObs(cle,txt){const e=document.getElementById('obsetat');if(e&&e.dataset.cle===cle){e.textContent=txt;e.classList.remove('hide')}}
+function programmerSauvegarde(cle,ms){clearTimeout(OBS_MINUTEURS[cle]);OBS_MINUTEURS[cle]=setTimeout(()=>sauverObsEnLigne(cle),ms||3000)}
+async function sauverObsEnLigne(cle){
+  if(!cle)return;
+  clearTimeout(OBS_MINUTEURS[cle]);delete OBS_MINUTEURS[cle];
+  const v=lire('obs_'+cle,''), deja=lire('obs_envoye_'+cle,null);
+  if(deja!==null?deja===v:!v.trim())return; // rien de nouveau
+  etatObs(cle,'☁️ Sauvegarde en ligne…');
+  try{
+    await envoyerForm(FORM,{[E.nom]:'__obs__',[E.prenom]:cle,[E.journee]:'Observations',[E.ressenti]:'',[E.reponses]:'',[E.difficulte]:v});
+    ecrire('obs_envoye_'+cle,v);
+    etatObs(cle,`☁️ Sauvegardé en ligne à ${heureParis(Date.now())}`);
+  }catch(e){
+    etatObs(cle,'⚠️ Pas de connexion : c\'est gardé sur ce téléphone, je réessaie bientôt.');
+    programmerSauvegarde(cle,20000);
+  }
+}
+function obsEnLigne(cle){const l=OBS.filter(l=>(l[2]||'').trim()===cle);return l.length?(l[l.length-1][6]||''):null}
+
+function observations(c,st,zone){
+  const cle=c.cle; OBS_LABELS[cle]=c.titre;
   const box=document.createElement('div');
   box.innerHTML=`<div class="card g"><h2>Mes observations</h2>
-   <p class="muted" style="margin-top:0">Écris ou dicte ce que tu as remarqué pendant la journée. C'est gardé sur ce téléphone.</p>
-   <textarea id="obs" style="min-height:120px" placeholder="Ex. : placement de la salle encore flou pour 2 stagiaires…"></textarea>
+   <p class="muted" style="margin-top:0">Écris ou dicte ce que tu as remarqué. C'est gardé sur ce téléphone et sauvegardé en ligne (seulement pour toi).</p>
+   <textarea id="obs" data-cle="${esc(cle)}" style="min-height:120px" placeholder="Ex. : placement de la salle encore flou pour 2 stagiaires…"></textarea>
+   <div class="muted hide" id="obsetat" data-cle="${esc(cle)}" style="margin-top:6px"></div>
    <button class="btn sec" id="mic">🎤 Dicter</button>
    <div class="muted hide" id="micinfo" style="margin-top:8px"></div>
    <label style="margin-top:18px">Que mettre dans le résumé ?</label>
@@ -557,27 +897,20 @@ function observations(j,st,zone){
    <div class="ok hide" id="cp">✅ Résumé copié. Dans WhatsApp, choisis le groupe des formateurs, puis envoie.</div></div>`;
   zone.appendChild(box);
   const obs=document.getElementById('obs');
-  obs.value=lire('obs_'+j.id,'');
-  obs.oninput=()=>ecrire('obs_'+j.id,obs.value);
-  const SR=window.SpeechRecognition||window.webkitSpeechRecognition, mb=document.getElementById('mic'), mi=document.getElementById('micinfo');
-  if(!SR){mb.onclick=()=>{mi.textContent="Sur ce téléphone, touche la case puis le petit micro 🎤 de ton clavier pour dicter.";mi.classList.remove('hide');obs.focus()}}
-  else{let rec=null;
-    mb.onclick=()=>{
-      if(rec){rec.stop();return}
-      rec=new SR();rec.lang='fr-FR';rec.continuous=true;rec.interimResults=false;
-      const base=obs.value;let ajout='';
-      rec.onresult=e=>{for(let i=e.resultIndex;i<e.results.length;i++)if(e.results[i].isFinal)ajout+=(ajout?' ':'')+e.results[i][0].transcript.trim();
-        obs.value=(base.trim()?base.replace(/\s*$/,'')+'\n':'')+ajout;ecrire('obs_'+j.id,obs.value)};
-      rec.onend=()=>{rec=null;mb.textContent='🎤 Dicter';mb.classList.remove('rec')};
-      rec.onerror=()=>{mi.textContent="La dictée n'a pas marché. Tu peux utiliser le micro 🎤 de ton clavier.";mi.classList.remove('hide')};
-      rec.start();mb.textContent='⏹️ Arrêter la dictée';mb.classList.add('rec');
-    }}
+  let local=lire('obs_'+cle,'');
+  if(!local.trim()){const enLigne=obsEnLigne(cle);if(enLigne&&enLigne.trim()){local=enLigne;ecrire('obs_'+cle,local);ecrire('obs_envoye_'+cle,local);etatObs(cle,'☁️ Repris depuis ta sauvegarde en ligne.')}}
+  obs.value=local;
+  obs.oninput=()=>{ecrire('obs_'+cle,obs.value);programmerSauvegarde(cle)};
+  const mb=document.getElementById('mic'), mi=document.getElementById('micinfo');
+  if(!SRdispo()){mb.onclick=()=>{mi.textContent="Sur ce téléphone, touche la case puis le petit micro 🎤 de ton clavier pour dicter.";mi.classList.remove('hide');obs.focus()}}
+  else mb.onclick=()=>{if(DICTEE.voulu&&DICTEE.cle===cle)arreterDictee();else demarrerDictee(cle,c.titre)};
+  majBoutonMic();
   let mode=lire('mode','complet');
   const majModes=()=>document.querySelectorAll('#modes .opt').forEach(b=>b.classList.toggle('on',b.dataset.m===mode));
   document.querySelectorAll('#modes .opt').forEach(b=>b.onclick=()=>{mode=b.dataset.m;ecrire('mode',mode);majModes()});
   majModes();
   document.getElementById('res').onclick=()=>{
-    document.getElementById('resume').value=resume(j,st,obs.value.trim(),mode);
+    document.getElementById('resume').value=resume(c,st,obs.value.trim(),mode);
     const rb=document.getElementById('rbox');rb.classList.remove('hide');rb.scrollIntoView({behavior:'smooth'});
   };
   document.getElementById('wa').onclick=async()=>{
@@ -588,20 +921,20 @@ function observations(j,st,zone){
   };
 }
 
-function resume(j,st,obs,mode){
+function resume(c,st,obs,mode){
   mode=mode||'complet';
-  const z=quizDe(j);
-  let t=`📋 Bilan CQP Cours collectifs – ${j.titre}\n${j.theme}\n`;
+  const z=c.z;
+  let t=`📋 Bilan CQP Cours collectifs – ${c.titre}\n${c.sousTitre}\n`;
   if(mode==='obs'){t+=obs?`\n👀 Mes observations :\n${obs}\n`:`\n(Pas d'observations écrites.)\n`;return t+`\nHamid`}
-  if(!st){t+=`\nPas de réponses au petit bilan pour l'instant.\n`}
+  if(!st){t+=`\nPas de réponses au quiz pour l'instant.\n`}
   else{
-    t+=`\n👥 ${st.n} stagiaire${st.n>1?'s ont':' a'} répondu au petit bilan · score moyen ${(st.scoreTot/st.n).toFixed(1)}/${z.questions.length}\n`;
+    t+=`\n👥 ${st.n} stagiaire${st.n>1?'s ont':' a'} répondu au quiz · score moyen ${(st.scoreTot/st.n).toFixed(1)}/${z.questions.length}\n`;
     const bien=st.moy.filter(x=>x.m>=4), revoir=st.moy.filter(x=>x.m<3.5), moyen=st.moy.filter(x=>x.m>=3.5&&x.m<4);
     if(bien.length)t+=`\n✅ Bien compris :\n`+bien.map(x=>`• ${x.k} (${x.m.toFixed(1)}/5)`).join('\n')+'\n';
     if(moyen.length)t+=`\n🟡 Compris en partie :\n`+moyen.map(x=>`• ${x.k} (${x.m.toFixed(1)}/5)`).join('\n')+'\n';
     if(revoir.length)t+=`\n🔴 À retravailler :\n`+revoir.map(x=>`• ${x.k} (${x.m.toFixed(1)}/5)`).join('\n')+'\n';
-    const qrat=z.questions.map((q,i)=>({q:q.q,b:st.bonnes[i]})).filter(x=>x.b<st.n);
-    t+=`\n📝 Questions :\n`+(qrat.length?qrat.map(x=>`• ${x.q} : ${x.b}/${st.n} bonnes réponses`).join('\n'):`• Toutes les questions réussies par tout le monde`)+'\n';
+    const qrat=z.questions.map((q,i)=>({q:q.q,b:st.bonnes[i],nr:(st.sansRep||[])[i]||0})).filter(x=>x.b<st.n);
+    t+=`\n📝 Questions :\n`+(qrat.length?qrat.map(x=>`• ${x.q} : ${x.b}/${st.n} bonnes réponses${x.nr?` (⏳ ${x.nr} sans réponse, temps fini)`:''}`).join('\n'):`• Toutes les questions réussies par tout le monde`)+'\n';
     if(st.eleves&&st.eleves.length)t+=`\n👤 Points de vigilance par stagiaire :\n`+st.eleves.map(x=>`• ${x.nom} : ${x.pts.join(' · ')}`).join('\n')+'\n';
     else t+=`\n👤 Aucun point de vigilance particulier chez les stagiaires.\n`;
   }
@@ -609,6 +942,99 @@ function resume(j,st,obs,mode){
   t+=`\nHamid`;
   return t;
 }
+
+// ======= Dictée : elle ne s'arrête que quand tu touches « Arrêter » =======
+// Elle continue quand tu changes d'écran (barre rouge en bas) et le texte va dans les
+// observations de la journée où tu as commencé.
+const DICTEE={voulu:false,coupe:false,rec:null,cle:null,label:'',premier:true,erreurs:0,minuteur:null};
+function SRdispo(){return window.SpeechRecognition||window.webkitSpeechRecognition}
+function demarrerDictee(cle,label){
+  if(DICTEE.voulu)arreterDictee();
+  Object.assign(DICTEE,{voulu:true,coupe:false,cle,label,premier:true,erreurs:0});
+  lancerReco(); barreDictee(); majBoutonMic();
+}
+function lancerReco(){
+  const SR=SRdispo(); let rec;
+  try{rec=new SR()}catch(e){DICTEE.voulu=false;barreDictee();majBoutonMic();return}
+  rec.lang='fr-FR';rec.continuous=true;rec.interimResults=false;
+  rec.onresult=e=>{
+    let t='';for(let i=e.resultIndex;i<e.results.length;i++)if(e.results[i].isFinal)t+=(t?' ':'')+String(e.results[i][0].transcript).trim();
+    if(t){DICTEE.erreurs=0;ajouterTexteObs(DICTEE.cle,t)}
+  };
+  rec.onerror=e=>{
+    const c=e&&e.error;
+    if(c==='not-allowed'||c==='service-not-allowed'||c==='audio-capture'){
+      DICTEE.voulu=false;
+      const mi=document.getElementById('micinfo');if(mi){mi.textContent="Le micro n'est pas autorisé. Tu peux utiliser le micro 🎤 de ton clavier.";mi.classList.remove('hide')}
+    }else if(c==='network')DICTEE.erreurs++;
+    // « no-speech » (silence) et « aborted » : on relance simplement (voir onend)
+  };
+  rec.onend=()=>{
+    if(DICTEE.rec!==rec)return;
+    DICTEE.rec=null;
+    if(DICTEE.voulu&&!DICTEE.coupe){
+      if(document.hidden){DICTEE.coupe=true;barreDictee();return}
+      const attente=DICTEE.erreurs?Math.min(8000,1000*DICTEE.erreurs):150;
+      clearTimeout(DICTEE.minuteur);
+      DICTEE.minuteur=setTimeout(()=>{if(DICTEE.voulu&&!DICTEE.coupe&&!DICTEE.rec)lancerReco()},attente);
+    }else{barreDictee();majBoutonMic()}
+  };
+  DICTEE.rec=rec;
+  try{rec.start()}catch(e){DICTEE.rec=null;DICTEE.erreurs++;clearTimeout(DICTEE.minuteur);DICTEE.minuteur=setTimeout(()=>{if(DICTEE.voulu&&!DICTEE.coupe&&!DICTEE.rec)lancerReco()},1000)}
+}
+function arreterDictee(){
+  const cle=DICTEE.cle;
+  DICTEE.voulu=false;DICTEE.coupe=false;clearTimeout(DICTEE.minuteur);
+  const r=DICTEE.rec;DICTEE.rec=null;
+  if(r){try{r.stop()}catch(e){}}
+  if(cle)sauverObsEnLigne(cle);
+  barreDictee();majBoutonMic();
+}
+function reprendreDictee(){DICTEE.coupe=false;DICTEE.premier=true;DICTEE.erreurs=0;lancerReco();barreDictee();majBoutonMic()}
+function ajouterTexteObs(cle,t){
+  const cur=lire('obs_'+cle,'');
+  const v=cur.trim()?cur.replace(/\s*$/,'')+(DICTEE.premier?'\n':' ')+t:t;
+  DICTEE.premier=false;
+  ecrire('obs_'+cle,v);
+  const ta=document.getElementById('obs');
+  if(ta&&ta.dataset.cle===cle)ta.value=v;
+  programmerSauvegarde(cle);
+}
+function majBoutonMic(){
+  const mb=document.getElementById('mic'), ta=document.getElementById('obs');
+  if(!mb||!ta)return;
+  const ici=DICTEE.voulu&&DICTEE.cle===ta.dataset.cle;
+  mb.textContent=ici?(DICTEE.coupe?'🎤 Reprendre la dictée':'⏹️ Arrêter la dictée'):'🎤 Dicter';
+  mb.classList.toggle('rec',ici&&!DICTEE.coupe);
+  if(ici&&DICTEE.coupe)mb.onclick=reprendreDictee;
+  else if(SRdispo())mb.onclick=()=>{if(DICTEE.voulu&&DICTEE.cle===ta.dataset.cle)arreterDictee();else demarrerDictee(ta.dataset.cle,OBS_LABELS[ta.dataset.cle]||'')};
+}
+function barreDictee(){
+  let b=document.getElementById('barre-dictee');
+  if(!b){b=document.createElement('div');b.id='barre-dictee';document.body.appendChild(b)}
+  document.body.classList.toggle('avec-barre',DICTEE.voulu);
+  if(!DICTEE.voulu){b.className='hide';b.innerHTML='';return}
+  if(DICTEE.coupe){
+    b.className='coupe';
+    b.innerHTML=`<button id="bd-rep">🎤 Reprendre la dictée<small>Le micro a été coupé · ${esc(DICTEE.label)}</small></button><button class="sec" id="bd-stop">Arrêter</button>`;
+    document.getElementById('bd-rep').onclick=reprendreDictee;
+  }else{
+    b.className='';
+    b.innerHTML=`<button id="bd-stop">🔴 Dictée en cours – Arrêter<small>${esc(DICTEE.label)}</small></button>`;
+  }
+  document.getElementById('bd-stop').onclick=arreterDictee;
+}
+document.addEventListener('visibilitychange',()=>{
+  if(!document.hidden)return;
+  // Android coupe le micro quand on quitte l'appli : le texte déjà dicté est gardé
+  if(DICTEE.voulu&&!DICTEE.coupe){
+    DICTEE.coupe=true;const r=DICTEE.rec;DICTEE.rec=null;
+    if(r){try{r.abort()}catch(e){}}
+    barreDictee();majBoutonMic();
+  }
+  Object.keys(OBS_MINUTEURS).forEach(sauverObsEnLigne);
+  if(DICTEE.cle)sauverObsEnLigne(DICTEE.cle);
+});
 
 lire('ok','')===CODE_HASH ? demarrer() : ecranCode();
 </script>

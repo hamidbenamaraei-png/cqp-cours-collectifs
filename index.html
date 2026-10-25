@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex, nofollow, noarchive">
 <title>Espace stagiaires – CQP Cours collectifs</title>
 <style>
-:root{--bg:#10162b;--card:#1c2442;--line:#2c365c;--txt:#fff;--soft:#c9cfe6;--mute:#8a92b2;--or:#ff7a3d;--ok:#4cc38a;--ko:#ff5d6c;--bl:#4c8dff}
+:root{--bg:#10162b;--card:#1c2442;--line:#2c365c;--txt:#fff;--soft:#c9cfe6;--mute:#8a92b2;--or:#ff7a3d;--ok:#4cc38a;--ko:#ff5d6c;--bl:#4c8dff;--ja:#f5c451}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:17px;line-height:1.45}
 .wrap{max-width:720px;margin:0 auto;padding:20px 16px 60px}
@@ -14,7 +14,7 @@ body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,-apple
 h1{font-size:26px;margin:4px 0 18px;line-height:1.2}
 h2{font-size:20px;margin:0 0 10px}
 .card{background:var(--card);border-radius:18px;padding:18px;margin:0 0 16px;border-top:5px solid var(--bl)}
-.card.o{border-top-color:var(--or)}.card.g{border-top-color:var(--ok)}
+.card.o{border-top-color:var(--or)}.card.g{border-top-color:var(--ok)}.card.r{border-top-color:var(--ko)}.card.j{border-top-color:var(--ja)}
 label{display:block;font-weight:700;margin:12px 0 6px}
 input[type=text],textarea{width:100%;padding:13px 14px;border-radius:12px;border:2px solid var(--line);background:#141b33;color:#fff;font-size:17px;font-family:inherit}
 input:focus,textarea:focus{outline:none;border-color:var(--or)}
@@ -40,21 +40,36 @@ textarea{min-height:90px;resize:vertical}
 .top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px}
 .back{background:none;border:0;color:var(--soft);font-size:16px;cursor:pointer;padding:8px 0}
 .hide{display:none}
+/* Chrono collé en haut */
+.chrono{position:sticky;top:0;z-index:5;margin:0 -16px 14px;padding:12px 16px;background:#141b33;border-bottom:2px solid var(--line);font-size:24px;font-weight:800;text-align:center}
+.chrono.rouge{background:#3a1c25;color:var(--ko);border-bottom-color:var(--ko)}
+.chrono small{display:block;font-size:13px;font-weight:600;color:var(--mute)}
+/* Mon évolution */
+.item{background:#141b33;border-radius:12px;padding:12px 14px;margin:10px 0}
+.item .d{margin-top:6px;color:var(--soft);font-size:15px}
+.frise{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+.frise:last-child{border-bottom:0}
+.frise .p{flex:none;letter-spacing:3px;font-size:18px;white-space:nowrap;overflow-x:auto;max-width:55%}
+details{background:var(--card);border-radius:18px;padding:14px 18px;margin:0 0 12px}
+summary{cursor:pointer;font-weight:700}
 </style>
 </head>
 <body>
 <div class="wrap" id="app"></div>
 <script src="commun.js"></script>
 <script>
-// ======= Mémoire du téléphone (nom, prénom, quiz envoyés) =======
+// ======= Mémoire du téléphone (nom, prénom, quiz envoyés, historique) =======
 function lire(k,d){try{const v=localStorage.getItem('cqp_'+k);return v?JSON.parse(v):d}catch(e){return d}}
 function ecrire(k,v){try{localStorage.setItem('cqp_'+k,JSON.stringify(v))}catch(e){}}
 let moi = lire('moi', null);
 const app = document.getElementById('app');
 function haut(){window.scrollTo(0,0)}
+let ECRAN = '';      // écran affiché (pour le chrono)
+let QUIZ_AFFICHE = null; // quiz affiché à l'écran
 
 // ======= Écran 1 : nom et prénom =======
 function ecranNom(){
+  ECRAN='nom';
   app.innerHTML = `<div class="tag">CQP Instructeur Fitness – Cours collectifs</div>
   <h1>Espace stagiaires</h1>
   <div class="card o"><h2>Qui es-tu ?</h2>
@@ -85,20 +100,57 @@ function confirmer(nom,prenom){
   haut();
 }
 
+// ======= Les quiz : une « session » = un quiz ouvert (journée ou révision) =======
+let ETAT = null, REVS = {}; // état des quiz (ouvert ou non), lu dans le tableau du formateur
+function sessionJournee(j){
+  const e=ETAT[j.id];
+  return {cle:j.id,label:`${j.titre} – ${j.theme}`,tag:j.titre,titre:'Petit bilan de ma journée',z:e.quiz,duree:e.duree||0,ouvCle:e.ouvCle||''};
+}
+function sessionRevision(r){
+  return {cle:'rev:'+r.id,label:r.titre,tag:'Révision',titre:'🧠 '+r.titre,z:r.quiz,duree:r.duree||0,ouvCle:r.ouvCle||''};
+}
+function revisionOuverte(){
+  return Object.values(REVS||{}).filter(estOuvert).sort((a,b)=>(b.ouvertAt||0)-(a.ouvertAt||0))[0]||null;
+}
+function idSession(S){return S.cle+'|'+S.ouvCle}
+// Brouillons des quiz chronométrés (heure de départ gardée sur ce téléphone)
+function brouillons(){return lire('chrono',{})}
+function garderBrouillon(D){const b=brouillons();b[D.id]=D;ecrire('chrono',b)}
+function oublierBrouillon(D){const b=brouillons();delete b[D.id];ecrire('chrono',b)}
+function reste(D){return D.duree*60000-(Date.now()-D.debut)}
+function mmss(ms){const s=Math.max(0,Math.ceil(ms/1000));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
+function dejaFerme(S){return !!lire('fermes',{})[idSession(S)]}
+
+function boutonQuiz(S,texte){
+  if(S.duree&&dejaFerme(S))return `<p class="done" style="margin:12px 0 0">✅ Quiz envoyé.</p><p class="muted" style="margin:4px 0 0">Ta correction est dans « 📈 Mon évolution ».</p>`;
+  const D=brouillons()[idSession(S)];
+  if(D&&!D.envoye)return `<button class="btn" data-ses="${esc(idSession(S))}">⏱️ Reprendre le quiz (il reste ${mmss(reste(D))})</button>`;
+  const envoyes=lire('envoyes',{});
+  return `<button class="btn" data-ses="${esc(idSession(S))}">${texte}${envoyes[S.cle]&&!S.duree?' ✅':''}${S.duree?` · ⏱️ ${S.duree} min`:''}</button>`;
+}
+
 // ======= Écran 2 : accueil =======
-let ETAT = null; // état des quiz (ouvert ou non), lu dans le tableau du formateur
 function accueil(){
-  const envoyes = lire('envoyes',{});
+  ECRAN='accueil'; QUIZ_AFFICHE=null;
+  const sessions={};
   let h = `<div class="top"><div><div class="tag">Espace stagiaires</div><h1 style="margin-bottom:6px">Bonjour ${esc(moi.prenom)} 👋</h1></div></div>
-`;
+  <button class="btn sec" id="evo" style="margin:0 0 16px">📈 Mon évolution</button>`;
+  const rev=revisionOuverte();
+  if(rev){const S=sessionRevision(rev);sessions[idSession(S)]=S;
+    h+=`<div class="card o"><div class="tag">🧠 Révision</div><h2 style="margin-top:4px">${esc(rev.titre)}</h2>
+      <p class="muted" style="margin:0">Un petit quiz pour revoir ce qu'on a vu depuis le début. ${texteDuree(rev.quiz)}</p>
+      ${boutonQuiz(S,'🧠 Faire la révision')}</div>`}
   JOURNEES.slice().reverse().forEach(j=>{
-    const ouvert = ETAT && ETAT[j.id] && ETAT[j.id].ouvert;
+    const e=ETAT&&ETAT[j.id], ouvert=estOuvert(e);
+    let b='';
+    if(ouvert){const S=sessionJournee(j);sessions[idSession(S)]=S;b=boutonQuiz(S,'📝 Petit bilan de ma journée')}
     h += `<div class="card"><div class="tag" style="color:var(--soft)">${esc(j.titre)}</div><h2 style="margin-top:4px">${esc(j.theme)}</h2>
-     ${ouvert?`<button class="btn" data-quiz="${j.id}">📝 Petit bilan de ma journée${envoyes[j.id]?' ✅':''}</button>`:''}
+     ${b}
      <button class="btn sec" data-cours="${j.id}">📚 Revoir les diapos</button></div>`;
   });
   app.innerHTML = h;
-  app.querySelectorAll('[data-quiz]').forEach(b=>b.onclick=()=>{const j=JOURNEES.find(x=>x.id===b.dataset.quiz);quiz(j,ETAT[j.id].quiz)});
+  document.getElementById('evo').onclick=evolution;
+  app.querySelectorAll('[data-ses]').forEach(b=>b.onclick=()=>ouvrirSession(sessions[b.dataset.ses]));
   app.querySelectorAll('[data-cours]').forEach(b=>b.onclick=()=>cours(JOURNEES.find(j=>j.id===b.dataset.cours)));
   haut();
 }
@@ -108,6 +160,7 @@ function envoyerDemande(){
   return envoyerForm(FORM_QUIZ,{[EQ.journee]:'stagiaires',[EQ.statut]:'demande',[EQ.contenu]:JSON.stringify({id:moi.id,nom:moi.nom,prenom:moi.prenom})}).catch(()=>{});
 }
 function attente(vientDEnvoyer){
+  ECRAN='attente';
   app.innerHTML = `<div class="tag">Espace stagiaires</div><h1>Bonjour ${esc(moi.prenom)} 👋</h1>
   <div class="card o"><h2>⏳ Ta demande est envoyée</h2>
    <p>Attends que Hamid t'accepte. Ensuite, ton espace s'ouvrira avec les diapos et le petit bilan de la journée.</p>
@@ -117,6 +170,7 @@ function attente(vientDEnvoyer){
   haut();
 }
 function bloque(){
+  ECRAN='bloque';
   app.innerHTML = `<div class="tag">Espace stagiaires</div><h1>Bonjour ${esc(moi.prenom)}</h1>
   <div class="card r" style="border-top-color:var(--ko)"><h2>Accès non actif</h2>
    <p>Ton accès à cet espace n'est pas (ou plus) actif. Si c'est une erreur, parles-en à Hamid.</p>
@@ -125,16 +179,23 @@ function bloque(){
   haut();
 }
 async function verifier(){
+  ECRAN='chargement';
   app.innerHTML = `<p class="muted">Chargement…</p>`;
   let g;
   try{g=await etatGeneral()}catch(e){
     app.innerHTML = `<div class="card"><h2>Pas de connexion</h2><p>Vérifie ta connexion internet, puis réessaie.</p><button class="btn" id="re">Réessayer</button></div>`;
     document.getElementById('re').onclick=verifier;return;
   }
-  ETAT=g.quiz;
+  ETAT=g.quiz; REVS=g.revisions||{};
   if(!moi.id){moi.id=nouvelId();ecrire('moi',moi);envoyerDemande();return attente(true)}
   const s=g.stagiaires[moi.id];
-  if(s&&s.statut==='accepte')return accueil();
+  if(s&&s.statut==='accepte'){
+    accueil();
+    // un quiz chronométré était en cours : on y retourne directement
+    const D=Object.values(brouillons()).find(x=>!x.envoye);
+    if(D)quiz(D);
+    return;
+  }
   if(s&&(s.statut==='refuse'||s.statut==='supprime'||s.statut==='efface'))return bloque();
   // pas encore dans le tableau : on renvoie la demande si elle date de plus de 10 minutes
   if(!s&&Date.now()-lire('demande_at',0)>10*60*1000)envoyerDemande();
@@ -143,6 +204,7 @@ async function verifier(){
 
 // ======= Écran 3 : les diapos =======
 function cours(j){
+  ECRAN='cours';
   let h = `<button class="back" id="bk">← Retour</button><div class="tag">${esc(j.titre)}</div><h1>${esc(j.theme)}</h1>
    ${(j.docs||[]).map(d=>`<a class="btn" href="${d.fichier}" download>⬇️ ${esc(d.titre)}</a>`).join('')}
    <p class="muted" style="margin-top:16px">Touche une diapo pour l'ouvrir en grand.</p>`;
@@ -153,50 +215,238 @@ function cours(j){
   haut();
 }
 
-// ======= Écran 4 : le quiz =======
-function quiz(j0,z){
-  const j = Object.assign({}, j0, {ressenti:z.ressenti, questions:z.questions});
-  const r = j.ressenti.map(()=>0), rep = j.questions.map(()=>-1);
-  let h = `<button class="back" id="bk">← Retour</button><div class="tag">${esc(j.titre)}</div><h1>Petit bilan de ma journée</h1>
-  <div class="card o"><h2>Mon ressenti</h2><p class="muted" style="margin-top:0">J'ai compris… (1 = pas du tout, 5 = tout à fait)</p>`;
-  j.ressenti.forEach((t,i)=>{h+=`<div class="q">${esc(t)}</div><div class="scale" data-r="${i}">${[1,2,3,4,5].map(n=>`<button data-n="${n}">${n}</button>`).join('')}</div>`});
-  h += `</div><div class="card"><h2>${j.questions.length} petite${j.questions.length>1?'s':''} question${j.questions.length>1?'s':''}</h2>`;
-  j.questions.forEach((q,i)=>{h+=`<div class="q">${i+1}. ${esc(q.q)}</div><div data-q="${i}">${q.o.map((o,k)=>`<button class="opt" data-k="${k}">${esc(o)}</button>`).join('')}</div><div class="expl hide" id="ex${i}"></div>`});
-  h += `</div><div class="card g"><h2>Une difficulté à signaler ?</h2><p class="muted" style="margin-top:0">Facultatif.</p><textarea id="dif" placeholder="Écris ici si tu veux…"></textarea></div>
-  <div class="err hide" id="er"></div><button class="btn" id="env">Envoyer</button><div id="fin"></div>`;
-  app.innerHTML=h;
+// ======= Ouvrir un quiz (avec ou sans chrono) =======
+function nouveauBrouillon(S){
+  return {id:idSession(S),cle:S.cle,label:S.label,tag:S.tag,titre:S.titre,z:S.z,duree:S.duree,ouvCle:S.ouvCle,
+    r:S.z.ressenti.map(()=>0),rep:S.z.questions.map(()=>-1),dif:'',debut:0,envoye:false};
+}
+function ouvrirSession(S){
+  if(!S)return accueil();
+  if(!S.duree)return quiz(nouveauBrouillon(S));
+  if(dejaFerme(S))return accueil();
+  const D0=brouillons()[idSession(S)];
+  if(D0)return quiz(D0);
+  ECRAN='intro';
+  app.innerHTML=`<button class="back" id="bk">← Retour</button><div class="tag">${esc(S.tag)}</div><h1>${esc(S.titre)}</h1>
+   <div class="card o"><h2>⏱️ Tu as ${S.duree} minute${S.duree>1?'s':''}</h2>
+    <p>Le chrono démarre quand tu touches « Commencer ».</p>
+    <p class="muted">Quand le temps est fini, tes réponses partent toutes seules. Une question sans réponse compte comme « pas répondu ». Tu ne pourras l'envoyer qu'une fois.</p>
+    <button class="btn" id="go">▶️ Commencer</button></div>`;
   document.getElementById('bk').onclick=accueil;
-  app.querySelectorAll('.scale').forEach(s=>s.querySelectorAll('button').forEach(b=>b.onclick=()=>{
-    r[+s.dataset.r]=+b.dataset.n; s.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b))}));
-  app.querySelectorAll('[data-q]').forEach(g=>g.querySelectorAll('.opt').forEach(b=>b.onclick=()=>{
-    if(g.dataset.lock)return; rep[+g.dataset.q]=+b.dataset.k; g.querySelectorAll('.opt').forEach(x=>x.classList.toggle('on',x===b))}));
-  document.getElementById('env').onclick=()=>{
-    const er=document.getElementById('er');
-    if(r.includes(0)||rep.includes(-1)){er.textContent='Réponds à toutes les lignes du ressenti et à toutes les questions.';er.classList.remove('hide');return}
-    er.classList.add('hide');
-    const bon = rep.filter((k,i)=>k===j.questions[i].b).length;
-    const ressenti = j.ressenti.map((t,i)=>`${t} : ${r[i]}/5`).join(' | ');
-    const reponses = j.questions.map((q,i)=>`Q${i+1} ${rep[i]===q.b?'✅':'❌ ('+q.o[rep[i]]+')'}`).join(' | ')+` — Score ${bon}/${j.questions.length}`;
-    const d = new URLSearchParams();
-    d.append(E.nom,moi.nom); d.append(E.prenom,moi.prenom); d.append(E.journee,`${j.titre} – ${j.theme}`);
-    d.append(E.ressenti,ressenti); d.append(E.reponses,reponses); d.append(E.difficulte,document.getElementById('dif').value.trim());
-    const bt=document.getElementById('env'); bt.disabled=true; bt.textContent='Envoi…';
-    fetch(FORM,{method:'POST',mode:'no-cors',body:d}).then(()=>{
-      const env=lire('envoyes',{}); env[j.id]=Date.now(); ecrire('envoyes',env);
-      bt.classList.add('hide');
-      // correction
-      app.querySelectorAll('[data-q]').forEach(g=>{const i=+g.dataset.q;g.dataset.lock=1;
-        g.querySelectorAll('.opt').forEach(b=>{const k=+b.dataset.k;b.classList.remove('on');if(k===j.questions[i].b)b.classList.add('good');else if(k===rep[i])b.classList.add('bad')});
-        const ex=document.getElementById('ex'+i);ex.textContent=(rep[i]===j.questions[i].b?'✅ Bien vu. ':'❌ ')+j.questions[i].e;ex.classList.remove('hide')});
-      document.getElementById('fin').innerHTML=`<div class="card g"><div class="done">✅ Merci ${esc(moi.prenom)}, c'est envoyé !</div><p>Tu as ${bon} bonne${bon>1?'s':''} réponse${bon>1?'s':''} sur ${j.questions.length}. Regarde les corrections juste au-dessus.</p><button class="btn sec" id="ret">Retour à l'accueil</button></div>`;
-      document.getElementById('ret').onclick=accueil;
-      document.getElementById('fin').scrollIntoView({behavior:'smooth'});
-    }).catch(()=>{bt.disabled=false;bt.textContent='Envoyer';er.textContent="L'envoi n'a pas marché. Vérifie ta connexion internet et réessaie.";er.classList.remove('hide')});
-  };
+  document.getElementById('go').onclick=()=>{const D=nouveauBrouillon(S);D.debut=Date.now();garderBrouillon(D);quiz(D)};
   haut();
 }
 
-moi ? verifier() : ecranNom();
+// ======= Écran 4 : le quiz =======
+function quiz(D){
+  ECRAN='quiz'; QUIZ_AFFICHE=D;
+  const z=D.z, chrono=D.duree>0;
+  let h = `${chrono?`<div class="chrono" id="chr">⏱️ ${mmss(reste(D))}<small>Temps restant</small></div>`:''}
+  <button class="back" id="bk">← Retour</button><div class="tag">${esc(D.tag)}</div><h1>${esc(D.titre)}</h1>`;
+  if(z.ressenti.length){
+    h+=`<div class="card o"><h2>Mon ressenti</h2><p class="muted" style="margin-top:0">J'ai compris… (1 = pas du tout, 5 = tout à fait)</p>`;
+    z.ressenti.forEach((t,i)=>{h+=`<div class="q">${esc(t)}</div><div class="scale" data-r="${i}">${[1,2,3,4,5].map(n=>`<button data-n="${n}" class="${D.r[i]===n?'on':''}">${n}</button>`).join('')}</div>`});
+    h+=`</div>`;
+  }
+  h += `<div class="card"><h2>${z.questions.length} petite${z.questions.length>1?'s':''} question${z.questions.length>1?'s':''}</h2>`;
+  z.questions.forEach((q,i)=>{h+=`<div class="q">${i+1}. ${esc(q.q)}</div><div data-q="${i}">${q.o.map((o,k)=>`<button class="opt ${D.rep[i]===k?'on':''}" data-k="${k}">${esc(o)}</button>`).join('')}</div><div class="expl hide" id="ex${i}"></div>`});
+  h += `</div><div class="card g"><h2>Une difficulté à signaler ?</h2><p class="muted" style="margin-top:0">Facultatif.</p><textarea id="dif" placeholder="Écris ici si tu veux…">${esc(D.dif||'')}</textarea></div>
+  <div class="err hide" id="er"></div><button class="btn" id="env">Envoyer</button><div id="fin"></div>`;
+  app.innerHTML=h;
+  const garder=()=>{if(chrono&&!D.envoye)garderBrouillon(D)};
+  document.getElementById('bk').onclick=accueil;
+  app.querySelectorAll('.scale').forEach(s=>s.querySelectorAll('button').forEach(b=>b.onclick=()=>{
+    if(D.envoye)return; D.r[+s.dataset.r]=+b.dataset.n; s.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b)); garder()}));
+  app.querySelectorAll('[data-q]').forEach(g=>g.querySelectorAll('.opt').forEach(b=>b.onclick=()=>{
+    if(D.envoye)return; D.rep[+g.dataset.q]=+b.dataset.k; g.querySelectorAll('.opt').forEach(x=>x.classList.toggle('on',x===b)); garder()}));
+  document.getElementById('dif').oninput=e=>{D.dif=e.target.value;garder()};
+  document.getElementById('env').onclick=()=>{
+    const er=document.getElementById('er');
+    if(D.r.includes(0)||D.rep.includes(-1)){er.textContent=z.ressenti.length?'Réponds à toutes les lignes du ressenti et à toutes les questions.':'Réponds à toutes les questions.';er.classList.remove('hide');return}
+    er.classList.add('hide');
+    envoyer(D,false);
+  };
+  haut();
+  if(chrono)tic();
+}
+
+// ======= Envoi (à la main, ou tout seul quand le chrono est fini) =======
+const ENVOI_EN_COURS = new Set();
+function envoyer(D,auto){
+  if(ENVOI_EN_COURS.has(D.id)||D.envoye)return;
+  ENVOI_EN_COURS.add(D.id);
+  D.dif = (QUIZ_AFFICHE===D&&document.getElementById('dif'))?document.getElementById('dif').value.trim():(D.dif||'').trim();
+  const t = texteReponses(D.z,D.r,D.rep,false);
+  const bt=(QUIZ_AFFICHE===D)?document.getElementById('env'):null;
+  if(bt){bt.disabled=true;bt.textContent='Envoi…'}
+  envoyerForm(FORM,{[E.nom]:moi.nom,[E.prenom]:moi.prenom,[E.journee]:D.label,[E.ressenti]:t.ressenti,[E.reponses]:t.reponses,[E.difficulte]:D.dif})
+  .then(()=>{
+    ENVOI_EN_COURS.delete(D.id);
+    D.envoye=true;
+    const env=lire('envoyes',{}); env[D.cle]=Date.now(); ecrire('envoyes',env);
+    if(D.duree){const f=lire('fermes',{});f[D.id]=Date.now();ecrire('fermes',f);oublierBrouillon(D)}
+    ajouterHisto(D);
+    if(QUIZ_AFFICHE===D&&ECRAN==='quiz')correction(D,auto);
+    else if(ECRAN==='accueil')accueil();
+  }).catch(()=>{
+    ENVOI_EN_COURS.delete(D.id);
+    if(D.duree){D.aRenvoyer=Date.now();garderBrouillon(D)}
+    if(QUIZ_AFFICHE===D&&ECRAN==='quiz'){
+      const er=document.getElementById('er'), b=document.getElementById('env');
+      er.textContent=auto?"Le temps est fini, mais l'envoi n'a pas marché. Vérifie ta connexion internet : je réessaie tout seul.":"L'envoi n'a pas marché. Vérifie ta connexion internet et réessaie.";er.classList.remove('hide');
+      if(b){b.disabled=false;b.textContent=auto?'Réessayer maintenant':'Envoyer';if(auto)b.onclick=()=>envoyer(D,true)}
+    }
+  });
+}
+function correction(D,auto){
+  const z=D.z;
+  const chr=document.getElementById('chr'); if(chr)chr.remove();
+  document.getElementById('env').classList.add('hide');
+  document.getElementById('er').classList.add('hide');
+  app.querySelectorAll('.scale button, .opt').forEach(b=>b.disabled=true);
+  document.getElementById('dif').readOnly=true;
+  app.querySelectorAll('[data-q]').forEach(g=>{const i=+g.dataset.q;
+    g.querySelectorAll('.opt').forEach(b=>{const k=+b.dataset.k;b.classList.remove('on');if(k===z.questions[i].b)b.classList.add('good');else if(k===D.rep[i])b.classList.add('bad')});
+    const ex=document.getElementById('ex'+i);
+    ex.textContent=(D.rep[i]===z.questions[i].b?'✅ Bien vu. ':D.rep[i]<0?'⏳ Pas répondu. ':'❌ ')+(z.questions[i].e||'');ex.classList.remove('hide')});
+  document.getElementById('fin').innerHTML=`<div class="card g"><div class="done">✅ Merci ${esc(moi.prenom)}, c'est envoyé !</div>
+    ${auto?`<p>⏱️ Le temps est fini : tes réponses sont parties toutes seules.</p>`:''}
+    <p>Regarde les corrections juste au-dessus.</p>
+    <button class="btn" id="evo2">📈 Mon évolution</button><button class="btn sec" id="ret">Retour à l'accueil</button></div>`;
+  document.getElementById('evo2').onclick=evolution;
+  document.getElementById('ret').onclick=accueil;
+  document.getElementById('fin').scrollIntoView({behavior:'smooth'});
+}
+// Le chrono : affichage + envoi automatique à 0 (même si un autre écran est affiché)
+function tic(){
+  const b=brouillons();
+  Object.values(b).forEach(D=>{
+    if(D.envoye||!D.duree||!D.debut)return;
+    if(reste(D)<=0){
+      if(D.aRenvoyer&&Date.now()-D.aRenvoyer<20000)return; // on réessaie toutes les 20 s
+      const cible=(QUIZ_AFFICHE&&QUIZ_AFFICHE.id===D.id)?QUIZ_AFFICHE:D;
+      envoyer(cible,true);
+    }
+  });
+  if(ECRAN==='quiz'&&QUIZ_AFFICHE&&QUIZ_AFFICHE.duree&&!QUIZ_AFFICHE.envoye){
+    const c=document.getElementById('chr');
+    if(c){const r=reste(QUIZ_AFFICHE);c.innerHTML=`⏱️ ${mmss(r)}<small>${r<=0?'Temps fini : envoi…':'Temps restant'}</small>`;c.classList.toggle('rouge',r<=30000)}
+  }
+}
+setInterval(()=>{if(moi&&moi.id)tic()},500);
+
+// ======= Mon évolution (gardée sur ce téléphone, sans note) =======
+function ajouterHisto(D){
+  const z=D.z;
+  fusionnerHisto([{l:D.label,d:Date.now(),
+    it:z.questions.map((q,i)=>({id:q.id||null,q:q.q,th:q.theme||'autre',s:D.rep[i]<0?'na':D.rep[i]===q.b?'ok':'ko',r:D.rep[i]>=0?q.o[D.rep[i]]:'',b:q.o[q.b],e:q.e||''})),
+    rs:z.ressenti.map((t,i)=>({t,n:D.r[i]||0}))}]);
+}
+function fusionnerHisto(liste,remplacer){
+  const h=remplacer?[]:lire('histo',[]);
+  liste.forEach(e=>{if(!h.some(x=>x.l===e.l&&Math.abs(x.d-e.d)<10*60000))h.push(e)});
+  h.sort((a,b)=>a.d-b.d);
+  ecrire('histo',h);
+  return h;
+}
+function pastille(items){const ok=items.filter(x=>x.s==='ok').length;return ok===items.length?'🟢':ok>0?'🟡':'🔴'}
+function evolution(){
+  ECRAN='evolution'; QUIZ_AFFICHE=null;
+  const h=lire('histo',[]);
+  let html=`<button class="back" id="bk">← Retour</button><div class="tag">Espace stagiaires</div><h1>📈 Mon évolution</h1>`;
+  if(!h.length){
+    html+=`<div class="card"><p style="margin:0">Ton évolution apparaîtra ici après ton premier quiz. 💪</p></div>`;
+  }else{
+    // par thème : une pastille par quiz, de la plus ancienne à la plus récente
+    const themes={};
+    h.forEach(e=>{const parTheme={};e.it.forEach(x=>(parTheme[x.th]=parTheme[x.th]||[]).push(x));
+      Object.entries(parTheme).forEach(([t,items])=>(themes[t]=themes[t]||[]).push({p:pastille(items),items}))});
+    const liste=Object.entries(themes).map(([t,v])=>({t,nom:nomTheme(t),v,der:v[v.length-1].p,avant:v.length>1?v[v.length-2].p:null}));
+    const rang={'🔴':0,'🟡':1,'🟢':2};
+    const maitrise=liste.filter(x=>x.der==='🟢'), revoir=liste.filter(x=>x.der!=='🟢'), progres=liste.filter(x=>x.avant&&rang[x.der]>rang[x.avant]);
+    let phrase = maitrise.length>=revoir.length?"Bravo, tu avances bien ! Continue comme ça. 💪":"Chaque quiz t'aide à progresser. Relis les explications : tu vas y arriver ! 💪";
+    if(progres.length)phrase+=` Tu progresses sur : ${progres.map(x=>x.nom).join(', ')}.`;
+    html+=`<div class="card g"><p style="margin:0;font-weight:700">${esc(phrase)}</p></div>`;
+    const dern=h[h.length-1], aise=(dern.rs||[]).filter(x=>x.n>=4).map(x=>x.t), aide=(dern.rs||[]).filter(x=>x.n>0&&x.n<=2).map(x=>x.t);
+    if(aise.length||aide.length)html+=`<div class="card o"><h2>Mon ressenti</h2>${aise.length?`<p style="margin:0 0 8px">😊 Tu te sens plus à l'aise sur : ${esc(aise.join(' · '))}.</p>`:''}${aide.length?`<p style="margin:0">🙋 N'hésite pas à demander de l'aide à Hamid sur : ${esc(aide.join(' · '))}.</p>`:''}</div>`;
+    html+=`<div class="card g"><h2>💪 Ce que je maîtrise</h2>${maitrise.length?maitrise.map(x=>`<div class="item">🟢 ${esc(x.nom)}</div>`).join(''):`<p class="muted" style="margin:0">Pas encore : ça va venir !</p>`}</div>`;
+    html+=`<div class="card r"><h2>🔁 Ce que je dois revoir</h2>${revoir.length?revoir.map(x=>{
+        const ko=x.v[x.v.length-1].items.filter(i=>i.s!=='ok');
+        return `<div class="item">${x.der} <b>${esc(x.nom)}</b>${ko.map(i=>`<div class="d">• ${esc(i.q)}<br><span style="color:var(--ok)">→ ${esc(i.b)}</span></div>`).join('')}</div>`}).join(''):`<p class="muted" style="margin:0">Rien à revoir pour l'instant. 🎉</p>`}</div>`;
+    html+=`<div class="card"><h2>Ma frise par thème</h2>
+      <p class="muted" style="margin-top:0">Une pastille par quiz, de la plus ancienne (à gauche) à la plus récente (à droite).<br>🟢 maîtrisé : tout juste sur ce thème · 🟡 en progrès : une partie juste · 🔴 à revoir : rien de juste.</p>
+      ${liste.map(x=>`<div class="frise"><span>${esc(x.nom)}</span><span class="p">${x.v.map(v=>v.p).join('')}</span></div>`).join('')}</div>`;
+    html+=`<h2 style="margin:22px 0 10px">Mes quiz</h2>`;
+    h.slice().reverse().forEach((e,n)=>{
+      html+=`<details${n===0?' open':''}><summary>${esc(jjmm(e.d))} · ${esc(e.l)}</summary>`+
+        e.it.map(i=>`<div class="item"><b>${i.s==='ok'?'✅ Juste':i.s==='na'?'⏳ Pas répondu':'❌ À revoir'}</b><div style="margin-top:4px">${esc(i.q)}</div>
+          ${i.s==='ko'?`<div class="d">Ta réponse : ${esc(i.r)}</div>`:''}
+          ${i.s!=='ok'?`<div class="d" style="color:var(--ok)">Bonne réponse : ${esc(i.b)}</div>`:''}
+          ${i.e?`<div class="d">💡 ${esc(i.e)}</div>`:''}</div>`).join('')+`</details>`;
+    });
+  }
+  html+=`<p class="muted">Ton évolution est gardée sur ce téléphone. Si tu changes de téléphone, demande à Hamid de te l'envoyer.</p><button class="btn sec" id="bk2">← Retour</button>`;
+  app.innerHTML=html;
+  document.getElementById('bk').onclick=accueil;document.getElementById('bk2').onclick=accueil;
+  haut();
+}
+
+// ======= Lien envoyé par Hamid pour un nouveau téléphone (#t=…) =======
+function empreinteLien(t){let h=5381;for(let i=0;i<t.length;i++)h=((h*33)^t.charCodeAt(i))>>>0;return h.toString(36)+'_'+t.length}
+function deplierHisto(p){
+  return (p.h||[]).map(([l,dSec,items,rs])=>({l,d:dSec*1000,
+    it:(items||[]).map(([ref,s,r])=>{
+      const bq=typeof ref==='string'?questionParId(ref):ref;
+      if(!bq||!bq.q||!bq.o)return null;
+      const etat=s===1?'ok':s===2?'na':'ko';
+      return {id:typeof ref==='string'?ref:null,q:bq.q,th:bq.theme||bq.t||'autre',s:etat,r:etat==='ko'?(typeof r==='number'?(bq.o[r]||''):String(r||'')):'',b:bq.o[bq.b]||'',e:bq.e||''};
+    }).filter(Boolean),
+    rs:(rs||[]).map(([t,n])=>({t,n}))}));
+}
+function ecranMessage(titre,texte,classe){
+  ECRAN='message';
+  app.innerHTML=`<div class="tag">Espace stagiaires</div><h1>Espace stagiaires</h1>
+   <div class="card ${classe||'o'}"><h2>${titre}</h2><p>${texte}</p><button class="btn" id="ok">Continuer</button></div>`;
+  document.getElementById('ok').onclick=demarrer;
+  haut();
+}
+async function traiterLien(t){
+  // on enlève tout de suite les données de l'adresse
+  try{history.replaceState(null,'',location.pathname+location.search)}catch(e){}
+  let p;
+  try{p=await decoderLien(t);if(!p||!Array.isArray(p.m)||!p.m[0])throw 0}
+  catch(e){return ecranMessage('Lien abîmé',"Ce lien ne marche pas. Demande-en un nouveau à Hamid.",'r')}
+  if(!p.c||Date.now()-p.c*1000>7*24*3600*1000)return ecranMessage("Lien expiré","Ce lien n'est plus valable, demande-en un nouveau à Hamid.",'r');
+  const cle=empreinteLien(t), utilises=lire('liens_utilises',[]);
+  if(utilises.includes(cle))return ecranMessage('Lien déjà utilisé',"Ce lien a déjà été utilisé sur ce téléphone. Tu peux utiliser le lien habituel de ton espace.",'j');
+  const nouveau={id:p.m[0],nom:p.m[1],prenom:p.m[2]};
+  const appliquer=autre=>{
+    moi=nouveau; ecrire('moi',moi); ecrire('demande_at',Date.now());
+    fusionnerHisto(deplierHisto(p),autre);
+    if(autre){ecrire('chrono',{});ecrire('fermes',{});ecrire('envoyes',{})}
+    utilises.push(cle); ecrire('liens_utilises',utilises);
+    ecranMessage("✅ C'est bon, ton espace est récupéré",`Bonjour ${esc(nouveau.prenom)} ! Ton évolution est sur ce téléphone. La prochaine fois, utilise le lien habituel de ton espace.`,'g');
+  };
+  if(moi&&moi.nom&&!memeNom(moi.prenom+' '+moi.nom,nouveau.prenom+' '+nouveau.nom)){
+    ECRAN='confirmer';
+    app.innerHTML=`<div class="tag">Espace stagiaires</div><h1>Attention</h1>
+     <div class="card j"><h2>Ce téléphone est déjà à un autre nom</h2>
+      <p>Il est enregistré au nom de <b>${esc(moi.prenom)} ${esc(moi.nom)}</b>.</p>
+      <p>Veux-tu le remplacer par <b>${esc(nouveau.prenom)} ${esc(nouveau.nom)}</b> ?</p>
+      <p class="muted">L'évolution de ${esc(moi.prenom)} sera effacée de ce téléphone.</p>
+      <button class="btn" id="oui">Oui, remplacer</button><button class="btn sec" id="non">Non, garder ${esc(moi.prenom)}</button></div>`;
+    document.getElementById('oui').onclick=()=>appliquer(true);
+    document.getElementById('non').onclick=demarrer;
+    haut();return;
+  }
+  appliquer(false);
+}
+
+function demarrer(){moi ? verifier() : ecranNom()}
+const T0 = location.hash.match(/^#t=([A-Za-z0-9_-]+)/);
+T0 ? traiterLien(T0[1]) : demarrer();
+// si l'espace est déjà ouvert dans cet onglet, le lien ne recharge pas la page
+window.addEventListener('hashchange',()=>{const t=location.hash.match(/^#t=([A-Za-z0-9_-]+)/);if(t)traiterLien(t[1])});
 </script>
 </body>
 </html>
