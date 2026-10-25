@@ -97,7 +97,6 @@ function accueil(){
      ${ouvert?`<button class="btn" data-quiz="${j.id}">📝 Petit bilan de ma journée${envoyes[j.id]?' ✅':''}</button>`:''}
      <button class="btn sec" data-cours="${j.id}">📚 Revoir les diapos</button></div>`;
   });
-  h += `<p class="muted" style="text-align:center;margin-top:30px"><a href="formateur.html" style="color:var(--mute);font-size:13px">Espace formateur</a></p>`;
   app.innerHTML = h;
   app.querySelectorAll('[data-quiz]').forEach(b=>b.onclick=()=>{const j=JOURNEES.find(x=>x.id===b.dataset.quiz);quiz(j,ETAT[j.id].quiz)});
   app.querySelectorAll('[data-cours]').forEach(b=>b.onclick=()=>cours(JOURNEES.find(j=>j.id===b.dataset.cours)));
@@ -113,8 +112,7 @@ function attente(vientDEnvoyer){
   <div class="card o"><h2>⏳ Ta demande est envoyée</h2>
    <p>Attends que Hamid t'accepte. Ensuite, ton espace s'ouvrira avec les diapos et le petit bilan de la journée.</p>
    <p class="muted">${vientDEnvoyer?"Ça peut prendre quelques minutes. ":""}Touche « Vérifier » de temps en temps.</p>
-   <button class="btn" id="ver">🔄 Vérifier</button></div>
-  <p class="muted" style="text-align:center;margin-top:30px"><a href="formateur.html" style="color:var(--mute);font-size:13px">Espace formateur</a></p>`;
+   <button class="btn" id="ver">🔄 Vérifier</button></div>`;
   document.getElementById('ver').onclick=verifier;
   haut();
 }
@@ -122,8 +120,7 @@ function bloque(){
   app.innerHTML = `<div class="tag">Espace stagiaires</div><h1>Bonjour ${esc(moi.prenom)}</h1>
   <div class="card r" style="border-top-color:var(--ko)"><h2>Accès non actif</h2>
    <p>Ton accès à cet espace n'est pas (ou plus) actif. Si c'est une erreur, parles-en à Hamid.</p>
-   <button class="btn sec" id="ver">🔄 Vérifier à nouveau</button></div>
-  <p class="muted" style="text-align:center;margin-top:30px"><a href="formateur.html" style="color:var(--mute);font-size:13px">Espace formateur</a></p>`;
+   <button class="btn sec" id="ver">🔄 Vérifier à nouveau</button></div>`;
   document.getElementById('ver').onclick=verifier;
   haut();
 }

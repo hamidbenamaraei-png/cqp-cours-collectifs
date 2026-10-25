@@ -147,8 +147,15 @@ function ecranCode(){
    <button class="btn" id="go">Entrer</button>
    <p class="muted" style="margin-top:14px"><a href="./" style="color:var(--mute)">← Retour à l'espace stagiaires</a></p></div>`;
   const go=async()=>{
+    const er=document.getElementById('er');
+    const bl=lire('bloque',{n:0,jusqua:0});
+    if(Date.now()<bl.jusqua){er.textContent=`Trop d'essais. Réessaie dans ${Math.ceil((bl.jusqua-Date.now())/60000)} min.`;er.classList.remove('hide');return}
     const h=await empreinte(document.getElementById('c').value.trim());
-    if(h===CODE_HASH){ecrire('ok',h);demarrer()}else document.getElementById('er').classList.remove('hide');
+    if(h===CODE_HASH){ecrire('bloque',{n:0,jusqua:0});ecrire('ok',h);demarrer();return}
+    bl.n++;
+    if(bl.n>=5){const min=Math.pow(2,Math.min(bl.n-5,10));bl.jusqua=Date.now()+min*60000;er.textContent=`Code incorrect. Trop d'essais : réessaie dans ${min} min.`}
+    else er.textContent=`Code incorrect (${5-bl.n} essai${5-bl.n>1?'s':''} avant blocage).`;
+    ecrire('bloque',bl);er.classList.remove('hide');
   };
   document.getElementById('go').onclick=go;
   document.getElementById('c').onkeydown=e=>{if(e.key==='Enter')go()};
