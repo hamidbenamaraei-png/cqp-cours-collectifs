@@ -245,7 +245,8 @@ function roueSVG(cases,opt){
     else if(x.cp&&x.cp.L*W*fs<=Lr&&h>=fs*2.3)lignes=[x.cp.a,x.cp.b];
     else{const mx=Math.max(3,Math.floor(Lr/(fs*W)));lignes=[x.t.slice(0,mx-1).trim()+'…']}
     const mid=i*a+a/2-90, tsp=lignes.length===1?esc(lignes[0]):lignes.map((l,k)=>`<tspan x="0" dy="${k?'1.08em':'-0.54em'}">${esc(l)}</tspan>`).join('');
-    parts+=`<text transform="rotate(${mid.toFixed(3)}) translate(${(R*0.92).toFixed(1)} 0)" text-anchor="end" dominant-baseline="central" font-size="${fs.toFixed(1)}" font-weight="800" fill="#10162b" font-family="system-ui,-apple-system,Segoe UI,Roboto,sans-serif" style="pointer-events:none">${tsp}</text>`;
+    const gauche=Math.cos(mid*Math.PI/180)<-0.01; // côté gauche : on retourne le texte pour qu'il se lise à l'endroit
+    parts+=`<text transform="rotate(${(gauche?mid+180:mid).toFixed(3)}) translate(${(gauche?-R*0.92:R*0.92).toFixed(1)} 0)" text-anchor="${gauche?'start':'end'}" dominant-baseline="central" font-size="${fs.toFixed(1)}" font-weight="800" fill="#10162b" font-family="system-ui,-apple-system,Segoe UI,Roboto,sans-serif" style="pointer-events:none">${tsp}</text>`;
   });
   // petits clous sur le bord
   let clous='';for(let i=0;i<n&&n>1&&n<=60;i++){const [x,y]=pt(i*a,R+14);clous+=`<circle cx="${x}" cy="${y}" r="6" fill="#c9cfe6"/>`}

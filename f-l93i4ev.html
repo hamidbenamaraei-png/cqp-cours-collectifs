@@ -137,6 +137,11 @@ body.avec-barre .wrap{padding-bottom:120px}
   .feuille{border-radius:0;padding:0}
   .feuille .bloc{break-inside:avoid}
 }
+.rs-plein{position:fixed;inset:0;z-index:50;margin:0;border-radius:0;overflow:auto;display:flex;flex-direction:column;justify-content:flex-start;gap:6px;padding:18px 6vw;background:#0b1022}
+.rs-plein .roue-boite{max-width:min(60vh,800px)}
+.rs-plein .roue-res{font-size:44px}
+.rs-plein input{font-size:26px}
+.rs-plein .btn{font-size:26px}
 </style>
 </head>
 <body>
@@ -282,7 +287,7 @@ function accueil(){
   h+=`<div class="card j"><h2>🧠 Quiz de révision</h2>
     <p style="margin:0" class="${rc?'':'muted'}">${rc?`${esc(rc.titre)} · ${ro?'<b style="color:var(--ok)">ouvert</b>':'caché aux stagiaires'}`:'Des questions de toutes les journées, depuis le début.'}</p>
     <button class="btn sec" id="rev">Ouvrir les révisions</button></div>`;
-  h+=`<div class="card o"><h2>🎡 La roue</h2><p style="margin:0" class="${ROUE.tirage?'':'muted'}">${ROUE.tirage?roueAccueilTexte():'Les parties du cours tirées au hasard pour chaque stagiaire.'}</p>
+  h+=`<div class="card o"><h2>🎡 La roue</h2><p style="margin:0" class="muted">Échauffement, corps de séance ou étirements, tirés au hasard. Sur ton téléphone seulement.</p>
     <button class="btn sec" id="roue">Ouvrir la roue</button></div>`;
   h+=`<div class="card"><h2>📋 Mes fiches</h2><p style="margin:0" class="muted">Les tableaux de tes cours : mouvements (placement, exécution, sécurité) et étirements. Visibles par toi seul.</p>
     <button class="btn sec" id="fiches">Ouvrir mes fiches</button></div>`;
@@ -297,7 +302,7 @@ function accueil(){
   app.querySelectorAll('[data-j]').forEach(b=>b.onclick=()=>journee(JOURNEES.find(j=>j.id===b.dataset.j)));
   document.getElementById('stg').onclick=()=>mesStagiaires();
   document.getElementById('rev').onclick=()=>revisionEcran();
-  document.getElementById('roue').onclick=()=>{roueEcran.lu=false;roueEcran()};
+  document.getElementById('roue').onclick=()=>roueSimple();
   document.getElementById('fiches').onclick=()=>mesFiches();
   document.getElementById('out').onclick=()=>{ecrire('ok','');ecranCode()};
   document.getElementById('rz').onclick=()=>{try{localStorage.removeItem('cqp_moi')}catch(e){};document.getElementById('rzok').classList.remove('hide')};
@@ -1097,6 +1102,67 @@ document.addEventListener('visibilitychange',()=>{
   Object.keys(OBS_MINUTEURS).forEach(sauverObsEnLigne);
   if(DICTEE.cle)sauverObsEnLigne(DICTEE.cle);
 });
+
+// ======= 🎡 La roue simple (sur le téléphone du formateur seulement) =======
+let ROUE_SIMPLE_TOURNE=false;
+function roueSimple(){
+  const cases=ROUE_LISTES_DEFAUT.partie.map(t=>({t}));
+  const liste=()=>lire('roue_liste',[]);
+  const acc=acceptes();
+  let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>🎡 La roue</h1>
+  <div class="card o" id="rs-zone">
+    <label for="rs-nom" style="margin-top:0">Pour qui ?</label>
+    <input type="text" id="rs-nom" list="rs-noms" placeholder="Écris le prénom" autocomplete="off">
+    <datalist id="rs-noms">${acc.map(x=>`<option value="${esc(x.prenom+' '+x.nom)}">`).join('')}</datalist>
+    <div id="rs-boite" style="margin-top:14px"></div>
+    <div class="roue-res" id="rs-res"></div>
+    <button class="btn" id="rs-go">🎡 Lancer</button>
+    <div style="display:flex;justify-content:space-between;gap:8px;margin-top:8px">
+      <button class="roue-son" id="rs-son"></button>
+      <button class="roue-son" id="rs-proj">📽️ Projeter</button>
+    </div>
+  </div>
+  <div class="card"><h2>📋 La liste</h2><div id="rs-liste"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn small sec" id="rs-copie">📋 Copier la liste</button><button class="btn small ko" id="rs-eff">🗑️ Effacer la liste</button></div>
+    <div class="ok hide" id="rs-ok"></div>
+    <p class="muted" style="margin-bottom:0">Gardée sur ce téléphone seulement.</p></div>`;
+  app.innerHTML=h;
+  const R=creerRoue(document.getElementById('rs-boite'),cases,{titre:'Parties du cours'});
+  const nom=document.getElementById('rs-nom'), res=document.getElementById('rs-res'), go=document.getElementById('rs-go'), ok=document.getElementById('rs-ok');
+  const dessinerListe=()=>{const L=liste();document.getElementById('rs-liste').innerHTML=L.length?L.map((x,k)=>`<div class="row" style="align-items:center"><span><b>${esc(x.n)}</b> → ${esc(x.r)}</span><button class="link" data-del="${k}" style="color:var(--ko)">✕</button></div>`).join(''):'<p class="muted" style="margin:0 0 8px">Personne pour l\'instant.</p>';
+    app.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{const L2=liste();L2.splice(+b.dataset.del,1);ecrire('roue_liste',L2);dessinerListe()})};
+  dessinerListe();
+  const son=document.getElementById('rs-son');const majSon=()=>{son.textContent=roueSonActif()?'🔊 Son':'🔇 Son coupé'};majSon();
+  son.onclick=()=>{roueSonChanger(!roueSonActif());majSon()};
+  go.onclick=async()=>{
+    if(ROUE_SIMPLE_TOURNE)return;
+    const qui=nom.value.trim();
+    if(!qui){res.innerHTML='<small style="color:var(--ko)">Écris d\'abord le prénom</small>';nom.focus();return}
+    ROUE_SIMPLE_TOURNE=true;roueAudioPret();go.disabled=true;go.textContent='La roue tourne…';res.innerHTML='';
+    const i=Math.floor(Math.random()*cases.length);
+    await R.tourner(i);
+    const r=cases[i].t;
+    res.innerHTML=`<small>${esc(qui)}</small>${esc(r)}`;
+    const L=liste();L.push({n:qui,r,at:Date.now()});ecrire('roue_liste',L);dessinerListe();
+    nom.value='';go.disabled=false;go.textContent='🎡 Lancer';ROUE_SIMPLE_TOURNE=false;
+  };
+  nom.onkeydown=e=>{if(e.key==='Enter')go.click()};
+  document.getElementById('rs-copie').onclick=async()=>{const L=liste();if(!L.length)return;const t='🎡 Parties du cours\n'+L.map(x=>`• ${x.n} → ${x.r}`).join('\n');
+    if(!await copier(t)){const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();try{document.execCommand('copy')}catch(_){}ta.remove()}
+    ok.textContent='✅ Liste copiée.';ok.classList.remove('hide')};
+  document.getElementById('rs-eff').onclick=()=>{if(confirm('Effacer toute la liste ?')){ecrire('roue_liste',[]);dessinerListe();res.innerHTML=''}};
+  const zone=document.getElementById('rs-zone');
+  document.getElementById('rs-proj').onclick=()=>{
+    const on=!zone.classList.contains('rs-plein');
+    zone.classList.toggle('rs-plein',on);
+    document.getElementById('rs-proj').textContent=on?'✕ Quitter':'📽️ Projeter';
+    try{if(on&&zone.requestFullscreen)zone.requestFullscreen().catch(()=>{});else if(!on&&document.fullscreenElement)document.exitFullscreen()}catch(e){}
+  };
+  document.onfullscreenchange=()=>{if(!document.fullscreenElement&&zone.classList.contains('rs-plein')){zone.classList.remove('rs-plein');document.getElementById('rs-proj').textContent='📽️ Projeter'}};
+  document.onkeydown=e=>{if(e.code==='Space'&&zone.classList.contains('rs-plein')){e.preventDefault();go.click()}};
+  document.getElementById('bk').onclick=()=>{document.onkeydown=null;document.onfullscreenchange=null;accueil()};
+  haut();
+}
 
 // ======= 📋 Mes fiches (tableaux des cours, pour le formateur seulement) =======
 function mesFiches(filtre){

@@ -403,7 +403,8 @@ function evolution(){
 }
 
 // ======= 🎡 La roue (préparée par Hamid ; le résultat est déjà tiré, la roue s'arrête dessus) =======
-function roueActive(){const T=ROUE&&ROUE.tirage;return T&&T.actif&&Array.isArray(T.roues)&&T.roues.length?T:null}
+function roueActive(){return null; // décision d'Hamid (25/10) : la roue n'apparaît plus chez les stagiaires
+  const T=ROUE&&ROUE.tirage;return T&&T.actif&&Array.isArray(T.roues)&&T.roues.length?T:null}
 function casesTirees(T,manche){
   return T.roues.map((r,k)=>({type:r.type,titre:r.titre,emoji:r.emoji,cases:((manche&&manche[k])||[]).map(i=>r.cases[i]).filter(Boolean),idx:(manche&&manche[k])||[]}));
 }
