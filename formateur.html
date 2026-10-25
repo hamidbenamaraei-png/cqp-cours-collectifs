@@ -474,7 +474,15 @@ function afficher(j,tests){
   zone.innerHTML=h;
   document.getElementById('maj').onclick=()=>reponses(j);
   if(nbTests)document.getElementById('tst').onchange=e=>afficher(j,e.target.checked);
-  observations(j,{n:rep.length,moy,bonnes,diffs,scoreTot},zone);
+  const eleves=rep.map(l=>{
+    const nom=((l[iP]||'')+' '+(l[iN]||'')).trim();
+    const pts=[];
+    [...(l[iQ]||'').matchAll(/Q(\d+)\s*❌\s*\(([^)]*)\)/g)].forEach(x=>{const q=z.questions[+x[1]-1];pts.push(`s'est trompé(e) sur « ${q?q.q:'question '+x[1]} » (a répondu : ${x[2]})`)});
+    (l[iR]||'').split('|').forEach(p=>{const m=p.match(/(.+?)\s*:\s*(\d)\/5/);if(m&&+m[2]<=2)pts.push(`ressenti faible sur « ${m[1].trim()} » (${m[2]}/5)`)});
+    const d=(l[iD]||'').trim(); if(d)pts.push(`a écrit : « ${d} »`);
+    return {nom,pts};
+  }).filter(x=>x.pts.length);
+  observations(j,{n:rep.length,moy,bonnes,diffs,scoreTot,eleves},zone);
 }
 
 // ======= Mes observations + résumé =======
@@ -485,6 +493,12 @@ function observations(j,st,zone){
    <textarea id="obs" style="min-height:120px" placeholder="Ex. : placement de la salle encore flou pour 2 stagiaires…"></textarea>
    <button class="btn sec" id="mic">🎤 Dicter</button>
    <div class="muted hide" id="micinfo" style="margin-top:8px"></div>
+   <label style="margin-top:18px">Que mettre dans le résumé ?</label>
+   <div id="modes">
+    <button class="opt" data-m="complet">📋 Complet : réponses des stagiaires + mes observations</button>
+    <button class="opt" data-m="obs">👀 Seulement mes observations</button>
+    <button class="opt" data-m="stag">👥 Seulement les réponses des stagiaires</button>
+   </div>
    <button class="btn" id="res">✨ Faire le résumé</button></div>
    <div class="card o hide" id="rbox"><h2>Résumé pour les formateurs</h2>
    <p class="muted" style="margin-top:0">Tu peux le corriger avant de l'envoyer.</p>
@@ -508,8 +522,12 @@ function observations(j,st,zone){
       rec.onerror=()=>{mi.textContent="La dictée n'a pas marché. Tu peux utiliser le micro 🎤 de ton clavier.";mi.classList.remove('hide')};
       rec.start();mb.textContent='⏹️ Arrêter la dictée';mb.classList.add('rec');
     }}
+  let mode=lire('mode','complet');
+  const majModes=()=>document.querySelectorAll('#modes .opt').forEach(b=>b.classList.toggle('on',b.dataset.m===mode));
+  document.querySelectorAll('#modes .opt').forEach(b=>b.onclick=()=>{mode=b.dataset.m;ecrire('mode',mode);majModes()});
+  majModes();
   document.getElementById('res').onclick=()=>{
-    document.getElementById('resume').value=resume(j,st,obs.value.trim());
+    document.getElementById('resume').value=resume(j,st,obs.value.trim(),mode);
     const rb=document.getElementById('rbox');rb.classList.remove('hide');rb.scrollIntoView({behavior:'smooth'});
   };
   document.getElementById('wa').onclick=async()=>{
@@ -520,9 +538,11 @@ function observations(j,st,zone){
   };
 }
 
-function resume(j,st,obs){
+function resume(j,st,obs,mode){
+  mode=mode||'complet';
   const z=quizDe(j);
   let t=`📋 Bilan CQP Cours collectifs – ${j.titre}\n${j.theme}\n`;
+  if(mode==='obs'){t+=obs?`\n👀 Mes observations :\n${obs}\n`:`\n(Pas d'observations écrites.)\n`;return t+`\nHamid`}
   if(!st){t+=`\nPas de réponses au petit bilan pour l'instant.\n`}
   else{
     t+=`\n👥 ${st.n} stagiaire${st.n>1?'s ont':' a'} répondu au petit bilan · score moyen ${(st.scoreTot/st.n).toFixed(1)}/${z.questions.length}\n`;
@@ -532,9 +552,10 @@ function resume(j,st,obs){
     if(revoir.length)t+=`\n🔴 À retravailler :\n`+revoir.map(x=>`• ${x.k} (${x.m.toFixed(1)}/5)`).join('\n')+'\n';
     const qrat=z.questions.map((q,i)=>({q:q.q,b:st.bonnes[i]})).filter(x=>x.b<st.n);
     t+=`\n📝 Questions :\n`+(qrat.length?qrat.map(x=>`• ${x.q} : ${x.b}/${st.n} bonnes réponses`).join('\n'):`• Toutes les questions réussies par tout le monde`)+'\n';
-    if(st.diffs.length)t+=`\n⚠️ Difficultés signalées par les stagiaires :\n`+st.diffs.map(x=>`• ${x.d}`).join('\n')+'\n';
+    if(st.eleves&&st.eleves.length)t+=`\n👤 Points de vigilance par stagiaire :\n`+st.eleves.map(x=>`• ${x.nom} : ${x.pts.join(' · ')}`).join('\n')+'\n';
+    else t+=`\n👤 Aucun point de vigilance particulier chez les stagiaires.\n`;
   }
-  if(obs)t+=`\n👀 Mes observations :\n${obs}\n`;
+  if(mode==='complet'&&obs)t+=`\n👀 Mes observations :\n${obs}\n`;
   t+=`\nHamid`;
   return t;
 }
