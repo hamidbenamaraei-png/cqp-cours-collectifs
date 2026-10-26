@@ -276,7 +276,9 @@ async function etatGeneral(){
         if(!c||!c.id)return;
         const s0=stag[c.id];
         if(st==='demande'){
-          if(!s0)stag[c.id]={id:c.id,nom:String(c.nom||'').trim(),prenom:String(c.prenom||'').trim(),statut:'attente',n:n+1,date:l[0]||''};
+          if(!s0)stag[c.id]={id:c.id,nom:String(c.nom||'').trim(),prenom:String(c.prenom||'').trim(),statut:'attente',n:n+1,date:l[0]||'',st:c.st==='apprenti'?'apprenti':'stagiaire'};
+        }else if(st==='type'){
+          if(s0)s0.st=c.st==='apprenti'?'apprenti':'stagiaire';
         }else if(['accepte','refuse','supprime','efface'].includes(st)){
           stag[c.id]=Object.assign(s0||{id:c.id,nom:String(c.nom||'').trim(),prenom:String(c.prenom||'').trim(),date:l[0]||''},{statut:st,n:n+1});
         }

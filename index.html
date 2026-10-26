@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex, nofollow, noarchive">
-<title>Espace stagiaires – CQP Cours collectifs</title>
+<title>Espace stagiaires / apprentis – CQP Cours collectifs</title>
 <style>
 :root{--bg:#10162b;--card:#1c2442;--line:#2c365c;--txt:#fff;--soft:#c9cfe6;--mute:#8a92b2;--or:#ff7a3d;--ok:#4cc38a;--ko:#ff5d6c;--bl:#4c8dff;--ja:#f5c451}
 *{box-sizing:border-box}
@@ -56,9 +56,9 @@ summary{cursor:pointer;font-weight:700}
 </head>
 <body>
 <div class="wrap" id="app"></div>
-<script src="commun.js?v=202610260329"></script>
-<script src="roue.js?v=202610260329"></script>
-<script src="fiches.js?v=202610260329"></script>
+<script src="commun.js?v=202610260759"></script>
+<script src="roue.js?v=202610260759"></script>
+<script src="fiches.js?v=202610260759"></script>
 <script>
 // ======= Mémoire du téléphone (nom, prénom, quiz envoyés, historique) =======
 function lire(k,d){try{const v=localStorage.getItem('cqp_'+k);return v?JSON.parse(v):d}catch(e){return d}}
@@ -70,35 +70,42 @@ let ECRAN = '';      // écran affiché (pour le chrono)
 let QUIZ_AFFICHE = null; // quiz affiché à l'écran
 
 // ======= Écran 1 : nom et prénom =======
+// « Mon espace stagiaire » ou « Mon espace apprenti », selon ce qu'il a choisi
+function monEspace(){return moi&&moi.st==='apprenti'?'Mon espace apprenti':'Mon espace stagiaire'}
 function ecranNom(){
   ECRAN='nom';
+  let st=moi&&moi.st||'';
   app.innerHTML = `<div class="tag">CQP Instructeur Fitness – Cours collectifs</div>
-  <h1>Espace stagiaires</h1>
+  <h1>Espace stagiaires / apprentis</h1>
   <div class="card o"><h2>Qui es-tu ?</h2>
-   <p style="margin:6px 0 0;padding:10px 12px;border-radius:10px;background:#3a2a1a;color:#ffd2b8;font-weight:700">⚠️ Fais bien attention à bien écrire ton nom et ton prénom, car tu ne pourras pas les modifier plus tard.</p>
+   <p style="margin:6px 0 0;padding:10px 12px;border-radius:10px;background:#3a2a1a;color:#ffd2b8;font-weight:700">⚠️ Fais bien attention à bien écrire ton nom et ton prénom, et à bien choisir stagiaire ou apprenti(e), car tu ne pourras pas les modifier plus tard.</p>
    <label for="n">Nom</label><input type="text" id="n" autocomplete="family-name" value="${esc(moi?moi.nom:'')}">
    <label for="p">Prénom</label><input type="text" id="p" autocomplete="given-name" value="${esc(moi?moi.prenom:'')}">
-   <div class="err hide" id="er">Écris ton nom et ton prénom.</div>
+   <label>Tu es :</label>
+   <div style="display:flex;gap:8px"><button class="btn ${st==='stagiaire'?'':'sec'}" style="margin:0" data-st="stagiaire">🎓 Stagiaire</button><button class="btn ${st==='apprenti'?'':'sec'}" style="margin:0" data-st="apprenti">🛠️ Apprenti(e)</button></div>
+   <div class="err hide" id="er">Écris ton nom et ton prénom, et choisis stagiaire ou apprenti(e).</div>
    <button class="btn" id="go">Entrer</button></div>`;
+  app.querySelectorAll('[data-st]').forEach(b=>b.onclick=()=>{st=b.dataset.st;app.querySelectorAll('[data-st]').forEach(x=>x.classList.toggle('sec',x.dataset.st!==st))});
   document.getElementById('go').onclick=()=>{
     const nom=document.getElementById('n').value.trim(), prenom=document.getElementById('p').value.trim();
-    if(!nom||!prenom){document.getElementById('er').classList.remove('hide');return}
-    confirmer(nom,prenom);
+    if(!nom||!prenom||!st){document.getElementById('er').classList.remove('hide');return}
+    confirmer(nom,prenom,st);
   };
   haut();
 }
 
 // ======= Confirmation du nom =======
-function confirmer(nom,prenom){
+function confirmer(nom,prenom,st){
   app.innerHTML = `<div class="tag">CQP Instructeur Fitness – Cours collectifs</div>
-  <h1>Espace stagiaires</h1>
+  <h1>Espace stagiaires / apprentis</h1>
   <div class="card o"><h2>C'est bien toi ?</h2>
-   <p style="font-size:22px;font-weight:800;margin:10px 0">${esc(prenom)} ${esc(nom)}</p>
+   <p style="font-size:22px;font-weight:800;margin:10px 0 4px">${esc(prenom)} ${esc(nom)}</p>
+   <p style="font-size:18px;margin:0 0 10px">${st==='apprenti'?'🛠️ Apprenti(e)':'🎓 Stagiaire'}</p>
    <p class="muted">Vérifie bien l'orthographe : tu ne pourras plus le modifier ensuite.</p>
    <button class="btn" id="oui">Oui, c'est moi</button>
    <button class="btn sec" id="non">Non, corriger</button></div>`;
-  document.getElementById('oui').onclick=()=>{moi={nom,prenom,id:nouvelId()}; ecrire('moi',moi); envoyerDemande(); attente(true);};
-  document.getElementById('non').onclick=()=>{moi={nom,prenom}; ecranNom(); moi=null;};
+  document.getElementById('oui').onclick=()=>{moi={nom,prenom,st,id:nouvelId()}; ecrire('moi',moi); envoyerDemande(); attente(true);};
+  document.getElementById('non').onclick=()=>{moi={nom,prenom,st}; ecranNom(); moi=null;};
   haut();
 }
 
@@ -137,7 +144,7 @@ function boutonQuiz(S,texte){
 function accueil(){
   ECRAN='accueil'; QUIZ_AFFICHE=null;
   const sessions={};
-  let h = `<div class="top"><div><div class="tag">Espace stagiaires</div><h1 style="margin-bottom:6px">Bonjour ${esc(moi.prenom)} 👋</h1></div></div>
+  let h = `<div class="top"><div><div class="tag">${esc(monEspace())}</div><h1 style="margin-bottom:6px">Bonjour ${esc(moi.prenom)} 👋</h1></div></div>
   <button class="btn sec" id="evo" style="margin:0 0 16px">📈 Mes révisions</button>`;
   const T=roueActive();
   if(T){
@@ -181,7 +188,7 @@ function revoirFiches(){
   ECRAN='fiches';
   const cats=Object.keys(FICHES_CATS).filter(k=>fxCles(k).some(c=>FICHES.includes(c)));
   if(cats.length===1)return revoirCategorie(cats[0],true);
-  let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace stagiaires</div><h1>📚 Pour réviser</h1>`;
+  let h=`<button class="back" id="bk">← Retour</button><div class="tag">${esc(monEspace())}</div><h1>📚 Pour réviser</h1>`;
   if(!cats.length)h+=`<p class="muted">Rien n'est ouvert pour l'instant.</p>`;
   cats.forEach(k=>{const c=FICHES_CATS[k];h+=`<button class="btn sec" data-fcat="${k}" style="text-align:left">${c.emoji} ${esc(c.titre)}</button>`});
   h+=`<button class="btn sec" id="bk2">← Retour à l'accueil</button>`;
@@ -204,11 +211,11 @@ function revoirCategorie(cat,seule){
 // ======= Accès : demande envoyée au formateur, qui accepte ou refuse =======
 function envoyerDemande(){
   ecrire('demande_at',Date.now());
-  return envoyerForm(FORM_QUIZ,{[EQ.journee]:'stagiaires',[EQ.statut]:'demande',[EQ.contenu]:JSON.stringify({id:moi.id,nom:moi.nom,prenom:moi.prenom})}).catch(()=>{});
+  return envoyerForm(FORM_QUIZ,{[EQ.journee]:'stagiaires',[EQ.statut]:'demande',[EQ.contenu]:JSON.stringify({id:moi.id,nom:moi.nom,prenom:moi.prenom,st:moi.st||'stagiaire'})}).catch(()=>{});
 }
 function attente(vientDEnvoyer){
   ECRAN='attente';
-  app.innerHTML = `<div class="tag">Espace stagiaires</div><h1>Bonjour ${esc(moi.prenom)} 👋</h1>
+  app.innerHTML = `<div class="tag">${esc(monEspace())}</div><h1>Bonjour ${esc(moi.prenom)} 👋</h1>
   <div class="card o"><h2>⏳ Ta demande est envoyée</h2>
    <p>Attends que Hamid t'accepte. Ensuite, ton espace s'ouvrira avec les diapos et le petit bilan de la journée.</p>
    <p class="muted">${vientDEnvoyer?"Ça peut prendre quelques minutes. ":""}Touche « Vérifier » de temps en temps.</p>
@@ -218,7 +225,7 @@ function attente(vientDEnvoyer){
 }
 function bloque(){
   ECRAN='bloque';
-  app.innerHTML = `<div class="tag">Espace stagiaires</div><h1>Bonjour ${esc(moi.prenom)}</h1>
+  app.innerHTML = `<div class="tag">${esc(monEspace())}</div><h1>Bonjour ${esc(moi.prenom)}</h1>
   <div class="card r" style="border-top-color:var(--ko)"><h2>Accès non actif</h2>
    <p>Ton accès à cet espace n'est pas (ou plus) actif. Si c'est une erreur, parles-en à Hamid.</p>
    <button class="btn sec" id="ver">🔄 Vérifier à nouveau</button></div>`;
@@ -237,6 +244,9 @@ async function verifier(){
   NOMS={};Object.values(g.stagiaires||{}).forEach(x=>NOMS[x.id]=x.prenom);
   if(!moi.id){moi.id=nouvelId();ecrire('moi',moi);envoyerDemande();return attente(true)}
   let s=g.stagiaires[moi.id];
+  // statut stagiaire / apprenti : celui d'Hamid (ou de l'inscription) fait foi
+  if(s&&s.st&&moi.st!==s.st){moi.st=s.st;ecrire('moi',moi)}
+  try{const lt=JSON.parse(localStorage.getItem('cqpf_local_types')||'{}')[moi.id];if(lt&&Date.now()-lt.at<15*60*1000&&moi.st!==lt.st){moi.st=lt.st;ecrire('moi',moi)}}catch(e){}
   // sur le téléphone du formateur (stagiaire de test) : sa décision locale compte tout de suite
   try{const ls=JSON.parse(localStorage.getItem('cqpf_localst')||'{}')[moi.id];if(ls&&(!s||s.statut==='attente'))s={id:moi.id,statut:ls.statut}}catch(e){}
   if(s&&s.statut==='accepte'){
@@ -403,7 +413,7 @@ function pastille(items){const ok=items.filter(x=>x.s==='ok').length;return ok==
 function evolution(){
   ECRAN='evolution'; QUIZ_AFFICHE=null;
   const h=lire('histo',[]);
-  let html=`<button class="back" id="bk">← Retour</button><div class="tag">Espace stagiaires</div><h1>📈 Mes révisions</h1>`;
+  let html=`<button class="back" id="bk">← Retour</button><div class="tag">${esc(monEspace())}</div><h1>📈 Mes révisions</h1>`;
   if(!h.length){
     html+=`<div class="card"><p style="margin:0">Ton évolution apparaîtra ici après ton premier quiz. 💪</p></div>`;
   }else{
@@ -468,7 +478,7 @@ function ecranRoue(){
   const T=roueActive();
   if(!T)return accueil();
   const mes=T.res&&T.res[moi.id];
-  let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace stagiaires</div><h1>🎡 La roue</h1>`;
+  let h=`<button class="back" id="bk">← Retour</button><div class="tag">${esc(monEspace())}</div><h1>🎡 La roue</h1>`;
   if(!Array.isArray(mes)||!mes.length){
     h+=`<div class="card j"><h2>⏳ La roue arrive bientôt</h2><p>Demande à Hamid : il va t'ajouter.</p><button class="btn" id="maj">🔄 Vérifier</button></div>`;
     app.innerHTML=h;
@@ -554,7 +564,7 @@ function deplierHisto(p){
 }
 function ecranMessage(titre,texte,classe){
   ECRAN='message';
-  app.innerHTML=`<div class="tag">Espace stagiaires</div><h1>Espace stagiaires</h1>
+  app.innerHTML=`<div class="tag">${esc(monEspace())}</div><h1>${esc(monEspace())}</h1>
    <div class="card ${classe||'o'}"><h2>${titre}</h2><p>${texte}</p><button class="btn" id="ok">Continuer</button></div>`;
   document.getElementById('ok').onclick=demarrer;
   haut();
@@ -578,7 +588,7 @@ async function traiterLien(t){
   };
   if(moi&&moi.nom&&!memeNom(moi.prenom+' '+moi.nom,nouveau.prenom+' '+nouveau.nom)){
     ECRAN='confirmer';
-    app.innerHTML=`<div class="tag">Espace stagiaires</div><h1>Attention</h1>
+    app.innerHTML=`<div class="tag">${esc(monEspace())}</div><h1>Attention</h1>
      <div class="card j"><h2>Ce téléphone est déjà à un autre nom</h2>
       <p>Il est enregistré au nom de <b>${esc(moi.prenom)} ${esc(moi.nom)}</b>.</p>
       <p>Veux-tu le remplacer par <b>${esc(nouveau.prenom)} ${esc(nouveau.nom)}</b> ?</p>

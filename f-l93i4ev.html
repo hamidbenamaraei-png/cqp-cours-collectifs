@@ -146,9 +146,9 @@ body.avec-barre .wrap{padding-bottom:120px}
 </head>
 <body>
 <div class="wrap" id="app"></div>
-<script src="commun.js?v=202610260329"></script>
-<script src="roue.js?v=202610260329"></script>
-<script src="fiches.js?v=202610260329"></script>
+<script src="commun.js?v=202610260759"></script>
+<script src="roue.js?v=202610260759"></script>
+<script src="fiches.js?v=202610260759"></script>
 <script>
 // ======= Réglages propres au formateur =======
 // Empreinte du code d'accès (le code lui-même n'est pas écrit ici)
@@ -205,6 +205,7 @@ async function chargerEtat(){
   // décisions prises sur ce téléphone depuis moins de 15 min (le temps que Google se mette à jour)
   const ls=lire('localst',{});
   Object.entries(ls).forEach(([id,v])=>{if(Date.now()-v.at<15*60*1000){STAG[id]=Object.assign(STAG[id]||{id,nom:v.nom,prenom:v.prenom},{statut:v.statut})}});
+  const lt=lire('local_types',{});Object.entries(lt).forEach(([id,v])=>{if(STAG[id]&&Date.now()-v.at<15*60*1000)STAG[id].st=v.st});
   JOURNEES.forEach(j=>{
     const loc=lire('local_'+j.id,null);
     if(loc && Date.now()-loc.at<15*60*1000){
@@ -282,23 +283,23 @@ async function demarrer(){
 function accueil(){
   let h=`<div class="tag">Espace formateur</div><h1>Bonjour Hamid 👋</h1>`;
   const nAtt=Object.values(STAG).filter(x=>x.statut==='attente').length, nAcc=Object.values(STAG).filter(x=>x.statut==='accepte').length;
-  h+=`<div class="card ${nAtt?'o':'g'}"><h2>👥 Mes stagiaires</h2>
-    <p style="margin:0">${nAcc} stagiaire${nAcc>1?'s':''} accepté${nAcc>1?'s':''}${nAtt?` · <b style="color:var(--or)">${nAtt} demande${nAtt>1?'s':''} en attente</b>`:''}</p>
-    <button class="btn ${nAtt?'':'sec'}" id="stg">${nAtt?'Voir les demandes':'Gérer mes stagiaires'}</button></div>`;
-  const rc=revisionCourante(REVS), ro=rc&&estOuvert(rc);
-  h+=`<div class="card j"><h2>🧠 Quiz de révision</h2>
-    <p style="margin:0" class="${rc?'':'muted'}">${rc?`${esc(rc.titre)} · ${ro?'<b style="color:var(--ok)">ouvert</b>':'caché aux stagiaires'}`:'Des questions de toutes les journées, depuis le début.'}</p>
-    <button class="btn sec" id="rev">Ouvrir les révisions</button></div>`;
-  h+=`<div class="card o"><h2>🎡 La roue</h2><p style="margin:0" class="muted">Répartition du cours, exercices de renforcement ou d'étirement, tirés au hasard. Sur ton téléphone seulement.</p>
-    <button class="btn sec" id="roue">Ouvrir la roue</button></div>`;
-  h+=`<div class="card"><h2>📋 Mes exercices</h2><p style="margin:0" class="muted">Renforcement musculaire, étirements et méthodes d'étirement. Tu choisis ce que les stagiaires peuvent voir pour réviser.</p>
-    <button class="btn sec" id="fiches">Ouvrir mes exercices</button></div>`;
   JOURNEES.slice().reverse().forEach(j=>{
     const o=estOuvert(ETAT[j.id]);
     h+=`<div class="card"><div class="tag" style="color:var(--soft)">${esc(j.titre)}</div><h2 style="margin-top:4px">${esc(j.theme)}</h2>
     <div class="statut" style="font-size:15px"><span class="dot" style="background:${o?'var(--ok)':'var(--mute)'}"></span>${esc(etatTexte(ETAT[j.id]))}</div>
     <button class="btn" data-j="${j.id}">Ouvrir cette journée</button></div>`});
-  h+=`<p class="muted"><a href="./" style="color:var(--mute)">Voir l'espace stagiaires</a> · <button class="link" id="out">Se déconnecter</button></p>
+  h+=`<div class="card ${nAtt?'o':'g'}"><h2>👥 Stagiaires / Apprentis</h2>
+    <p style="margin:0">${nAcc} accepté${nAcc>1?'s':''}${nAtt?` · <b style="color:var(--or)">${nAtt} demande${nAtt>1?'s':''} en attente</b>`:''}</p>
+    <button class="btn ${nAtt?'':'sec'}" id="stg">${nAtt?'Voir les demandes':'Gérer la liste'}</button></div>`;
+  h+=`<div class="card"><h2>📋 Exercices</h2><p style="margin:0" class="muted">Renforcement musculaire, étirements et méthodes d'étirement. Tu choisis ce que les stagiaires peuvent voir pour réviser.</p>
+    <button class="btn sec" id="fiches">Ouvrir les exercices</button></div>`;
+  h+=`<div class="card o"><h2>🎡 La roue</h2><p style="margin:0" class="muted">Répartition du cours, exercices de renforcement ou d'étirement, tirés au hasard. Sur ton téléphone seulement.</p>
+    <button class="btn sec" id="roue">Ouvrir la roue</button></div>`;
+  const rc=revisionCourante(REVS), ro=rc&&estOuvert(rc);
+  h+=`<div class="card j"><h2>🧠 Quiz de révision</h2>
+    <p style="margin:0" class="${rc?'':'muted'}">${rc?`${esc(rc.titre)} · ${ro?'<b style="color:var(--ok)">ouvert</b>':'caché aux stagiaires'}`:'Des questions de toutes les journées, depuis le début.'}</p>
+    <button class="btn sec" id="rev">Ouvrir les révisions</button></div>`;
+  h+=`<p class="muted"><a href="./" style="color:var(--mute)">Voir l'espace stagiaires / apprentis</a> · <button class="link" id="out">Se déconnecter</button></p>
   <p class="muted"><button class="link" id="rz">Pour mes tests : changer de nom dans l'espace stagiaires (sur ce téléphone)</button></p><div class="ok hide" id="rzok">✅ C'est fait : l'espace stagiaires te redemandera ton nom.</div>`;
   app.innerHTML=h;
   app.querySelectorAll('[data-j]').forEach(b=>b.onclick=()=>journee(JOURNEES.find(j=>j.id===b.dataset.j)));
@@ -313,6 +314,8 @@ function accueil(){
 
 // ======= Écran : mes stagiaires =======
 function estTest(x){return !!(x&&String(x.id||'').startsWith('test-'))}
+function typeTxt(x){return x&&x.st==='apprenti'?'Apprenti(e)':'Stagiaire'}
+function typeBtn(x){return ` · <button class="link" data-type="${x.id}" style="color:var(--soft)">${typeTxt(x)}</button>`}
 function acceptes(){return Object.values(STAG).filter(x=>x.statut==='accepte').sort((a,b)=>(a.nom+a.prenom).localeCompare(b.nom+b.prenom,'fr'))}
 async function decider(liste,statut){
   for(const x of liste){
@@ -325,16 +328,16 @@ function mesStagiaires(msg){
   const tous=Object.values(STAG);
   const att=tous.filter(x=>x.statut==='attente'), acc=acceptes(), aut=tous.filter(x=>x.statut==='refuse'||x.statut==='supprime');
   const doublon=x=>acc.some(a=>a.id!==x.id&&memeNom(a.prenom+' '+a.nom,x.prenom+' '+x.nom));
-  let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>👥 Mes stagiaires</h1>
+  let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>👥 Stagiaires / Apprentis</h1>
   ${msg?`<div class="ok" style="margin:-6px 0 14px">${msg}</div>`:''}
   <div class="card o"><h2>Demandes en attente (${att.length})</h2>`;
   if(!att.length)h+=`<p class="muted" style="margin:0">Aucune demande pour l'instant.</p>`;
-  att.forEach(x=>{h+=`<div class="stag"><b>${esc(x.prenom)} ${esc(x.nom)}</b>${doublon(x)?`<div class="d" style="color:var(--ja)">⚠️ Même nom qu'un stagiaire déjà accepté (deuxième téléphone ou faux profil ?)</div>`:''}
+  att.forEach(x=>{h+=`<div class="stag"><span><b>${esc(x.prenom)} ${esc(x.nom)}</b>${typeBtn(x)}</span>${doublon(x)?`<div class="d" style="color:var(--ja)">⚠️ Même nom qu'un stagiaire déjà accepté (deuxième téléphone ou faux profil ?)</div>`:''}
     <div style="display:flex;gap:8px"><button class="btn small" data-acc="${x.id}">✅ Accepter</button><button class="btn small ko" data-ref="${x.id}">❌ Refuser</button></div></div>`});
   if(att.length>1)h+=`<button class="btn ko" id="toutref">❌ Tout refuser (${att.length})</button>`;
   h+=`</div><div class="card g"><h2>Stagiaires acceptés (${acc.length})</h2>`;
   if(!acc.length)h+=`<p class="muted" style="margin:0">Personne pour l'instant.</p>`;
-  acc.forEach(x=>{h+=`<div class="stag"><b>${esc(x.prenom)} ${esc(x.nom)}</b><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn small" data-bil="${x.id}">📊 Bilan</button><button class="btn small ko" data-sup="${x.id}">🗑️ Supprimer</button></div></div>`});
+  acc.forEach(x=>{h+=`<div class="stag"><span><b>${esc(x.prenom)} ${esc(x.nom)}</b>${typeBtn(x)}</span><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn small" data-bil="${x.id}">📊 Bilan</button><button class="btn small ko" data-sup="${x.id}">🗑️ Supprimer</button></div></div>`});
   h+=`</div>`;
   if(aut.length){h+=`<div class="card"><h2>Refusés ou supprimés (${aut.length})</h2><p class="muted" style="margin-top:0">Ils n'ont pas accès. Tu peux les réaccepter en cas d'erreur.</p>`;
     aut.forEach(x=>{h+=`<div class="row" style="align-items:center"><span>${esc(x.prenom)} ${esc(x.nom)} <span class="muted">(${x.statut==='refuse'?'refusé':'supprimé'})</span></span><span style="display:flex;gap:6px;flex:none"><button class="btn small sec" style="margin:0" data-acc="${x.id}">↩️ Réaccepter</button><button class="btn small ko" style="margin:0" data-eff="${x.id}">🗑️ Effacer</button></span></div>`});
@@ -374,6 +377,12 @@ function mesStagiaires(msg){
   app.querySelectorAll('[data-ref]').forEach(b=>b.onclick=()=>{const x=STAG[b.dataset.ref];agir(b,[x],'refuse',`${esc(x.prenom)} ${esc(x.nom)} est refusé.`)});
   app.querySelectorAll('[data-sup]').forEach(b=>b.onclick=()=>{const x=STAG[b.dataset.sup];
     if(confirm(`Supprimer ${x.prenom} ${x.nom} ?\n\nIl n'aura plus accès à l'espace stagiaires et ses réponses ne compteront plus dans tes statistiques. Tu pourras le réaccepter plus tard.`))agir(b,[x],'supprime',`🗑️ ${esc(x.prenom)} ${esc(x.nom)} est supprimé.`)});
+  app.querySelectorAll('[data-type]').forEach(b=>b.onclick=async()=>{const x=STAG[b.dataset.type], nv=x.st==='apprenti'?'stagiaire':'apprenti';
+    if(!confirm(`${x.prenom} ${x.nom} est noté « ${typeTxt(x)} ».\n\nLe changer en « ${nv==='apprenti'?'Apprenti(e)':'Stagiaire'} » ?`))return;
+    b.textContent='…';
+    try{await envoyerForm(FORM_QUIZ,{[EQ.journee]:'stagiaires',[EQ.statut]:'type',[EQ.contenu]:JSON.stringify({id:x.id,st:nv})})}catch(e){alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");return mesStagiaires()}
+    const lt=lire('local_types',{});lt[x.id]={st:nv,at:Date.now()};ecrire('local_types',lt);x.st=nv;
+    const y=window.scrollY;mesStagiaires(`✅ ${esc(x.prenom)} ${esc(x.nom)} est maintenant « ${typeTxt(x)} ».`);window.scrollTo(0,y)});
   app.querySelectorAll('[data-bil]').forEach(b=>b.onclick=()=>bilanStagiaire(STAG[b.dataset.bil]));
   app.querySelectorAll('[data-eff]').forEach(b=>b.onclick=()=>{const x=STAG[b.dataset.eff];
     if(confirm(`Effacer ${x.prenom} ${x.nom} de ta liste ?`))agir(b,[x],'efface',`🗑️ ${esc(x.prenom)} ${esc(x.nom)} est effacé de ta liste.`)});
@@ -1190,7 +1199,7 @@ function roueSimple(){
   // fiche de la case tirée (réponses pour poser des questions) — sur ce téléphone, pas en projection
   const montrerFiche=(c,qui)=>{const el=document.getElementById('rs-fiche');
     const f=(cat!=='repart'&&typeof fxCase==='function')?fxCase(cat,c):'';
-    el.innerHTML=f?`<div class="card g"><div class="tag">📋 Les réponses${qui?' · '+esc(qui):''}</div><h2 style="margin-top:4px">${esc(c)}</h2><p class="muted" style="margin-top:0">Pour poser tes questions. Les mêmes fiches que dans « Mes exercices ».</p>${f}</div>`:''};
+    el.innerHTML=f?`<div class="card g"><div class="tag">📋 Les réponses${qui?' · '+esc(qui):''}</div><h2 style="margin-top:4px">${esc(c)}</h2><p class="muted" style="margin-top:0">Pour poser tes questions. Les mêmes fiches que dans « Exercices ».</p>${f}</div>`:''};
   dessinerRoue();dessinerListe();
   app.querySelectorAll('[data-cat]').forEach(b=>b.onclick=()=>{if(ROUE_SIMPLE_TOURNE)return;ecrire('roue_cat',b.dataset.cat);quitter();roueSimple()});
   app.querySelectorAll('[data-zone]').forEach(b=>b.onclick=()=>{if(ROUE_SIMPLE_TOURNE)return;const k=b.dataset.zone;let z=zones.includes(k)?zones.filter(x=>x!==k):zones.concat(k);if(!z.length)return;ecrire('roue_zones_'+cat,z);quitter();roueSimple()});
@@ -1249,7 +1258,7 @@ async function fichesChanger(cle,montrer){
 }
 function mesExercices(msg){
   const nb=cat=>fxCles(cat).filter(k=>FICHES_OUV.includes(k)).length;
-  let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>📋 Mes exercices</h1>
+  let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>📋 Exercices</h1>
   ${msg?`<div class="ok">${esc(msg)}</div>`:''}
   <p class="muted" style="margin-top:0">Touche une catégorie. Dans chaque partie, tu choisis ce que les stagiaires peuvent voir pour réviser.</p>`;
   Object.entries(FICHES_CATS).forEach(([k,c])=>{const o=nb(k),t=fxCles(k).length;
@@ -1264,7 +1273,7 @@ function ecranFiches(cat,msg,ouverte){
   const C=FICHES_CATS[cat];
   const tg=cle=>{const on=FICHES_OUV.includes(cle);
     return `<button class="btn small ${on?'':'sec'} fx-tg" data-tg="${cle}" data-on="${on?1:0}">${on?'👀 Montré aux stagiaires · toucher pour cacher':'🙈 Caché aux stagiaires · toucher pour montrer'}</button>`};
-  let h=`<button class="back" id="bk">← Retour</button><div class="tag">📋 Mes exercices</div><h1>${C.emoji} ${esc(C.titre)}</h1>
+  let h=`<button class="back" id="bk">← Retour</button><div class="tag">📋 Exercices</div><h1>${C.emoji} ${esc(C.titre)}</h1>
   ${msg?`<div class="${msg.startsWith('⚠️')?'err':'ok'}">${esc(msg)}</div>`:''}
   <p class="muted" style="margin-top:0">Touche une partie pour l'ouvrir ou la refermer.</p>`;
   h+= cat==='meth' ? fxMethodes(tg('meth')) : C.parties.map(p=>fxPartie(cat,p,tg(cat+'.'+p.k))).join('');
