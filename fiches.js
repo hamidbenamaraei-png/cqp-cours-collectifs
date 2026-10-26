@@ -806,7 +806,7 @@ const BONHOMMES={
 "etir|Ischios|Allongé sur le dos":[bh(BH_DOS,{n:{l:{a:[110,110]},a:[92.5,107.3]},f:{a:[90,108]}})],
 "etir|Ischios|Assis, jambes tendues":[{h:[80,125],t:35,hd:28,n:{l:{a:[0,0]},a:[128,120,[0,1]]},f:{l:{a:[0,0]},a:[126,121,[0,1]]}}],
 "etir|Ischios|Assis, une jambe tendue":[{h:[80,125],t:35,hd:28,n:{l:{a:[0,0]},a:[127,120,[0,1]]},f:{l:{j:[101,121],e:[92,126],p:0},a:[124,121,[0,1]]}}],
-"etir|Ischios|Debout, pieds écartés":[{h:[85,82],t:-20,tc:3,hd:-60,n:{l:[100,128],a:[114,127,[1,0]]},f:{l:[97,128],a:[112,127,[1,0]]}}],
+"etir|Ischios|Debout, pieds écartés":[{raw:[["b",91,79,94,128,103,128],["b",112,104,107,127],["o",93,78,97,128,107,128],["o",93,78,114,104],["h",120,114],["o",114,104,110,127]]}],
 "etir|Ischios|Debout, un talon posé devant":[{h:[93,86],t:55,hd:60,n:{l:[118,128,1,'f'],a:[97,84]},f:{l:[84,128],a:[95,85]}}],
 "etir|Fessiers|Allongé, genou à la poitrine":[bh(BH_DOS,{n:{l:{a:[135,-15]},a:[94,113]},f:{a:[92,114]}})],
 "etir|Fessiers|Allongé, cheville sur le genou":[{h:[100,128],t:180,hd:150,n:{l:{j:[107,110],e:[88,105],p:150},a:[91,113]},f:{l:{a:[120,30]},a:[89,114]}}],
@@ -879,7 +879,7 @@ function fxCase(cat,nomCase){
   let h='';
   if(cat==='etir'){const ms=[...new Set(c.v.map(v=>/^Postural/.test(v[5]||'')?'Postural':v[5]).filter(Boolean))];h+=fxLigne('Méthodes possibles : ',ms.join(', '))}
   if(c.m)h+=fxLigne('Avec matériel',c.m);
-  return`<div class="fx-case">${h}${c.v.map(v=>fxVar(cat,Object.assign([...v],{_c:c.c}))).join('')}</div>`;
+  return`<div class="fx-case fiche" style="border-left-color:var(--or)">${h}${c.v.map(v=>fxVar(cat,Object.assign([...v],{_c:c.c}))).join('')}</div>`;
 }
 function fxPartie(cat,p,avant){
   return `<div class="card ${FICHES_COULEURS[p.k]||''}">${avant||''}<details class="fx-p"><summary class="fx-ps"><span class="fx-fl">▶</span><h2>${fxEsc(p.t)}</h2></summary>`+
