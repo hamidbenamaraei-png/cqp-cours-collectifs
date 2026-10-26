@@ -41,19 +41,54 @@ function muVitesse(){const I=MU_INFO[MU_EN];const v=I&&I.bpm0&&I.bpm?I.bpm/I.bpm
 async function muJouer(id,file){
   const x=await muOp('readonly',s=>s.get(id));if(!x)return;
   if(MU_URL)URL.revokeObjectURL(MU_URL);MU_URL=URL.createObjectURL(x.blob);
-  MU_EN=id;if(file)MU_FILE=file;MU_INFO[id]={peaks:x.peaks||null,bpm0:x.bpmMan||x.bpm0||null,bpmAuto:x.bpm0||null,bpm:x.bpm||null};
+  MU_EN=id;if(file)MU_FILE=file;MU_INFO[id]={peaks:x.peaks||null,bpm0:x.bpmMan||x.bpm0||null,bpmAuto:x.bpm0||null,bpm:x.bpm||null,tbStart:x.tbStart==null?null:x.tbStart};
   muAudio.src=MU_URL;muVitesse();try{await muAudio.play()}catch(e){}
   muBarre();
   if(!x.peaks){try{const a=await muAnalyser(x.blob);await muMaj(id,y=>{y.peaks=a.peaks;y.bpm0=a.bpm0});
     Object.assign(MU_INFO[id],{peaks:a.peaks,bpmAuto:a.bpm0});if(!x.bpmMan)MU_INFO[id].bpm0=a.bpm0;if(MU_EN===id){muVitesse();muBarre()}}catch(e){MU_INFO[id].err=1;if(MU_EN===id)muBarre()}}}
+// ---- ⏱️ chrono Tabata : d'après le format (30/10…) et le début marqué une fois par musique ----
+const MU_CH='cqpf_mu_chrono';
+function muChOn(){try{return localStorage.getItem(MU_CH)!=='0'}catch(e){return true}}
+function muFmtWR(x){const m=String(x&&x.fmt||'').match(/^(\d+)\/(\d+)$/);return m?[+m[1],+m[2]]:null}
+function muEtat(){const x=MU_LISTE.find(m=>m.id===MU_EN),I=MU_INFO[MU_EN]||{},wr=muFmtWR(x);if(!x||!wr||I.tbStart==null)return null;
+  const [w,r]=wr,c=w+r,t=(muAudio.currentTime||0)-I.tbStart,rate=muAudio.playbackRate||1,d=muAudio.duration||0;
+  const N=Math.max(1,Math.floor((d-I.tbStart+r)/c));
+  if(t<0)return{ph:'p',rest:-t/rate,k:0,N};
+  const k=Math.floor(t/c),u=t-k*c;if(k>=N)return{ph:'f',rest:0,k:N,N};
+  return u<w?{ph:'w',rest:(w-u)/rate,k:k+1,N}:{ph:'r',rest:(c-u)/rate,k:k+1,N}}
+const MU_PH={p:['⏳ PRÉPARE-TOI','#2c365c'],w:['💪 EFFORT','#1f7a4d'],r:['😮‍💨 REPOS','#9b2c35'],f:['🎉 TERMINÉ','#2c365c']};
+function muChronoHtml(x){const wr=muFmtWR(x);if(!wr)return '';const I=MU_INFO[MU_EN]||{},on=muChOn();
+  return `<div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
+   <div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><b style="font-size:17px">⏱️ Chrono ${wr[0]}/${wr[1]}</b><button class="btn small ${on?'':'sec'}" style="margin:0" id="mu-chon">${on?'Activé':'Désactivé'}</button></div>
+   ${!on?'':I.tbStart==null?`<p class="muted" style="font-size:14px;margin:8px 0 0">Touche ce bouton au moment exact où le premier effort commence (une seule fois pour cette musique).</p><button class="btn" id="mu-deb">⏱️ Le Tabata commence ici</button>`
+   :`<div id="mu-ch" style="margin-top:10px;border-radius:14px;padding:12px;text-align:center;color:#fff"><div id="mu-chp" style="font-size:20px;font-weight:900;letter-spacing:1px"></div><div id="mu-chs" style="font-size:56px;font-weight:900;line-height:1.1;font-variant-numeric:tabular-nums"></div><div id="mu-cht" style="font-size:16px;font-weight:700;opacity:.9"></div></div>
+     <div style="display:flex;gap:8px;margin-top:8px"><button class="btn small" style="margin:0;flex:1" id="mu-plein">⛶ Plein écran</button><button class="btn small sec" style="margin:0" id="mu-rec">Recaler le début</button></div>`}</div>`}
+function muChrono(){const e=muEtat();const T=(z,id)=>{const el=document.getElementById(id);return el};
+  for(const pre of ['mu-','mu-g']){const box=document.getElementById(pre+'ch');if(!box)continue;
+    if(!e){box.style.display='none';continue}box.style.display=pre==='mu-g'?'flex':'';const [txt,col]=MU_PH[e.ph];box.style.background=col;
+    document.getElementById(pre+'chp').textContent=(muAudio.paused&&e.ph!=='f'?'⏸️ ':'')+txt;
+    document.getElementById(pre+'chs').textContent=e.ph==='f'?'0:00':muTemps(Math.ceil(e.rest));
+    document.getElementById(pre+'cht').textContent=e.ph==='p'?`${e.N} tours`:`Tour ${Math.min(e.k,e.N)} / ${e.N}`}}
+function muChronoBranche(x){const on=document.getElementById('mu-chon');if(!on)return;
+  on.onclick=()=>{try{localStorage.setItem(MU_CH,muChOn()?'0':'1')}catch(e){}muBarre()};
+  const deb=document.getElementById('mu-deb');if(deb)deb.onclick=async()=>{const id=MU_EN,t=+(muAudio.currentTime||0).toFixed(2);MU_INFO[id].tbStart=t;await muMaj(id,y=>{y.tbStart=t});muBarre()};
+  const rec=document.getElementById('mu-rec');if(rec)rec.onclick=async()=>{const id=MU_EN;MU_INFO[id].tbStart=null;await muMaj(id,y=>{delete y.tbStart});muBarre()};
+  const pl=document.getElementById('mu-plein');if(pl)pl.onclick=()=>{const g=document.createElement('div');g.id='mu-gros';
+    g.style.cssText='position:fixed;inset:0;z-index:60;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;text-align:center';
+    g.innerHTML=`<div id="mu-gch" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff"><div id="mu-gchp" style="font-size:9vw;font-weight:900;letter-spacing:2px"></div><div id="mu-gchs" style="font-size:38vw;font-weight:900;line-height:1;font-variant-numeric:tabular-nums"></div><div id="mu-gcht" style="font-size:7vw;font-weight:800;opacity:.9"></div></div>
+      <div style="position:absolute;bottom:24px;left:0;right:0;display:flex;gap:10px;justify-content:center"><button class="btn sec" style="margin:0;width:auto;padding:14px 22px" id="mu-gpp">⏯️</button><button class="btn sec" style="margin:0;width:auto;padding:14px 22px" id="mu-gx">✕ Fermer</button></div>`;
+    document.body.appendChild(g);try{g.requestFullscreen&&g.requestFullscreen().catch(()=>{})}catch(e){}
+    document.getElementById('mu-gpp').onclick=()=>{muAudio.paused?muAudio.play().catch(()=>{}):muAudio.pause()};
+    document.getElementById('mu-gx').onclick=()=>{try{document.fullscreenElement&&document.exitFullscreen()}catch(e){}g.remove()};muChrono()};
+  muChrono()}
 function muSuivante(d){const i=MU_FILE.indexOf(MU_EN);const j=i+d;if(i<0||j<0||j>=MU_FILE.length){muBarre();return}muJouer(MU_FILE[j])}
 muAudio.addEventListener('ended',()=>muSuivante(1));
 let muGlisse=false;
 function muAvance(){const w=document.getElementById('mu-onde');const d=muAudio.duration||0,t=muAudio.currentTime||0,f=d?t/d:0;
   if(w&&!muGlisse){const R=w.querySelectorAll('rect');const k=Math.floor(f*R.length);R.forEach((r,i)=>r.setAttribute('fill',i<k?'#f08a4b':'#3d4870'));const c=w.querySelector('line');if(c){c.setAttribute('x1',f*320);c.setAttribute('x2',f*320)}}
   const a=document.getElementById('mu-t0'),b=document.getElementById('mu-t1');if(a&&!muGlisse)a.textContent=muTemps(t);if(b)b.textContent=muTemps(d)}
-muAudio.addEventListener('timeupdate',muAvance);
-muAudio.addEventListener('play',()=>muBarre());muAudio.addEventListener('pause',()=>muBarre());
+muAudio.addEventListener('timeupdate',muAvance);setInterval(()=>{if(!muAudio.paused)muChrono()},200);
+muAudio.addEventListener('play',()=>{muBarre();muChrono()});muAudio.addEventListener('pause',()=>{muBarre();muChrono()});
 function muTemps(s){s=Math.floor(s||0);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
 function muBarre(){const b=document.getElementById('mu-lect');if(!b)return;const x=MU_LISTE.find(m=>m.id===MU_EN);
   if(!x){b.innerHTML='<p class="muted" style="margin:0">Touche une musique pour la lancer.</p>';return}
@@ -65,6 +100,7 @@ function muBarre(){const b=document.getElementById('mu-lect');if(!b)return;const
    <div style="background:#141a33;border-radius:12px;padding:8px">${onde}</div>
    <div class="muted" style="font-size:14px;margin-top:4px;display:flex;justify-content:space-between"><span id="mu-t0">0:00</span><span id="mu-t1">0:00</span></div>
    <div style="display:flex;gap:8px;margin-top:8px"><button class="btn sec" style="margin:0" id="mu-pr">⏮️</button><button class="btn" style="margin:0" id="mu-pp">${muAudio.paused?'▶️ Lecture':'⏸️ Pause'}</button><button class="btn sec" style="margin:0" id="mu-su">⏭️</button></div>
+   ${muChronoHtml(x)}
    <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><b style="font-size:17px">🥁 Tempo</b><span class="muted" style="font-size:14px" id="mu-b0">${b0?`BPM d'origine : ≈ ${Math.round(b0)} <button class="link" id="mu-cor" style="padding:0">corriger</button>`:(I.err?'BPM inconnu <button class="link" id="mu-cor" style="padding:0">l\'écrire</button>':'Calcul du BPM…')}</span></div>
     ${b0?`<div style="display:flex;align-items:center;gap:10px;margin-top:10px"><button class="btn sec" style="margin:0;width:64px;font-size:26px" id="mu-bm" aria-label="Moins vite">−</button>
@@ -82,8 +118,8 @@ function muBarre(){const b=document.getElementById('mu-lect');if(!b)return;const
     w.onpointerdown=e=>{muGlisse=true;try{w.setPointerCapture(e.pointerId)}catch(_){}voir(ou(e))};
     w.onpointermove=e=>{if(muGlisse)voir(ou(e))};
     w.onpointerup=w.onpointercancel=e=>{if(!muGlisse)return;muGlisse=false;const f=ou(e);if(muAudio.duration)muAudio.currentTime=f*muAudio.duration;muAvance()}}
-  muAvance();
-  const regler=async v=>{const I=MU_INFO[MU_EN];if(!I||!I.bpm0)return;v=Math.round(Math.min(I.bpm0*1.25,Math.max(I.bpm0*.75,v)));I.bpm=v;muVitesse();const id=MU_EN;await muMaj(id,y=>{y.bpm=v});muBarre()};
+  muAvance();muChronoBranche(x);
+  const regler=async v=>{const I=MU_INFO[MU_EN];if(!I||!I.bpm0)return;v=Math.round(Math.min(I.bpm0*4,Math.max(I.bpm0*.25,v)));I.bpm=v;muVitesse();const id=MU_EN;await muMaj(id,y=>{y.bpm=v});muBarre()};
   const bm=document.getElementById('mu-bm'),bpb=document.getElementById('mu-bp'),br=document.getElementById('mu-br'),cor=document.getElementById('mu-cor');
   if(bm)bm.onclick=()=>regler(Math.round(MU_INFO[MU_EN].bpm||MU_INFO[MU_EN].bpm0)-2);
   if(bpb)bpb.onclick=()=>regler(Math.round(MU_INFO[MU_EN].bpm||MU_INFO[MU_EN].bpm0)+2);
