@@ -212,13 +212,6 @@ const RENFO=[
 "c": "Épaules",
 "v": [
 [
-"Touches d'épaules en planche",
-0,
-"En planche haute, les mains sous les épaules, les pieds un peu écartés pour l'équilibre, le corps bien droit.",
-"Touche l'épaule opposée avec une main, repose-la, puis change de main. Pense à respirer.",
-"Le bassin ne tourne pas et ne se balance pas, les abdominaux et les fessiers sont gainés. Version plus facile : sur les genoux."
-],
-[
 "Développé épaules à la barre",
 0,
 "Pieds largeur du bassin, prise de mains en pronation (paumes vers l'avant) largeur des épaules, la barre au niveau des clavicules, le dos bien droit.",
@@ -433,7 +426,14 @@ const RENFO=[
 "Tourne le buste d'un côté puis de l'autre en amenant la charge près de la hanche. Souffle à chaque rotation.",
 "Garde le dos droit, ne t'arrondis pas, les abdominaux gainés, prends une charge légère.",
 ],
-["Genoux-coudes alternés, allongé sur le dos", 0, "Allongé sur le dos, les mains derrière la nuque, les coudes écartés, les jambes fléchies à 90 degrés, les pieds largeur du bassin.", "Relève la poitrine et amène un coude vers le genou opposé, l'autre jambe se tend devant toi. Puis change de côté, comme un pédalage. Souffle à chaque rotation.", "Garde les coudes écartés, ne tire pas sur les cervicales, le bas du dos reste au sol. Mouvement contrôlé, sans élan."]
+["Genoux-coudes alternés, allongé sur le dos", 0, "Allongé sur le dos, les mains derrière la nuque, les coudes écartés, les jambes fléchies à 90 degrés, les pieds largeur du bassin.", "Relève la poitrine et amène un coude vers le genou opposé, l'autre jambe se tend devant toi. Puis change de côté, comme un pédalage. Souffle à chaque rotation.", "Garde les coudes écartés, ne tire pas sur les cervicales, le bas du dos reste au sol. Mouvement contrôlé, sans élan."],
+[
+"Touches d'épaules en planche",
+0,
+"En planche haute, les mains sous les épaules, les pieds un peu écartés pour l'équilibre, le corps bien droit.",
+"Touche l'épaule opposée avec une main, repose-la, puis change de main. Pense à respirer.",
+"Le bassin ne tourne pas et ne se balance pas, les abdominaux et les fessiers sont gainés. Version plus facile : sur les genoux."
+]
 ]
 },
 {
@@ -756,7 +756,7 @@ const BONHOMMES={
 "renfo|Poitrine|Écarté couché aux haltères":[
   {nog:1,raw:[['o',94,64,119,60,126,56],['o',94,76,119,80,126,84],['o',94,63,94,77],['o',50,70,94,70],['o',50,57,50,83],['h',36,70],['o',50,57,58,64],['o',50,83,58,76]],pr:[['step',28,60,96,20],['halt',[60,64],0],['halt',[60,76],0]]},
   {nog:1,raw:[['o',94,64,119,60,126,56],['o',94,76,119,80,126,84],['o',94,63,94,77],['o',50,70,94,70],['o',50,57,50,83],['h',36,70],['o',50,57,46,38,50,19],['o',50,83,46,102,50,121]],pr:[['step',28,60,96,20],['halt',[50,19],0],['halt',[50,121],0]]}],
-"renfo|Épaules|Touches d'épaules en planche":[BH_PH,bh(BH_PH,{n:{a:[133,96,[1,1]]},f:{a:[140,128]}})],
+"renfo|Obliques|Touches d'épaules en planche":[BH_PH,bh(BH_PH,{n:{a:[133,96,[1,1]]},f:{a:[140,128]}})],
 "renfo|Épaules|Développé épaules à la barre":[bh(BH_DEB,{n:{a:[111,36,[.3,1]]},f:{a:[108,38,[.3,1]]},pr:[['barre','n.po']]}),bh(BH_DEB,{n:{a:[101,-5]},f:{a:[99,-5]},pr:[['barre','n.po']]})],
 "renfo|Épaules|Développé épaules aux haltères":[bh(BH_FDEB,{n:{a:[131,16]},f:{a:[69,16]},pr:[['halt','n.po'],['halt','f.po']]}),bh(BH_FDEB,{n:{a:[105,-4]},f:{a:[95,-4]},pr:[['halt','n.po'],['halt','f.po']]})],
 "renfo|Épaules|Élévations latérales aux haltères":[bh(BH_FDEB,{n:{a:[117,74]},f:{a:[83,74]},pr:[['halt','n.po',90],['halt','f.po',90]]}),bh(BH_FDEB,{n:{a:[151,38,[0,1]]},f:{a:[49,38,[0,1]]},pr:[['halt','n.po',90],['halt','f.po',90]]})],
