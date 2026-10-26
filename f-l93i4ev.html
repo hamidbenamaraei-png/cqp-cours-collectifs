@@ -1170,6 +1170,7 @@ function roueSimple(){
       <button class="roue-son" id="rs-proj">📽️ Projeter</button>
     </div>
   </div>
+  <div id="rs-fiche"></div>
   <div class="card"><h2>📋 La liste · ${esc(ROUE_SIMPLE_CATS[cat].titre)}</h2><div id="rs-liste"></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn small sec" id="rs-copie">📋 Copier la liste</button><button class="btn small ko" id="rs-eff">🗑️ Effacer la liste</button></div>
     <div class="ok hide" id="rs-ok"></div>
@@ -1180,9 +1181,14 @@ function roueSimple(){
   const dessinerRoue=()=>{const C=restantes();R=creerRoue(document.getElementById('rs-boite'),C.map(t=>({t})),{titre:ROUE_SIMPLE_CATS[cat].titre});
     const tot=zoneObj().cases.length;document.getElementById('rs-reste').textContent=C.length<tot?`Il reste : ${C.join(', ')}`:`${tot} cases sur la roue`};
   const dessinerListe=()=>{const L=liste();
-    document.getElementById('rs-liste').innerHTML=L.length?L.map((x,k)=>`<div class="row" style="align-items:center"><span><b>${esc(x.n)}</b> → ${esc(x.r)}</span><button class="link" data-del="${k}" style="color:var(--ko)">✕</button></div>`).join(''):'<p class="muted" style="margin:0 0 8px">Personne pour l\'instant.</p>';
+    document.getElementById('rs-liste').innerHTML=L.length?L.map((x,k)=>`<div class="row" style="align-items:center"><span><b>${esc(x.n)}</b> → <button class="link" data-vf="${k}" style="color:inherit;text-decoration:underline">${esc(x.r)}</button></span><button class="link" data-del="${k}" style="color:var(--ko)">✕</button></div>`).join(''):'<p class="muted" style="margin:0 0 8px">Personne pour l\'instant.</p>';
+    app.querySelectorAll('[data-vf]').forEach(b=>b.onclick=()=>{const x=liste()[+b.dataset.vf];if(x){montrerFiche(x.r,x.n);document.getElementById('rs-fiche').scrollIntoView({behavior:'smooth'})}});
     app.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{const L2=liste();L2.splice(+b.dataset.del,1);ecrire('roue_liste_'+cat,L2);dessinerListe();dessinerRoue()});
     document.getElementById('rs-noms').innerHTML=acc.map(x=>x.prenom+' '+x.nom).filter(n=>!L.some(y=>memeNom(y.n,n))).map(n=>`<option value="${esc(n)}">`).join('')};
+  // fiche de la case tirée (réponses pour poser des questions) — sur ce téléphone, pas en projection
+  const montrerFiche=(c,qui)=>{const el=document.getElementById('rs-fiche');
+    const f=(cat!=='repart'&&typeof fxCase==='function')?fxCase(cat,c):'';
+    el.innerHTML=f?`<div class="card g"><div class="tag">📋 Les réponses${qui?' · '+esc(qui):''}</div><h2 style="margin-top:4px">${esc(c)}</h2><p class="muted" style="margin-top:0">Pour poser tes questions. Les mêmes fiches que dans « Mes exercices ».</p>${f}</div>`:''};
   dessinerRoue();dessinerListe();
   app.querySelectorAll('[data-cat]').forEach(b=>b.onclick=()=>{if(ROUE_SIMPLE_TOURNE)return;ecrire('roue_cat',b.dataset.cat);quitter();roueSimple()});
   app.querySelectorAll('[data-zone]').forEach(b=>b.onclick=()=>{if(ROUE_SIMPLE_TOURNE)return;const k=b.dataset.zone;let z=zones.includes(k)?zones.filter(x=>x!==k):zones.concat(k);if(!z.length)return;ecrire('roue_zones_'+cat,z);quitter();roueSimple()});
@@ -1194,10 +1200,10 @@ function roueSimple(){
     if(!qui){res.innerHTML='<small style="color:var(--ko)">Écris d\'abord le prénom</small>';nom.focus();return}
     const deja=liste().find(y=>memeNom(y.n,qui));
     if(deja){res.innerHTML=`<small style="color:var(--ko)">⚠️ ${esc(deja.n)} a déjà eu</small>${esc(deja.r)}`;return}
-    ROUE_SIMPLE_TOURNE=true;roueAudioPret();go.disabled=true;go.textContent='La roue tourne…';res.innerHTML='';
+    ROUE_SIMPLE_TOURNE=true;roueAudioPret();go.disabled=true;go.textContent='La roue tourne…';res.innerHTML='';document.getElementById('rs-fiche').innerHTML='';
     const C=restantes(), i=Math.floor(Math.random()*C.length);
     await R.tourner(i);
-    res.innerHTML=`<small>${esc(qui)}</small>${esc(C[i])}`;
+    res.innerHTML=`<small>${esc(qui)}</small>${esc(C[i])}`;montrerFiche(C[i],qui);
     const L=liste();L.push({n:qui,r:C[i],at:Date.now()});ecrire('roue_liste_'+cat,L);
     nom.value='';go.disabled=false;go.textContent='🎡 Lancer';ROUE_SIMPLE_TOURNE=false;
     dessinerListe();
