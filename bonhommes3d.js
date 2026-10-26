@@ -14,7 +14,7 @@ function b3corps(o){
   J.tete=b3a(b3a(N,b3m(o.hd?b3n(o.hd):dT,11)),o.hd?[0,0,0]:F);
   const membre=(rac,sp,l1,l2,defH)=>{ if(!sp)return null; if(Array.isArray(sp))sp={r:sp};
     const T=sp.a||(sp.h?b3a(J.tete,sp.h):b3a(rac,sp.r));
-    if(sp.j)return[sp.j,T]; return b3ik(rac,T,l1,l2,sp.k||defH)};
+    if(sp.j)return[sp.j,T]; if(sp.jh)return[b3a(J.tete,sp.jh),T]; if(sp.je)return[b3a(rac,sp.je),T]; return b3ik(rac,T,l1,l2,sp.k||defH)};
   const mi=sp=>{if(!sp)return sp;if(Array.isArray(sp))return b3mz(sp);const r={};for(const k in sp)r[k]=b3mz(sp[k]);return r};
   const bD=o.mD||o.m, bG=o.mG||(o.mD?null:mi(o.m)), jD=o.pD||o.p, jG=o.pG||(o.pD?null:mi(o.p));
   const hb=b3a(b3m(F,-1),[0,-.6,0]);
@@ -89,7 +89,7 @@ const BANC={P:[-40,26,0],N:[4,26,0],S:[0,0,-1],p:{a:[-74,0,14],k:[0,1,0]},pr:[['
 // buste penché, main et genou sur un banc (rowing, kickback)
 const PENCHE={P:[0,46,0],N:[44,50,0],mG:{a:[46,22,-16]},pG:{a:[-26,22,-10],j:[0,22,-10]},pD:{a:[2,0,14]},pr:[['box',-12,52,-30,-2,22]],v:{y:-18,t:14}};
 // assis au sol, genoux pliés, buste incliné en arrière
-const ASSIS={P:[0,6,0],N:[-20,45,0],p:{a:[36,0,9],k:[0,1,0]},v:{y:-55,t:18}};
+const ASSIS={P:[0,6,0],N:[-26,42,0],p:{a:[36,0,9],k:[0,1,0]},v:{y:-60,t:24}};
 const B3_RENFO={
 "renfo|Squat|Squat normal":[Z(DEB,{p:{a:[2,0,12]},v:{y:-50}}),Z(DEB,{P:[-20,30,0],N:[0,70,0],p:{a:[2,0,12],k:[1,0,.3]},m:[44,-4,0],v:{y:-50}})],
 "renfo|Squat|Squat sumo":[Z(DEB,{P:[0,49,0],N:[0,93,0],p:{a:[4,0,24]},m:JOINT,v:{y:-60}}),Z(DEB,{P:[-6,28,0],N:[0,72,0],p:{a:[4,0,24],k:[.4,0,1]},m:JOINT,v:{y:-60}})],
@@ -137,11 +137,11 @@ const B3_RENFO={
 "renfo|Triceps|Kickback haltère":[Z(PENCHE,{mD:{a:[20,26,15],j:[20,48,15]},pr:[...PENCHE.pr,['halt','mD',[1,0,0]]]}),Z(PENCHE,{mD:{a:[-2,50,15],j:[20,48,15]},pr:[...PENCHE.pr,['halt','mD',[1,0,0]]]})],
 "renfo|Triceps|Barre au front":[Z(BANC,{m:{a:[2,70,14]},pr:[...BANC.pr,['barre']]}),Z(BANC,{m:{a:[14,36,14],k:[-.3,1,0]},pr:[...BANC.pr,['barre']]})],
 "renfo|Obliques|Planche latérale":[{P:[0,22,0],N:[44,32,0],S:[0,1,0],mG:{a:[44,1,20],j:[42,1,0]},mD:{r:[0,44,0]},pG:{a:[-52,1,0]},pD:{a:[-52,14,0]},v:{y:-10,t:16}}],
-"renfo|Obliques|Crunch oblique":[Z(DOS,{m:NUQUE,v:{y:-30,t:24}}),Z(DOS,{N:[-38,22,6],S:[.3,.4,1],m:NUQUE,v:{y:-30,t:24}})],
-"renfo|Obliques|Rotations du buste assis":[Z(ASSIS,{S:[-.5,0,1],m:{a:[4,30,22]}}),Z(ASSIS,{S:[.5,0,1],m:{a:[4,30,-22]}})],
+"renfo|Obliques|Crunch oblique":[Z(DOS,{mD:{h:[-3,1,5],je:[-8,4,21]},mG:{h:[-3,1,-5],je:[-8,4,-21]},v:{y:30,t:45}}),Z(DOS,{N:[-30,28,-10],S:[.5,.65,.6],mD:{h:[-3,3,6],j:[-18,46,-10]},mG:{h:[-3,1,-6],je:[-10,2,-21]},pG:{a:[34,0,-9],k:[0,1,-.3]},v:{y:30,t:45}})],
+"renfo|Obliques|Rotations du buste assis":[Z(ASSIS,{S:[-.7,0,1],mD:{a:[-2,32,20],k:[0,-1,0]},mG:{a:[-2,32,20],k:[0,-1,0]}}),Z(ASSIS,{S:[.7,0,1],mD:{a:[-2,32,-20],k:[0,-1,0]},mG:{a:[-2,32,-20],k:[0,-1,0]}})],
 "renfo|Obliques|Essuie-glace":[Z(DOS,{m:{a:[-41,2,58]},pD:{a:[0,58,4]},pG:{a:[0,58,-4]},v:{y:-75,t:30}}),Z(DOS,{m:{a:[-41,2,58]},pD:{a:[0,40,44]},pG:{a:[0,46,34]},v:{y:-75,t:30}})],
 "renfo|Obliques|Flexion latérale avec haltère":[Z(DEB,{mD:BAS,mG:b3mz(HAN.r)&&{r:[3,-38,3],k:[-.4,0,-1]},pr:[['halt','mD',[1,0,0]]],v:{y:-80,t:14}}),Z(DEB,{N:[0,95,14],mD:{r:[0,-46,6]},mG:b3mz(HAN.r)&&{r:[3,-38,3],k:[-.4,0,-1]},pr:[['halt','mD',[1,0,0]]],v:{y:-80,t:14}})],
-"renfo|Obliques|Rotations du buste avec un disque":[Z(ASSIS,{S:[-.5,0,1],m:{a:[4,30,22]},pr:[['disque']]}),Z(ASSIS,{S:[.5,0,1],m:{a:[4,30,-22]},pr:[['disque']]})],
+"renfo|Obliques|Rotations du buste avec un disque":[Z(ASSIS,{S:[-.7,0,1],mD:{a:[-2,32,20],k:[0,-1,0]},mG:{a:[-2,32,20],k:[0,-1,0]},pr:[['disque']]}),Z(ASSIS,{S:[.7,0,1],mD:{a:[-2,32,-20],k:[0,-1,0]},mG:{a:[-2,32,-20],k:[0,-1,0]},pr:[['disque']]})],
 "renfo|Grand droit|Crunch":[Z(DOS,{m:NUQUE,v:{y:-35}}),Z(DOS,{N:[-40,18,0],m:NUQUE,v:{y:-35}})],
 "renfo|Grand droit|Montée de buste":[Z(DOS,{m:{r:[30,10,0]},v:{y:-35}}),Z(DOS,{N:[-10,49,0],m:{r:[40,-6,-4]},v:{y:-35}})],
 "renfo|Grand droit|Relevé de jambes alternées":[Z(DOSJ,{p:TABLE,v:{y:-35}}),Z(DOSJ,{pD:{a:[49,18,8]},pG:{a:[26,32,-8],j:[0,32,-8]},v:{y:-35}})],
