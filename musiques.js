@@ -50,25 +50,25 @@ async function mesMusiques(msg,garder){
   let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>🎵 Mes musiques</h1>
   ${msg?`<div class="${msg.startsWith('⚠️')?'err':'ok'}" style="margin:-6px 0 14px">${esc(msg)}</div>`:''}
   <div class="card o" id="mu-lect"></div>
-  <div class="card"><h2>➕ Importer</h2><p class="muted" style="margin-top:0">Choisis la catégorie, puis tes musiques dans ton téléphone (plusieurs d'un coup si tu veux). Pour le Tabata, le format (20/10, 45/15…) est lu dans le nom du fichier et rangé tout seul. Elles restent seulement sur ce téléphone.</p>
-   <select id="mu-cat" style="width:100%;padding:12px;border-radius:12px;font-size:16px">${C.map(c=>`<option>${esc(c)}</option>`).join('')}</select>
-   <button class="btn" id="mu-imp">🎵 Choisir mes musiques</button><input type="file" id="mu-f" accept="audio/*" multiple hidden>
-   <button class="btn small sec" id="mu-nc">➕ Nouvelle catégorie</button></div>`;
+  <p class="muted" style="margin-top:0">Touche « ➕ Ajouter » dans une catégorie, puis choisis tes musiques dans ton téléphone (plusieurs d'un coup si tu veux). Pour le Tabata, le format (20/10, 45/15…) est lu dans le nom du fichier et rangé tout seul. Elles restent seulement sur ce téléphone.</p>
+  <input type="file" id="mu-f" accept="audio/*" multiple hidden>
+  <button class="btn small sec" id="mu-nc" style="margin:0 0 14px">➕ Nouvelle catégorie</button>`;
   C.forEach((c,ci)=>{const L=MU_LISTE.filter(m=>m.cat===c);const tb=muEstTb(c);
     h+=`<div class="card"><div style="display:flex;align-items:center;gap:8px;justify-content:space-between"><h2 style="margin:0">${esc(c)} <span class="muted" style="font-weight:400;font-size:15px">(${L.length})</span></h2>
-      ${L.length&&!tb?`<button class="btn small" style="margin:0" data-tout="${liste(L.map(m=>m.id))}">▶️ Tout jouer</button>`:''}</div>`+
+      <span style="display:flex;gap:6px">${L.length&&!tb?`<button class="btn small" style="margin:0" data-tout="${liste(L.map(m=>m.id))}">▶️ Tout jouer</button>`:''}<button class="btn small sec" style="margin:0" data-add="${ci}">➕ Ajouter</button></span></div>`+
       (!L.length?`<p class="muted" style="margin:8px 0 0">Aucune musique.</p>`:
        tb?muFmts(L).map(f=>{const F=L.filter(m=>(m.fmt||'')===f),li=liste(F.map(m=>m.id));
          return `<details data-f="${esc(c+'|'+f)}" style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px"${F.some(m=>m.id===MU_EN)||ouverts.includes(c+'|'+f)?' open':''}><summary style="cursor:pointer;font-weight:800;font-size:17px">⏱️ ${esc(muFmtNom(f))} <span class="muted" style="font-weight:400">(${F.length})</span></summary>
            <button class="btn small" style="margin:8px 0 0" data-tout="${li}">▶️ Tout jouer</button>${F.map(m=>ligne(m,li)).join('')}</details>`}).join('')
        :(()=>{const li=liste(L.map(m=>m.id));return L.map(m=>ligne(m,li)).join('')})())+
-      `<div style="margin-top:8px"><button class="link" data-ren="${ci}">✏️ Renommer</button>${L.length?'':` · <button class="link" data-supc="${ci}">🗑️ Supprimer la catégorie</button>`}</div></div>`});
+      `<div style="margin-top:8px"><button class="link" data-ren="${ci}">✏️ Renommer</button>${L.length?'':` · <button class="link" data-supc="${ci}" aria-label="Supprimer la catégorie" style="text-decoration:none">🗑️</button>`}</div></div>`});
   h+=`<button class="btn sec" id="bk2">← Retour à l'accueil</button>`;
   app.innerHTML=h;muBarre();
   document.getElementById('bk').onclick=accueil;document.getElementById('bk2').onclick=accueil;
-  const f=document.getElementById('mu-f');document.getElementById('mu-imp').onclick=()=>f.click();
-  f.onchange=async()=>{const cat=document.getElementById('mu-cat').value,fs=[...f.files];if(!fs.length)return;
-    app.querySelector('#mu-imp').textContent='Import en cours…';let n=0;
+  const f=document.getElementById('mu-f');let cat='';
+  app.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>{cat=C[+b.dataset.add];f.value='';f.click()});
+  f.onchange=async()=>{const fs=[...f.files];if(!fs.length||!cat)return;
+    const bA=app.querySelector(`[data-add="${C.indexOf(cat)}"]`);if(bA)bA.textContent='Import…';let n=0;
     const tbC=C.find(muEstTb);
     try{for(const x of fs){const nom=muNom(x),fmt=muFormat(nom);const c2=muEstTb(cat)||(tbC&&/tabata/i.test(nom))?(muEstTb(cat)?cat:tbC):cat;
       await muOp('readwrite',s=>s.put({id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),nom,cat:c2,fmt:muEstTb(c2)?fmt:'',at:Date.now()+n,blob:x}));n++}}
@@ -85,5 +85,7 @@ async function mesMusiques(msg,garder){
   app.querySelectorAll('[data-ren]').forEach(b=>b.onclick=async()=>{const old=C[+b.dataset.ren],t=(prompt('Nouveau nom :',old)||'').trim();if(!t||t===old)return;
     const L=MU_LISTE.filter(m=>m.cat===old);for(const m of L)await muOp('readwrite',st=>{const r=st.get(m.id);r.onsuccess=()=>{const x=r.result;if(x){x.cat=t;st.put(x)}};return r});
     const N=C.map(c=>c===old?t:c).filter((c,i,a)=>a.indexOf(c)===i);muCatsEcrire(N);mesMusiques()});
-  app.querySelectorAll('[data-supc]').forEach(b=>b.onclick=()=>{const c=C[+b.dataset.supc];if(!confirm(`Supprimer la catégorie « ${c} » ?`))return;muCatsEcrire(C.filter(k=>k!==c));mesMusiques()});
+  app.querySelectorAll('[data-supc]').forEach(b=>b.onclick=()=>{const c=C[+b.dataset.supc];
+    if(!b.dataset.ok){b.dataset.ok='1';b.textContent='Confirmer';b.style.cssText='text-decoration:none;background:var(--ko);color:#fff;border-radius:8px;padding:4px 10px';clearTimeout(b._t);b._t=setTimeout(()=>{delete b.dataset.ok;b.textContent='🗑️';b.style.cssText='text-decoration:none'},4000);return}
+    clearTimeout(b._t);muCatsEcrire(C.filter(k=>k!==c));mesMusiques('',1)});
   if(garder)window.scrollTo(0,pos);else haut()}
