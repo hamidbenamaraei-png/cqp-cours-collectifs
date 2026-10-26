@@ -56,9 +56,9 @@ summary{cursor:pointer;font-weight:700}
 </head>
 <body>
 <div class="wrap" id="app"></div>
-<script src="commun.js?v=202610260838"></script>
-<script src="roue.js?v=202610260838"></script>
-<script src="fiches.js?v=202610260838"></script>
+<script src="commun.js?v=202610260905"></script>
+<script src="roue.js?v=202610260905"></script>
+<script src="fiches.js?v=202610260905"></script>
 <script>
 // ======= Mémoire du téléphone (nom, prénom, quiz envoyés, historique) =======
 function lire(k,d){try{const v=localStorage.getItem('cqp_'+k);return v?JSON.parse(v):d}catch(e){return d}}
@@ -115,7 +115,7 @@ function confirmer(nom,prenom,st,str){
 
 // ======= Les quiz : une « session » = un quiz ouvert (journée ou révision) =======
 let ETAT = null, REVS = {}; // état des quiz (ouvert ou non), lu dans le tableau du formateur
-let FICHES = []; // fiches de révision ouvertes par Hamid (renfo.bas, etir.haut, meth…)
+let FICHES = [], MES_RETOURS = []; // MES_RETOURS : retours d'Hamid déchiffrés sur ce téléphone // fiches de révision ouvertes par Hamid (renfo.bas, etir.haut, meth…)
 let ROUE = null, NOMS = {}; // la roue (tirage préparé par Hamid) et les prénoms des stagiaires
 function sessionJournee(j){
   const e=ETAT[j.id];
@@ -164,6 +164,9 @@ function accueil(){
     h+=`<div class="card o"><div class="tag">🧠 Révision</div><h2 style="margin-top:4px">${esc(rev.titre)}</h2>
       <p class="muted" style="margin:0">Un petit quiz pour revoir ce qu'on a vu depuis le début. ${texteDuree(rev.quiz)}</p>
       ${boutonQuiz(S,'🧠 Faire la révision')}</div>`}
+  if(MES_RETOURS.length)h+=`<div class="card j"><div class="tag">📝 Mes retours</div><h2 style="margin-top:4px">${MES_RETOURS.length} retour${MES_RETOURS.length>1?'s':''} de Hamid</h2>
+      <p class="muted" style="margin:0">Ses notes après tes passages, pour progresser.</p>
+      <button class="btn" id="mr">📝 Lire mes retours</button></div>`;
   if(FICHES.length)h+=`<div class="card g"><div class="tag">📚 Pour réviser</div><h2 style="margin-top:4px">Les exercices et les étirements</h2>
       <p class="muted" style="margin:0">Les fiches que Hamid a ouvertes : placement, exécution, sécurité.</p>
       <button class="btn" id="fx">📚 Ouvrir les fiches</button></div>`;
@@ -179,8 +182,31 @@ function accueil(){
   document.getElementById('evo').onclick=evolution;
   const br=document.getElementById('roue'); if(br)br.onclick=ecranRoue;
   const bf=document.getElementById('fx'); if(bf)bf.onclick=()=>revoirFiches();
+  const bm=document.getElementById('mr'); if(bm)bm.onclick=mesRetours;
   app.querySelectorAll('[data-ses]').forEach(b=>b.onclick=()=>ouvrirSession(sessions[b.dataset.ses]));
   app.querySelectorAll('[data-cours]').forEach(b=>b.onclick=()=>cours(JOURNEES.find(j=>j.id===b.dataset.cours)));
+  haut();
+}
+// ======= 📝 Mes retours (notes d'observation d'Hamid, chiffrées : seul ce téléphone peut les lire) =======
+async function clesEtRetours(s,L){
+  try{
+    let k=lire('cles',null);
+    if(!k||!k.priv){k=await nouvellesCles();ecrire('cles',k)}
+    const pubTxt=JSON.stringify(k.pub);
+    if(!s.pub||JSON.stringify(s.pub)!==pubTxt){if(lire('cle_envoyee','')!==pubTxt){await envoyerForm(FORM_QUIZ,{[EQ.journee]:'cles',[EQ.statut]:'pub',[EQ.contenu]:JSON.stringify({id:moi.id,pub:k.pub})});ecrire('cle_envoyee',pubTxt)}}
+    const res=[];
+    for(const m of L.filter(x=>x.sid===moi.id)){try{res.push(await dechiffrerAvec(k.priv,m))}catch(e){}}
+    MES_RETOURS=res.sort((a,b)=>(b.at||0)-(a.at||0));
+  }catch(e){MES_RETOURS=MES_RETOURS||[]}
+}
+function mesRetours(){
+  ECRAN='retours';
+  let h=`<button class="back" id="bk">← Retour</button><div class="tag">${esc(monEspace())}</div><h1>📝 Mes retours</h1>
+  <p class="muted" style="margin-top:0">Les notes de Hamid après tes passages. Toi seul peux les lire.</p>`;
+  MES_RETOURS.forEach(x=>{h+=`<div class="card j"><div class="tag" style="color:var(--soft)">${esc(x.date||'')}</div>${x.titre?`<h2 style="margin-top:4px">${esc(x.titre)}</h2>`:''}<p style="white-space:pre-wrap;margin:6px 0 0">${esc(x.texte||'')}</p></div>`});
+  h+=`<button class="btn sec" id="bk2">← Retour à l'accueil</button>`;
+  app.innerHTML=h;
+  document.getElementById('bk').onclick=accueil;document.getElementById('bk2').onclick=accueil;
   haut();
 }
 // ======= 📚 Pour réviser : les fiches ouvertes par Hamid =======
@@ -258,6 +284,7 @@ async function verifier(){
   try{const ls=JSON.parse(localStorage.getItem('cqpf_localst')||'{}')[moi.id];if(ls&&(!s||s.statut==='attente'))s={id:moi.id,statut:ls.statut}}catch(e){}
   if(s&&s.statut==='accepte'){
     appliquerReouvertures(g.reouv||[]);
+    await clesEtRetours(s,g.retours||[]);
     accueil();
     // un quiz commencé et pas envoyé : la page a été quittée → quiz fermé (sauf chrono fini : il part tout seul)
     const D=Object.values(brouillons()).find(x=>!x.envoye&&x.debut);

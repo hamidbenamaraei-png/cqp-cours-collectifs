@@ -262,9 +262,34 @@ function estOuvert(e){if(!e||!e.ouvert)return false;const f=finQuiz(e);return !(
 //   Contenu = {"id","nom","prenom"}. La ligne la plus récente gagne.
 // - la roue : colonne Journée = « roue » ; Statut = tirage (le tirage complet, le plus récent gagne),
 //   lance (un stagiaire a lancé la roue), liste (cases d'une roue modifiée), perso (« Ma roue » enregistrée).
+const CLES_EN_ATTENTE={};
+// ===== Retours d'observation : chiffrés pour que seul le stagiaire concerné puisse les lire =====
+function b64(u8){let s='';u8.forEach(x=>s+=String.fromCharCode(x));return btoa(s)}
+function deB64(t){return Uint8Array.from(atob(t),c=>c.charCodeAt(0))}
+async function chiffrerPour(pubJwk,obj){
+  const C=crypto.subtle;
+  const pub=await C.importKey('jwk',pubJwk,{name:'ECDH',namedCurve:'P-256'},false,[]);
+  const eph=await C.generateKey({name:'ECDH',namedCurve:'P-256'},true,['deriveKey']);
+  const k=await C.deriveKey({name:'ECDH',public:pub},eph.privateKey,{name:'AES-GCM',length:256},false,['encrypt']);
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const ct=new Uint8Array(await C.encrypt({name:'AES-GCM',iv},k,new TextEncoder().encode(JSON.stringify(obj))));
+  return {epk:await C.exportKey('jwk',eph.publicKey),iv:b64(iv),ct:b64(ct)};
+}
+async function dechiffrerAvec(privJwk,m){
+  const C=crypto.subtle;
+  const priv=await C.importKey('jwk',privJwk,{name:'ECDH',namedCurve:'P-256'},false,['deriveKey']);
+  const epk=await C.importKey('jwk',m.epk,{name:'ECDH',namedCurve:'P-256'},false,[]);
+  const k=await C.deriveKey({name:'ECDH',public:epk},priv,{name:'AES-GCM',length:256},false,['decrypt']);
+  const pt=await C.decrypt({name:'AES-GCM',iv:deB64(m.iv)},k,deB64(m.ct));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+async function nouvellesCles(){
+  const C=crypto.subtle, kp=await C.generateKey({name:'ECDH',namedCurve:'P-256'},true,['deriveKey']);
+  return {priv:await C.exportKey('jwk',kp.privateKey),pub:await C.exportKey('jwk',kp.publicKey)};
+}
 async function etatGeneral(){
   const etat={};JOURNEES.forEach(j=>etat[j.id]={quiz:j.quiz,ouvert:false,duree:0,ouvertAt:null,ouvCle:''});
-  const stag={}, revs={}, roue={tirage:null,lances:{},listes:{},persos:{}}, fiches={ouverts:[]}, reouv=[];
+  const stag={}, revs={}, roue={tirage:null,lances:{},listes:{},persos:{}}, fiches={ouverts:[]}, reouv=[], retours=[];
   const L=await lireCSV(CSV_QUIZ);
   if(L.length){
     const h=L[0].map(x=>x.trim().toLowerCase());
@@ -295,6 +320,19 @@ async function etatGeneral(){
         return;
       }
       // fiches de révision ouvertes aux stagiaires (la dernière ligne gagne)
+      // clé publique d'un stagiaire (pour que lui seul puisse lire ses retours)
+      if(id==='cles'){
+        let c;try{c=JSON.parse(l[iC]||'')}catch(e){return}
+        if(c&&c.id&&c.pub&&stag[c.id])stag[c.id].pub=c.pub;
+        else if(c&&c.id&&c.pub)(CLES_EN_ATTENTE[c.id]=c.pub);
+        return;
+      }
+      // retour d'observation chiffré pour un stagiaire : {sid, epk, iv, ct}
+      if(id==='retour'){
+        let c;try{c=JSON.parse(l[iC]||'')}catch(e){return}
+        if(c&&c.sid&&c.ct)retours.push(c);
+        return;
+      }
       // Hamid redonne accès à un quiz quitté (appel…) : {sid, cle}
       if(id==='reouvrir'){
         let c;try{c=JSON.parse(l[iC]||'')}catch(e){return}
@@ -323,7 +361,8 @@ async function etatGeneral(){
     });
   }
   Object.keys(revs).forEach(k=>{if(!revs[k].quiz)delete revs[k]});
-  return {quiz:etat,stagiaires:stag,revisions:revs,roue,fiches,reouv};
+  Object.entries(CLES_EN_ATTENTE).forEach(([k,v])=>{if(stag[k]&&!stag[k].pub)stag[k].pub=v});
+  return {quiz:etat,stagiaires:stag,revisions:revs,roue,fiches,reouv,retours};
 }
 async function etatQuiz(){return (await etatGeneral()).quiz}
 // La révision « en cours » = la dernière préparée

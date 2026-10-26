@@ -146,9 +146,9 @@ body.avec-barre .wrap{padding-bottom:120px}
 </head>
 <body>
 <div class="wrap" id="app"></div>
-<script src="commun.js?v=202610260838"></script>
-<script src="roue.js?v=202610260838"></script>
-<script src="fiches.js?v=202610260838"></script>
+<script src="commun.js?v=202610260905"></script>
+<script src="roue.js?v=202610260905"></script>
+<script src="fiches.js?v=202610260905"></script>
 <script>
 // ======= Réglages propres au formateur =======
 // Empreinte du code d'accès (le code lui-même n'est pas écrit ici)
@@ -185,7 +185,8 @@ function estRoue(l){return (l[1]||'').trim()==='__roue__'}
 let lignes=[], OBS=[];
 async function chargerReponses(){
   const L=await lireCSV(CSV_REPONSES);
-  lignes=L.length?[L[0]].concat(L.slice(1).filter(l=>!estObs(l)&&!estRoue(l))):[];
+  lignes=L.length?[L[0]].concat(L.slice(1).filter(l=>!estObs(l)&&!estRoue(l)&&!estRetour(l))):[];
+  RETOURS=L.slice(1).filter(estRetour).map(l=>{try{return JSON.parse(l[6]||'')}catch(e){return null}}).filter(x=>x&&x.sid&&x.texte);
   OBS=L.slice(1).filter(estObs);
   MARQUES_EN_LIGNE=L.slice(1).filter(estRoue);
   return lignes;
@@ -288,6 +289,8 @@ function accueil(){
     h+=`<div class="card"><div class="tag" style="color:var(--soft)">${esc(j.titre)}</div><h2 style="margin-top:4px">${esc(j.theme)}</h2>
     <div class="statut" style="font-size:15px"><span class="dot" style="background:${o?'var(--ok)':'var(--mute)'}"></span>${esc(etatTexte(ETAT[j.id]))}</div>
     <button class="btn" data-j="${j.id}">Ouvrir cette journée</button></div>`});
+  h+=`<div class="card j"><h2>📝 Observations</h2><p style="margin:0" class="muted">Prends des notes pendant le passage d'un stagiaire, puis envoie-lui ton retour.</p>
+    <button class="btn sec" id="obsv">Ouvrir les observations</button></div>`;
   h+=`<div class="card ${nAtt?'o':'g'}"><h2>👥 Stagiaires / Apprentis</h2>
     <p style="margin:0">${nAcc} accepté${nAcc>1?'s':''}${nAtt?` · <b style="color:var(--or)">${nAtt} demande${nAtt>1?'s':''} en attente</b>`:''}</p>
     <button class="btn ${nAtt?'':'sec'}" id="stg">${nAtt?'Voir les demandes':'Gérer la liste'}</button></div>`;
@@ -307,6 +310,7 @@ function accueil(){
   document.getElementById('rev').onclick=()=>revisionEcran();
   document.getElementById('roue').onclick=()=>roueSimple();
   document.getElementById('fiches').onclick=()=>mesExercices();
+  document.getElementById('obsv').onclick=()=>observationsEcran();
   document.getElementById('out').onclick=()=>{ecrire('ok','');ecranCode()};
   document.getElementById('rz').onclick=()=>{try{localStorage.removeItem('cqp_moi')}catch(e){};document.getElementById('rzok').classList.remove('hide')};
   haut();
@@ -425,8 +429,9 @@ async function bilanStagiaire(x){
   document.getElementById('bk').onclick=()=>mesStagiaires();
   haut();
   try{await chargerReponses()}catch(e){document.getElementById('zb').innerHTML=`<div class="card r"><h2>Impossible de lire les réponses</h2><p>Vérifie ta connexion internet, puis réessaie.</p><button class="btn" id="re">Réessayer</button></div>`;document.getElementById('re').onclick=()=>bilanStagiaire(x);return}
-  const H=historiqueStagiaire(x);
-  let h=`<div class="card j"><h2>📲 Nouveau téléphone ?</h2><p class="muted" style="margin-top:0">Envoie-lui un lien qui récupère son espace et son évolution sur son nouveau téléphone (valable 7 jours, à ouvrir une seule fois).</p>
+  const H=historiqueStagiaire(x), RT=retoursDe(x.id);
+  let h=`<div class="card j"><h2>📝 Mes retours (${RT.length})</h2>`+(RT.length?RT.map(r=>`<div class="stag"><div class="d" style="color:var(--soft)">${esc(r.date||dateJour(r.at))}${r.titre?' · <b>'+esc(r.titre)+'</b>':''}</div><div style="white-space:pre-wrap;margin-top:4px">${esc(r.texte)}</div></div>`).join(''):`<p class="muted" style="margin:0">Aucun retour envoyé pour l'instant.</p>`)+`<button class="btn sec" id="nobs">📝 Nouvelle observation</button></div>`;
+  h+=`<div class="card j"><h2>📲 Nouveau téléphone ?</h2><p class="muted" style="margin-top:0">Envoie-lui un lien qui récupère son espace et son évolution sur son nouveau téléphone (valable 7 jours, à ouvrir une seule fois).</p>
     <button class="btn wa" id="tel">📲 Envoyer son historique sur son nouveau téléphone</button><div class="muted hide" id="telinfo" style="margin-top:8px"></div></div>`;
   if(!H.length)h+=`<div class="card"><p class="muted" style="margin:0">Pas encore de réponse pour ce stagiaire.</p></div>`;
   const nb={};H.forEach(e=>nb[e.l]=(nb[e.l]||0)+1);const vu={};
@@ -452,6 +457,7 @@ async function bilanStagiaire(x){
     h+=`<label>Difficulté signalée</label><p style="margin:0" class="${e.dif?'':'muted'}">${e.dif?esc(e.dif):'Aucune.'}</p></div>`;
   });
   document.getElementById('zb').innerHTML=h;
+  document.getElementById('nobs').onclick=()=>noteObservation(x);
   document.getElementById('tel').onclick=async()=>{
     const b=document.getElementById('tel'), info=document.getElementById('telinfo');
     b.disabled=true;
@@ -909,6 +915,7 @@ function afficher(c,tests){
   if(masques)h+=`<p class="muted">${masques} réponse${masques>1?'s':''} de personnes non acceptées ou supprimées ${masques>1?'sont masquées':'est masquée'}.</p>`;
   if(nbTests)h+=`<label class="check"><input type="checkbox" id="tst" ${tests?'checked':''}> Afficher aussi les réponses de test ${esc(c.testTexte)} (${nbTests})</label>`;
   if(!rep.length){
+    h+=htmlRetoursJour(c);
     h+=`<div class="card"><h2>Pas encore de réponses</h2><p class="muted">Les réponses arrivent dès qu'un stagiaire envoie son quiz${c.dateMin?' (ou que tu saisis une feuille papier)':''}.</p><button class="btn sec" id="maj">🔄 Actualiser</button></div>`;
     zone.innerHTML=h;
     document.getElementById('maj').onclick=()=>reponses(c);
@@ -935,6 +942,7 @@ function afficher(c,tests){
   h+=`<div class="card ${diffs.length?'r':'g'}"><h2>Difficultés signalées</h2>`+
      (diffs.length?diffs.map((x,k)=>{const q=x.d.startsWith('🚪'), m=q&&x.d.match(/il lui restait ([0-9]+ min [0-9]+)/), a=q&&acceptes().find(s=>memeNom(s.prenom+' '+s.nom,x.n));
        return `<div class="stag"><b>${esc(x.n)}</b><div class="d">${esc(x.d)}</div>${q&&a?`<button class="btn small" style="margin-top:8px" data-reouv="${esc(a.id)}" data-rt="${esc(m?m[1]:'')}">🔓 Lui redonner accès${m?` (${esc(m[1])})`:''}</button>`:''}</div>`}).join(''):`<p class="muted" style="margin:0">Aucune difficulté signalée.</p>`)+`</div>`;
+  h+=htmlRetoursJour(c);
   h+=`<div class="card"><h2>Détail par stagiaire</h2>`+rep.map((l,n)=>{
        const R=RR[n], sc=R.score||0;
        const rs=lireRessenti(l[iR]).map(x=>x.n||'-').join(' · ');
@@ -1039,11 +1047,16 @@ function observations(c,st,zone){
   };
 }
 
+// retours d'observation envoyés le jour d'une journée (pour le résumé)
+function retoursDuJour(c){return c&&c.dateMin?retoursDe(null).filter(r=>jourISO(r.at)===c.dateMin).reverse():[]}
+function htmlRetoursJour(c){const L=retoursDuJour(c);if(!c||!c.dateMin)return'';
+  return `<div class="card j"><h2>📝 Retours d'observation du jour (${L.length})</h2>`+(L.length?L.map(r=>`<div class="stag"><b>${esc(r.nom||'')}</b>${r.titre?` <span class="muted">· ${esc(r.titre)}</span>`:''}<div style="white-space:pre-wrap;margin-top:4px">${esc(r.texte)}</div></div>`).join(''):`<p class="muted" style="margin:0">Aucun retour envoyé ce jour-là.</p>`)+`</div>`}
 function resume(c,st,obs,mode){
   mode=mode||'complet';
   const z=c.z;
   let t=`📋 Bilan CQP Cours collectifs – ${c.titre}\n${c.sousTitre}\n`;
-  if(mode==='obs'){t+=obs?`\n👀 Mes observations :\n${obs}\n`:`\n(Pas d'observations écrites.)\n`;return t+`\nHamid`}
+  const RJ=retoursDuJour(c), txtRJ=RJ.length?`\n📝 Retours individuels :\n`+RJ.map(r=>`• ${r.nom}${r.titre?' ('+r.titre+')':''} : ${r.texte.replace(/\s*\n\s*/g,' ')}`).join('\n')+'\n':'';
+  if(mode==='obs'){t+=obs?`\n👀 Mes observations :\n${obs}\n`:(RJ.length?'':`\n(Pas d'observations écrites.)\n`);return t+txtRJ+`\nHamid`}
   if(!st){t+=`\nPas de réponses au quiz pour l'instant.\n`}
   else{
     t+=`\n👥 ${st.n} stagiaire${st.n>1?'s ont':' a'} répondu au quiz · score moyen ${(st.scoreTot/st.n).toFixed(1)}/${z.questions.length}\n`;
@@ -1057,6 +1070,7 @@ function resume(c,st,obs,mode){
     else t+=`\n👤 Aucun point de vigilance particulier chez les stagiaires.\n`;
   }
   if(mode==='complet'&&obs)t+=`\n👀 Mes observations :\n${obs}\n`;
+  if(mode==='complet')t+=txtRJ;
   t+=`\nHamid`;
   return t;
 }
@@ -1255,6 +1269,73 @@ function roueSimple(){
   document.onfullscreenchange=()=>{if(!document.fullscreenElement&&zoneEl.classList.contains('rs-plein')){zoneEl.classList.remove('rs-plein');proj.textContent='📽️ Projeter'}};
   document.onkeydown=e=>{if(e.code==='Space'&&zoneEl.classList.contains('rs-plein')){e.preventDefault();go.click()}};
   document.getElementById('bk').onclick=()=>{quitter();accueil()};
+  haut();
+}
+
+// ======= 📝 Observations : notes prises pendant un passage, envoyées au stagiaire (lui seul peut les lire) =======
+// Copie pour Hamid : tableau des réponses (ligne « __retour__ », jamais lue côté stagiaires).
+// Copie pour le stagiaire : tableau « Mes quiz CQP », chiffrée avec la clé de son téléphone.
+let RETOURS=[];
+function estRetour(l){return (l[1]||'').trim()==='__retour__'}
+function retoursDe(sid){
+  const loc=lire('retours_locaux',[]).filter(x=>!RETOURS.some(y=>y.at===x.at&&y.sid===x.sid));
+  return RETOURS.concat(loc).filter(x=>!sid||x.sid===sid).sort((a,b)=>b.at-a.at);
+}
+function dateJour(ms){return new Date(ms).toLocaleDateString('fr-FR',{timeZone:'Europe/Paris',weekday:'long',day:'numeric',month:'long'})}
+function jourISO(ms){return new Date(ms).toLocaleDateString('fr-CA',{timeZone:'Europe/Paris'})}
+async function observationsEcran(msg){
+  app.innerHTML=`<p class="muted">Chargement…</p>`;
+  try{await chargerReponses()}catch(e){}
+  const acc=acceptes();
+  let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>📝 Observations</h1>
+  ${msg?`<div class="ok" style="margin:-6px 0 14px">${msg}</div>`:''}
+  <p class="muted" style="margin-top:0">Choisis la personne que tu observes. Tu prends tes notes pendant son passage, puis tu les lui envoies.</p>`;
+  if(!acc.length)h+=`<div class="card"><p class="muted" style="margin:0">Personne d'accepté pour l'instant.</p></div>`;
+  acc.forEach(x=>{const n=retoursDe(x.id).length, br=(lire('retour_brouillon_'+x.id,'')||'').trim();
+    h+=`<button class="btn sec" data-obs="${x.id}" style="text-align:left">${esc(x.prenom)} ${esc(x.nom)} <span class="muted" style="font-weight:400">· ${typeTxt(x)}${x.str?' · '+esc(x.str):''}</span><br><span class="muted" style="font-weight:400;font-size:14px">${n?`${n} retour${n>1?'s':''} envoyé${n>1?'s':''}`:'Aucun retour'}${br?' · ✏️ notes en cours':''}</span></button>`});
+  h+=`<button class="btn sec" id="bk2">← Retour à l'accueil</button>`;
+  app.innerHTML=h;
+  document.getElementById('bk').onclick=accueil;document.getElementById('bk2').onclick=accueil;
+  app.querySelectorAll('[data-obs]').forEach(b=>b.onclick=()=>noteObservation(STAG[b.dataset.obs]));
+  haut();
+}
+function noteObservation(x,msg){
+  const cle='retour_brouillon_'+x.id;
+  const anciens=retoursDe(x.id);
+  let h=`<button class="back" id="bk">← Retour</button><div class="tag">📝 Observations</div><h1>${esc(x.prenom)} ${esc(x.nom)}</h1>
+  ${msg?`<div class="${msg.startsWith('⚠️')?'err':'ok'}" style="margin:-6px 0 14px">${esc(msg)}</div>`:''}
+  <div class="card j"><h2>Mes notes</h2>
+   <p class="muted" style="margin-top:0">Écris, ou touche la case puis le micro 🎤 de ton clavier pour dicter. C'est gardé au fur et à mesure sur ce téléphone.</p>
+   <input type="text" id="ot" placeholder="Titre (facultatif), ex. : Renfo 20 min" value="${esc(lire(cle+'_t',''))}">
+   <textarea id="ox" style="min-height:260px;margin-top:10px" placeholder="Ce que tu observes pendant son passage…">${esc(lire(cle,''))}</textarea>
+   <div class="muted" id="osv" style="margin-top:6px"></div>
+   <button class="btn" id="oenv">📤 Envoyer à ${esc(x.prenom)}</button>
+   ${x.pub?'':`<p class="muted" style="margin:8px 0 0">ℹ️ ${esc(x.prenom)} doit d'abord ouvrir son espace une fois avec la nouvelle version. Tes notes restent gardées en attendant.</p>`}
+   <button class="btn small ko" id="oeff" style="margin-top:6px">🗑️ Effacer ces notes</button></div>`;
+  h+=`<div class="card"><h2>Retours déjà envoyés (${anciens.length})</h2>`+
+    (anciens.length?anciens.map(r=>`<div class="stag"><div class="d" style="color:var(--soft)">${esc(r.date||dateJour(r.at))}${r.titre?' · <b>'+esc(r.titre)+'</b>':''}</div><div style="white-space:pre-wrap;margin-top:4px">${esc(r.texte)}</div></div>`).join(''):`<p class="muted" style="margin:0">Aucun pour l'instant.</p>`)+`</div>`;
+  app.innerHTML=h;
+  const ox=document.getElementById('ox'), ot=document.getElementById('ot'), osv=document.getElementById('osv');
+  const sauver=()=>{ecrire(cle,ox.value);ecrire(cle+'_t',ot.value);osv.textContent='✅ Gardé sur ce téléphone'};
+  ox.oninput=sauver;ot.oninput=sauver;
+  document.getElementById('bk').onclick=()=>observationsEcran();
+  document.getElementById('oeff').onclick=()=>{if(!ox.value.trim()||confirm('Effacer ces notes ?')){ecrire(cle,'');ecrire(cle+'_t','');noteObservation(x)}};
+  document.getElementById('oenv').onclick=async e=>{
+    const texte=ox.value.trim(), titre=ot.value.trim();
+    if(!texte)return noteObservation(x,'⚠️ Écris d\'abord tes notes.');
+    if(!x.pub)return noteObservation(x,`⚠️ ${x.prenom} n'a pas encore ouvert son espace avec la nouvelle version : demande-lui de l'ouvrir, puis réessaie dans quelques minutes (🔄 Actualiser dans Stagiaires / Apprentis).`);
+    if(!confirm(`Envoyer ce retour à ${x.prenom} ${x.nom} ?\n\nCe sera dans son espace, « 📝 Mes retours ».`))return;
+    e.target.disabled=true;e.target.textContent='Envoi…';
+    const at=Date.now(), r={sid:x.id,nom:x.prenom+' '+x.nom,titre,texte,at,date:dateJour(at)};
+    try{
+      const m=await chiffrerPour(x.pub,{titre,texte,at,date:r.date});
+      await envoyerForm(FORM_QUIZ,{[EQ.journee]:'retour',[EQ.statut]:'msg',[EQ.contenu]:JSON.stringify(Object.assign({sid:x.id},m))});
+      await envoyerForm(FORM,{[E.nom]:'__retour__',[E.prenom]:x.id,[E.journee]:'Retour',[E.ressenti]:'',[E.reponses]:'',[E.difficulte]:JSON.stringify(r)});
+    }catch(err){e.target.disabled=false;e.target.textContent=`📤 Envoyer à ${x.prenom}`;return noteObservation(x,"⚠️ Ça n'a pas marché. Vérifie ta connexion internet et réessaie : tes notes sont toujours là.")}
+    const L=lire('retours_locaux',[]);L.push(r);ecrire('retours_locaux',L.slice(-50));
+    ecrire(cle,'');ecrire(cle+'_t','');
+    noteObservation(x,`✅ Envoyé à ${x.prenom}. Ce sera dans son espace, « 📝 Mes retours », d'ici quelques minutes.`);
+  };
   haut();
 }
 
