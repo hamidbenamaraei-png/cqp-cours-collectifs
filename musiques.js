@@ -4,11 +4,16 @@
 const MU_DB='cqpf_musiques', MU_CATS='cqpf_mu_cats';
 let MU_LISTE=[], MU_EN=null, MU_FILE=[], MU_URL=null;
 const muAudio=new Audio();
-function muCats(){try{const c=JSON.parse(localStorage.getItem(MU_CATS)||'null');if(Array.isArray(c)&&c.length)return c}catch(e){}return['Échauffement','Tabata','Renfo','Étirements']}
+function muCats(){try{const c=JSON.parse(localStorage.getItem(MU_CATS)||'null');if(Array.isArray(c)&&c.length)return c}catch(e){}return['Tabata','Renfo','Étirements']}
 function muCatsEcrire(c){try{localStorage.setItem(MU_CATS,JSON.stringify(c))}catch(e){}}
 function muBase(){return new Promise((ok,ko)=>{const r=indexedDB.open(MU_DB,1);r.onupgradeneeded=()=>r.result.createObjectStore('m',{keyPath:'id'});r.onsuccess=()=>ok(r.result);r.onerror=()=>ko(r.error)})}
 async function muOp(mode,f){const db=await muBase();return new Promise((ok,ko)=>{const t=db.transaction('m',mode),s=t.objectStore('m');const r=f(s);t.oncomplete=()=>ok(r&&r.result);t.onerror=()=>ko(t.error)})}
-async function muCharger(){const L=await muOp('readonly',s=>s.getAll());MU_LISTE=(L||[]).map(x=>({id:x.id,nom:x.nom,cat:x.cat,at:x.at})).sort((a,b)=>a.at-b.at)}
+async function muCharger(){const L=await muOp('readonly',s=>s.getAll());MU_LISTE=(L||[]).map(x=>({id:x.id,nom:x.nom,cat:x.cat,fmt:x.fmt||'',at:x.at})).sort((a,b)=>a.at-b.at)}
+// Tabata : le format (20/10, 45/15…) est lu dans le nom du fichier ; « » = Tabata – autres
+const muEstTb=c=>/tabata/i.test(c||'');
+function muFormat(nom){const m=String(nom).match(/(?:^|\D)([1-9]\d)\s*[\/\-_x×: ]\s*([1-9]\d?)(?!\d)/);if(!m)return'';const w=+m[1],r=+m[2];return w>=10&&w<=90&&r>=5&&r<=60?w+'/'+r:''}
+function muFmts(L){return[...new Set(L.map(m=>m.fmt||''))].sort((a,b)=>a===''?1:b===''?-1:(+a.split('/')[0]-+b.split('/')[0])||(+a.split('/')[1]-+b.split('/')[1]))}
+const muFmtNom=f=>f?'Tabata '+f:'Tabata – autres';
 function muNom(f){return f.name.replace(/\.[a-z0-9]{2,4}$/i,'').replace(/[_]+/g,' ').trim()||'Musique'}
 async function muJouer(id,file){
   const x=await muOp('readonly',s=>s.get(id));if(!x)return;
@@ -33,20 +38,29 @@ async function mesMusiques(msg){
   app.innerHTML='<p class="muted">Chargement…</p>';
   try{await muCharger()}catch(e){app.innerHTML=`<button class="back" id="bk">← Retour</button><div class="err">⚠️ Ce navigateur ne peut pas garder de musiques.</div>`;document.getElementById('bk').onclick=accueil;return}
   try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
-  const C=muCats();MU_LISTE.forEach(m=>{if(!C.includes(m.cat))C.push(m.cat)});
+  const C=muCats().filter(c=>c!=='Échauffement'||MU_LISTE.some(m=>m.cat===c));MU_LISTE.forEach(m=>{if(!C.includes(m.cat))C.push(m.cat)});
+  const tbL=MU_LISTE.filter(m=>muEstTb(m.cat)), tbF=muFmts(tbL);
+  // choix « déplacer vers » : les formats Tabata à la place de « Tabata »
+  const dest=[];C.forEach(c=>{if(muEstTb(c)){(tbF.length?tbF:['']).forEach(f=>dest.push([c+'|'+f,muFmtNom(f)]));if(!tbF.includes(''))dest.push([c+'|','Tabata – autres'])}else dest.push([c+'|',c])});
+  const ligne=(m,liste)=>`<div style="display:flex;align-items:center;gap:6px;margin-top:10px"><button class="btn sec" style="margin:0;text-align:left;flex:1;font-size:16px;padding:12px" data-j="${m.id}" data-l="${liste}">${MU_EN===m.id?'🔊':'▶️'} ${esc(m.nom)}</button>
+        <select data-dep="${m.id}" aria-label="Changer de catégorie" style="max-width:120px;padding:10px;border-radius:10px">${dest.map(([v,t])=>`<option value="${esc(v)}"${v===m.cat+'|'+(muEstTb(m.cat)?m.fmt||'':'')?' selected':''}>${esc(t)}</option>`).join('')}</select>
+        <button class="btn small ko" style="margin:0" data-sup="${m.id}" aria-label="Supprimer">🗑️</button></div>`;
+  const LISTES=[];const liste=ids=>{LISTES.push(ids);return LISTES.length-1};
   let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>🎵 Mes musiques</h1>
   ${msg?`<div class="${msg.startsWith('⚠️')?'err':'ok'}" style="margin:-6px 0 14px">${esc(msg)}</div>`:''}
   <div class="card o" id="mu-lect"></div>
-  <div class="card"><h2>➕ Importer</h2><p class="muted" style="margin-top:0">Choisis la catégorie, puis tes musiques dans ton téléphone (plusieurs d'un coup si tu veux). Elles restent seulement sur ce téléphone.</p>
+  <div class="card"><h2>➕ Importer</h2><p class="muted" style="margin-top:0">Choisis la catégorie, puis tes musiques dans ton téléphone (plusieurs d'un coup si tu veux). Pour le Tabata, le format (20/10, 45/15…) est lu dans le nom du fichier et rangé tout seul. Elles restent seulement sur ce téléphone.</p>
    <select id="mu-cat" style="width:100%;padding:12px;border-radius:12px;font-size:16px">${C.map(c=>`<option>${esc(c)}</option>`).join('')}</select>
    <button class="btn" id="mu-imp">🎵 Choisir mes musiques</button><input type="file" id="mu-f" accept="audio/*" multiple hidden>
    <button class="btn small sec" id="mu-nc">➕ Nouvelle catégorie</button></div>`;
-  C.forEach((c,ci)=>{const L=MU_LISTE.filter(m=>m.cat===c);
+  C.forEach((c,ci)=>{const L=MU_LISTE.filter(m=>m.cat===c);const tb=muEstTb(c);
     h+=`<div class="card"><div style="display:flex;align-items:center;gap:8px;justify-content:space-between"><h2 style="margin:0">${esc(c)} <span class="muted" style="font-weight:400;font-size:15px">(${L.length})</span></h2>
-      ${L.length?`<button class="btn small" style="margin:0" data-tout="${ci}">▶️ Tout jouer</button>`:''}</div>`+
-      (L.length?L.map(m=>`<div style="display:flex;align-items:center;gap:6px;margin-top:10px"><button class="btn sec" style="margin:0;text-align:left;flex:1;font-size:16px;padding:12px" data-j="${m.id}" data-c="${ci}">${MU_EN===m.id?'🔊':'▶️'} ${esc(m.nom)}</button>
-        <select data-dep="${m.id}" aria-label="Changer de catégorie" style="max-width:110px;padding:10px;border-radius:10px">${C.map(k=>`<option${k===c?' selected':''}>${esc(k)}</option>`).join('')}</select>
-        <button class="btn small ko" style="margin:0" data-sup="${m.id}" aria-label="Supprimer">🗑️</button></div>`).join(''):`<p class="muted" style="margin:8px 0 0">Aucune musique.</p>`)+
+      ${L.length&&!tb?`<button class="btn small" style="margin:0" data-tout="${liste(L.map(m=>m.id))}">▶️ Tout jouer</button>`:''}</div>`+
+      (!L.length?`<p class="muted" style="margin:8px 0 0">Aucune musique.</p>`:
+       tb?muFmts(L).map(f=>{const F=L.filter(m=>(m.fmt||'')===f),li=liste(F.map(m=>m.id));
+         return `<details style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px"${F.some(m=>m.id===MU_EN)?' open':''}><summary style="cursor:pointer;font-weight:800;font-size:17px">⏱️ ${esc(muFmtNom(f))} <span class="muted" style="font-weight:400">(${F.length})</span></summary>
+           <button class="btn small" style="margin:8px 0 0" data-tout="${li}">▶️ Tout jouer</button>${F.map(m=>ligne(m,li)).join('')}</details>`}).join('')
+       :(()=>{const li=liste(L.map(m=>m.id));return L.map(m=>ligne(m,li)).join('')})())+
       `<div style="margin-top:8px"><button class="link" data-ren="${ci}">✏️ Renommer</button>${L.length?'':` · <button class="link" data-supc="${ci}">🗑️ Supprimer la catégorie</button>`}</div></div>`});
   h+=`<button class="btn sec" id="bk2">← Retour à l'accueil</button>`;
   app.innerHTML=h;muBarre();
@@ -54,13 +68,15 @@ async function mesMusiques(msg){
   const f=document.getElementById('mu-f');document.getElementById('mu-imp').onclick=()=>f.click();
   f.onchange=async()=>{const cat=document.getElementById('mu-cat').value,fs=[...f.files];if(!fs.length)return;
     app.querySelector('#mu-imp').textContent='Import en cours…';let n=0;
-    try{for(const x of fs){await muOp('readwrite',s=>s.put({id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),nom:muNom(x),cat,at:Date.now()+n,blob:x}));n++}}
+    const tbC=C.find(muEstTb);
+    try{for(const x of fs){const nom=muNom(x),fmt=muFormat(nom);const c2=muEstTb(cat)||(tbC&&/tabata/i.test(nom))?(muEstTb(cat)?cat:tbC):cat;
+      await muOp('readwrite',s=>s.put({id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),nom,cat:c2,fmt:muEstTb(c2)?fmt:'',at:Date.now()+n,blob:x}));n++}}
     catch(e){return mesMusiques(`⚠️ ${n} musique${n>1?'s':''} importée${n>1?'s':''} seulement : le téléphone manque peut-être de place.`)}
     mesMusiques(`✅ ${n} musique${n>1?'s':''} ajoutée${n>1?'s':''} dans « ${cat} ».`)};
   document.getElementById('mu-nc').onclick=()=>{const t=(prompt('Nom de la nouvelle catégorie :')||'').trim();if(!t)return;if(!C.includes(t)){C.push(t);muCatsEcrire(C)}mesMusiques()};
-  app.querySelectorAll('[data-j]').forEach(b=>b.onclick=()=>{const c=C[+b.dataset.c];muJouer(b.dataset.j,MU_LISTE.filter(m=>m.cat===c).map(m=>m.id)).then(()=>mesMusiques())});
-  app.querySelectorAll('[data-tout]').forEach(b=>b.onclick=()=>{const L=MU_LISTE.filter(m=>m.cat===C[+b.dataset.tout]).map(m=>m.id);muJouer(L[0],L).then(()=>mesMusiques())});
-  app.querySelectorAll('[data-dep]').forEach(s=>s.onchange=async()=>{const id=s.dataset.dep;await muOp('readwrite',st=>{const r=st.get(id);r.onsuccess=()=>{const x=r.result;if(x){x.cat=s.value;st.put(x)}};return r});mesMusiques()});
+  app.querySelectorAll('[data-j]').forEach(b=>b.onclick=()=>muJouer(b.dataset.j,LISTES[+b.dataset.l]).then(()=>mesMusiques()));
+  app.querySelectorAll('[data-tout]').forEach(b=>b.onclick=()=>{const L=LISTES[+b.dataset.tout];muJouer(L[0],L).then(()=>mesMusiques())});
+  app.querySelectorAll('[data-dep]').forEach(s=>s.onchange=async()=>{const id=s.dataset.dep,[c,f]=s.value.split('|');await muOp('readwrite',st=>{const r=st.get(id);r.onsuccess=()=>{const x=r.result;if(x){x.cat=c;x.fmt=muEstTb(c)?(f||''):'';st.put(x)}};return r});mesMusiques()});
   app.querySelectorAll('[data-sup]').forEach(b=>b.onclick=async()=>{const m=MU_LISTE.find(x=>x.id===b.dataset.sup);if(!m||!confirm(`Supprimer « ${m.nom} » de ce téléphone ?`))return;if(MU_EN===m.id){muAudio.pause();MU_EN=null}await muOp('readwrite',s=>s.delete(m.id));mesMusiques()});
   app.querySelectorAll('[data-ren]').forEach(b=>b.onclick=async()=>{const old=C[+b.dataset.ren],t=(prompt('Nouveau nom :',old)||'').trim();if(!t||t===old)return;
     const L=MU_LISTE.filter(m=>m.cat===old);for(const m of L)await muOp('readwrite',st=>{const r=st.get(m.id);r.onsuccess=()=>{const x=r.result;if(x){x.cat=t;st.put(x)}};return r});
