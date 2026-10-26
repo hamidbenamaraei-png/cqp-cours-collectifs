@@ -431,8 +431,9 @@ const RENFO=[
 0,
 "Assis, les genoux fléchis, les talons au sol, le buste légèrement penché en arrière, le dos droit, un disque ou un haltère tenu à deux mains devant la poitrine.",
 "Tourne le buste d'un côté puis de l'autre en amenant la charge près de la hanche. Souffle à chaque rotation.",
-"Garde le dos droit, ne t'arrondis pas, les abdominaux gainés, prends une charge légère."
-]
+"Garde le dos droit, ne t'arrondis pas, les abdominaux gainés, prends une charge légère.",
+],
+["Genoux-coudes alternés, allongé sur le dos", 0, "Allongé sur le dos, les mains derrière la nuque, les coudes écartés, les jambes fléchies à 90 degrés, les pieds largeur du bassin.", "Relève la poitrine et amène un coude vers le genou opposé, l'autre jambe se tend devant toi. Puis change de côté, comme un pédalage. Souffle à chaque rotation.", "Garde les coudes écartés, ne tire pas sur les cervicales, le bas du dos reste au sol. Mouvement contrôlé, sans élan."]
 ]
 },
 {
@@ -478,8 +479,9 @@ const RENFO=[
 0,
 "Allongé sur le dos, un ballon serré entre les pieds ou les chevilles, les jambes tendues vers le plafond, les bras le long du corps, paumes au sol.",
 "Descends et remonte les jambes en gardant le ballon serré. Inspire dans la descente et souffle dans la montée.",
-"Garde la tête et les épaules posées au sol, le bas du dos ne se creuse pas : descends moins bas si besoin."
-]
+"Garde la tête et les épaules posées au sol, le bas du dos ne se creuse pas : descends moins bas si besoin.",
+],
+["Relevé de jambes alternées", 0, "Allongé sur le dos, les bras le long du corps, les mains posées à plat sur le tapis, les genoux fléchis et montés à 90 degrés, les pieds largeur du bassin.", "Tends une jambe devant toi puis ramène-la à 90 degrés, et fais pareil avec l'autre jambe, en alternant droite et gauche. Souffle et inspire.", "Garde bien la tête posée au sol, les abdominaux contractés, le bas du dos ne se creuse pas."]
 ]
 },
 {
@@ -790,6 +792,8 @@ const BONHOMMES={
 "renfo|Obliques|Rotations du buste avec un disque":[bh(BH_ROTA,{pr:[['disque',[127,111]]]}),bh(bhMir(BH_ROTA),{pr:[['disque',[73,111]]]})],
 "renfo|Grand droit|Crunch":[bh(BH_DOSG,{n:{a:[44,120,[.2,-1]]},f:{a:[45,121,[.2,-1]]}}),{h:[100,128],t:155,hd:145,n:{l:[124,128],a:[45,104,[.2,-1]]},f:{l:[120,128],a:[46,105,[.2,-1]]}}],
 "renfo|Grand droit|Montée de buste":[bh(BH_DOSG,{n:{a:{a:[28,28]}},f:{a:{a:[26,26]}}}),{h:[100,128],t:82,hd:85,n:{l:[124,128,[0,-1]],a:{a:[5,5]}},f:{l:[120,128,[0,-1]],a:{a:[3,3]}}}],
+"renfo|Grand droit|Relevé de jambes alternées":[bh(BH_DOS,{n:{l:{a:[90,0]}},f:{l:{a:[88,-2]}}}),bh(BH_DOS,{n:{l:{a:[35,35]}},f:{l:{a:[88,-2]}}})],
+"renfo|Obliques|Genoux-coudes alternés, allongé sur le dos":[{raw:[["b",100,128,150,118,154,111],["b",66,114,62,98,54,104],["o",100,128,66,114],["h",55,107],["o",100,128,88,103,112,100],["o",66,114,84,104,62,101]]},{raw:[["b",100,128,88,103,112,100],["b",66,114,84,104,62,101],["o",100,128,66,114],["h",55,107],["o",100,128,150,118,154,111],["o",66,114,62,98,54,104]]}],
 "renfo|Grand droit|Relevé de jambes":[bh(BH_DOS,{n:{l:{a:[90,90]}},f:{l:{a:[88,88]}}}),bh(BH_DOS,{n:{l:{a:[22,22]}},f:{l:{a:[20,20]}}})],
 "renfo|Grand droit|Crunch inversé":[bh(BH_DOS,{n:{l:{a:[90,0]}},f:{l:{a:[88,-2]}}}),{s:[56,128],h:[99,119.5],hd:150,n:{l:{a:[130,40]},a:[94,128]},f:{l:{a:[128,38]},a:[92,128]}}],
 "renfo|Grand droit|Crunch avec haltère":[bh(BH_DOS,{n:{l:{a:[90,0]},a:[72,118,[.5,-1]]},f:{l:{a:[88,-2]},a:[70,119,[.5,-1]]},pr:[['halt','n.po']]}),{h:[100,128],t:155,hd:145,n:{l:{a:[90,0]},a:[74,108,[.5,-1]]},f:{l:{a:[88,-2]},a:[72,109,[.5,-1]]},pr:[['halt','n.po',-25]]}],
