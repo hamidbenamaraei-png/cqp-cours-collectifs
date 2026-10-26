@@ -227,7 +227,7 @@ async function lireCSV(url){
 function dateFR(s){const m=String(s).match(/(\d{2})\/(\d{2})\/(\d{4})/);return m?`${m[3]}-${m[2]}-${m[1]}`:''}
 function envoyerForm(url,champs){
   const d=new URLSearchParams();Object.entries(champs).forEach(([k,v])=>d.append(k,v));
-  return fetch(url,{method:'POST',mode:'no-cors',body:d});
+  return fetch(url,{method:'POST',mode:'no-cors',body:d,keepalive:true});
 }
 function quizValide(z){return z&&Array.isArray(z.ressenti)&&Array.isArray(z.questions)&&z.questions.every(q=>q&&q.q&&Array.isArray(q.o)&&q.o.length>=2&&typeof q.b==='number')}
 
