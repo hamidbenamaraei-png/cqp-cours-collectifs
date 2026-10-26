@@ -596,7 +596,7 @@ const ETIR=[
    ["Postural, debout bras tendus", 1, "Debout, les pieds largeur du bassin, les bras tendus au-dessus de la tête au niveau des oreilles, les mains jointes.", "Grandis-toi, puis incline-toi sur le côté et tiens la posture quelques secondes avec de petites respirations. Puis souffle et relâche le bras du dessus et le buste vers le côté.", "Le buste ne part ni en avant ni en arrière, le bassin reste fixe, les genoux légèrement fléchis.", "Postural : maintenir la posture, puis relâcher"]]},
   {c:"Lombaires",v:[
    ["Allongé, les deux genoux à la poitrine",0,"Allongé sur le dos, les jambes pliées.","Ramène les deux genoux vers la poitrine, les mains sous les genoux ou sur les tibias. Respire calmement, tu peux te balancer doucement de gauche à droite.","La tête reste posée au sol, ne tire pas sur les genoux.","Passif lourd"],
-   ["Assis, dos rond relâché",0,"Assis (au sol jambes pliées, ou sur le bord d'une chaise), les pieds légèrement écartés.","Prends une grande inspiration puis sur l'expiration relâche totalement le haut du corps vers l'avant, la tête et les bras pendent.","Remonte doucement, vertèbre par vertèbre, la tête en dernier.","Passif lourd"]]}
+   ["Assis, dos rond relâché",0,"Assis au sol, les jambes pliées, les pieds à plat et légèrement écartés.","Prends une grande inspiration puis sur l'expiration relâche totalement le haut du corps vers l'avant, la tête et les bras pendent.","Remonte doucement, vertèbre par vertèbre, la tête en dernier.","Passif lourd"]]}
  ]}
 ];
 // méthodes : nom, ce que c'est, comment faire, quand l'utiliser, exemple
@@ -852,7 +852,7 @@ const BONHOMMES={
 "etir|Obliques|Assis, une jambe pliée":[{fv:1,h:[100,125],t:74,tl:42,n:{l:{a:[0,0],p:90},a:[104,124,-1]},f:{l:{j:[72,114],e:[96,124],p:'x'},a:[142,56]}}],
 "etir|Obliques|Allongé, genoux sur le côté":[{zm:1.5,raw:[...BH_EG,['o',92,125,108,125],['b',102,125,126,121],['o',97,125,122,116]]}],
 "etir|Lombaires|Allongé, les deux genoux à la poitrine":[bh(BH_DOS,{n:{l:{a:[130,-25]},a:[95,113]},f:{l:{a:[127,-28]},a:[93,114]}})],
-"etir|Lombaires|Assis, dos rond relâché":[{h:[80,100.5],t:12,tc:10,hd:-85,n:{l:[106,128],a:[122,127,[1,0]]},f:{l:[102,128],a:[120,127,[1,0]]},pr:[['chaise',44,84,104]]}]
+"etir|Lombaires|Assis, dos rond relâché":[{raw:[["b",80,126,97,106,110,128,118,128],["o",80,126,98,108,111,128,119,128],["o",80,126,82,108,90,98,101,96],["h",110,104],["b",100,97,108,122],["o",101,96,111,121]]}],
 };
 function fxDessin(cat,c,v){const P=BONHOMMES[cat+'|'+c+'|'+v];if(!P)return'';return`<div class="fx-des${P.length>1?' fx-des2':''}" aria-hidden="true">${P.map(bhSvg).join('<span class="fx-fle">→</span>')}</div>`}
 (function(){const st=document.createElement('style');st.textContent=`
