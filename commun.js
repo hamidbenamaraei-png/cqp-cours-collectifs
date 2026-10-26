@@ -264,7 +264,7 @@ function estOuvert(e){if(!e||!e.ouvert)return false;const f=finQuiz(e);return !(
 //   lance (un stagiaire a lancé la roue), liste (cases d'une roue modifiée), perso (« Ma roue » enregistrée).
 async function etatGeneral(){
   const etat={};JOURNEES.forEach(j=>etat[j.id]={quiz:j.quiz,ouvert:false,duree:0,ouvertAt:null,ouvCle:''});
-  const stag={}, revs={}, roue={tirage:null,lances:{},listes:{},persos:{}}, fiches={ouverts:[]};
+  const stag={}, revs={}, roue={tirage:null,lances:{},listes:{},persos:{}}, fiches={ouverts:[]}, reouv=[];
   const L=await lireCSV(CSV_QUIZ);
   if(L.length){
     const h=L[0].map(x=>x.trim().toLowerCase());
@@ -295,6 +295,12 @@ async function etatGeneral(){
         return;
       }
       // fiches de révision ouvertes aux stagiaires (la dernière ligne gagne)
+      // Hamid redonne accès à un quiz quitté (appel…) : {sid, cle}
+      if(id==='reouvrir'){
+        let c;try{c=JSON.parse(l[iC]||'')}catch(e){return}
+        if(c&&c.sid&&c.cle)reouv.push({sid:String(c.sid),cle:String(c.cle),at:horoVersMs(l[0])||0});
+        return;
+      }
       if(id==='fiches'){
         let c;try{c=JSON.parse(l[iC]||'')}catch(e){return}
         if(st==='etat'&&c&&Array.isArray(c.ouverts))fiches.ouverts=c.ouverts.map(String);
@@ -317,7 +323,7 @@ async function etatGeneral(){
     });
   }
   Object.keys(revs).forEach(k=>{if(!revs[k].quiz)delete revs[k]});
-  return {quiz:etat,stagiaires:stag,revisions:revs,roue,fiches};
+  return {quiz:etat,stagiaires:stag,revisions:revs,roue,fiches,reouv};
 }
 async function etatQuiz(){return (await etatGeneral()).quiz}
 // La révision « en cours » = la dernière préparée

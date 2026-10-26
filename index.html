@@ -56,9 +56,9 @@ summary{cursor:pointer;font-weight:700}
 </head>
 <body>
 <div class="wrap" id="app"></div>
-<script src="commun.js?v=202610260829"></script>
-<script src="roue.js?v=202610260829"></script>
-<script src="fiches.js?v=202610260829"></script>
+<script src="commun.js?v=202610260838"></script>
+<script src="roue.js?v=202610260838"></script>
+<script src="fiches.js?v=202610260838"></script>
 <script>
 // ======= Mémoire du téléphone (nom, prénom, quiz envoyés, historique) =======
 function lire(k,d){try{const v=localStorage.getItem('cqp_'+k);return v?JSON.parse(v):d}catch(e){return d}}
@@ -140,7 +140,8 @@ function boutonQuiz(S,texte){
   if(dejaFerme(S)&&lire('fermes',{})[idSession(S)+'#quitte'])return `<p class="done" style="margin:12px 0 0;color:var(--ko)">🚪 Quiz fermé : tu as quitté la page.</p><p class="muted" style="margin:4px 0 0">Tes réponses déjà données ont été envoyées.</p>`;
   if(S.duree&&dejaFerme(S))return `<p class="done" style="margin:12px 0 0">✅ Quiz envoyé.</p><p class="muted" style="margin:4px 0 0">Ta correction est dans « 📈 Mes révisions ».</p>`;
   const D=brouillons()[idSession(S)];
-  if(D&&!D.envoye)return `<button class="btn" data-ses="${esc(idSession(S))}">⏱️ Reprendre le quiz (il reste ${mmss(reste(D))})</button>`;
+  if(D&&!D.envoye&&D.attenteReprise)return `<p class="muted" style="margin:12px 0 4px">🔓 Hamid t'a redonné accès au quiz.</p><button class="btn" data-ses="${esc(idSession(S))}">⏱️ Reprendre le quiz${D.duree?` (il te reste ${mmss(D.restant||0)})`:''}</button>`;
+  if(D&&!D.envoye&&D.duree)return `<button class="btn" data-ses="${esc(idSession(S))}">⏱️ Reprendre le quiz (il reste ${mmss(reste(D))})</button>`;
   const envoyes=lire('envoyes',{});
   return `<button class="btn" data-ses="${esc(idSession(S))}">${texte}${envoyes[S.cle]&&!S.duree?' ✅':''}${S.duree?` · ⏱️ ${S.duree} min`:''}</button>`;
 }
@@ -256,6 +257,7 @@ async function verifier(){
   // sur le téléphone du formateur (stagiaire de test) : sa décision locale compte tout de suite
   try{const ls=JSON.parse(localStorage.getItem('cqpf_localst')||'{}')[moi.id];if(ls&&(!s||s.statut==='attente'))s={id:moi.id,statut:ls.statut}}catch(e){}
   if(s&&s.statut==='accepte'){
+    appliquerReouvertures(g.reouv||[]);
     accueil();
     // un quiz commencé et pas envoyé : la page a été quittée → quiz fermé (sauf chrono fini : il part tout seul)
     const D=Object.values(brouillons()).find(x=>!x.envoye&&x.debut);
@@ -293,6 +295,9 @@ function nouveauBrouillon(S){
 function ouvrirSession(S){
   if(!S)return accueil();
   if(dejaFerme(S))return accueil();
+  const R0=brouillons()[idSession(S)];
+  if(R0&&!R0.envoye&&R0.attenteReprise){ // Hamid a redonné accès : le chrono repart avec le temps qui restait
+    R0.debut=Date.now()-(R0.duree?R0.duree*60000-(R0.restant||0):0);delete R0.attenteReprise;garderBrouillon(R0);return quiz(R0)}
   if(!S.duree){const D0=brouillons()[idSession(S)];return quiz(D0&&!D0.envoye?D0:nouveauBrouillon(S))}
   const D0=brouillons()[idSession(S)];
   if(D0)return quiz(D0);
@@ -352,7 +357,8 @@ function envoyer(D,auto){
   if(ENVOI_EN_COURS.has(D.id)||D.envoye)return;
   ENVOI_EN_COURS.add(D.id);
   D.dif = (QUIZ_AFFICHE===D&&document.getElementById('dif'))?document.getElementById('dif').value.trim():(D.dif||'').trim();
-  if(D.quitte&&!D.dif.startsWith('🚪'))D.dif=('🚪 A quitté le quiz. '+D.dif).trim();
+  if(D.coupure&&!D.dif.startsWith(D.coupure))D.dif=(D.coupure+' '+D.dif).trim();
+  if(D.quitte&&!D.dif.includes('🚪 A quitté'))D.dif=(mentionQuitte(D)+' '+D.dif).trim();
   const t = texteReponses(D.z,D.r,D.rep,false);
   const bt=(QUIZ_AFFICHE===D)?document.getElementById('env'):null;
   if(bt){bt.disabled=true;bt.textContent='Envoi…'}
@@ -384,9 +390,14 @@ function surveiller(D){
   try{if(!VERROU_ECRAN&&navigator.wakeLock)navigator.wakeLock.request('screen').then(l=>{VERROU_ECRAN=l;l.addEventListener('release',()=>{VERROU_ECRAN=null})}).catch(()=>{})}catch(e){}
 }
 function stopSurveiller(){SURV=null;try{if(VERROU_ECRAN)VERROU_ECRAN.release()}catch(e){}VERROU_ECRAN=null}
+function tempsTxt(ms){const s=Math.max(0,Math.round(ms/1000));return Math.floor(s/60)+' min '+String(s%60).padStart(2,'0')}
+function mentionQuitte(D){return '🚪 A quitté le quiz'+(D.duree&&D.restant!=null?' · il lui restait '+tempsTxt(D.restant):'')+'.'}
 function quitterQuiz(D){
   if(!D||D.envoye||D.quitte)return;
   D.quitte=Date.now();
+  if(D.duree)D.restant=Math.max(0,reste(D));
+  // copie gardée : si Hamid redonne accès, il retrouve ses réponses et le temps qui lui restait
+  const qs=lire('quittes',{});qs[D.id]=JSON.parse(JSON.stringify(Object.assign({},D,{dif:(QUIZ_AFFICHE===D&&document.getElementById('dif'))?document.getElementById('dif').value.trim():(D.dif||'')})));ecrire('quittes',qs);
   const f=lire('fermes',{});f[D.id]=Date.now();f[D.id+'#quitte']=1;ecrire('fermes',f);
   garderBrouillon(D);
   envoyer(D,'quitte');
@@ -396,6 +407,24 @@ document.addEventListener('visibilitychange',()=>{
   else if(SURV&&SURV.quitte&&ECRAN==='quiz'&&QUIZ_AFFICHE===SURV){if(SURV.envoye)correction(SURV,'quitte');else quizFerme(SURV)}
 });
 window.addEventListener('pagehide',()=>{if(SURV&&!SURV.envoye&&SURV.debut)quitterQuiz(SURV)});
+// Hamid a redonné accès (après un appel…) : le quiz quitté revient avec ses réponses et le temps qui restait
+function appliquerReouvertures(L){
+  let loc=[];try{loc=(JSON.parse(localStorage.getItem('cqpf_local_reouv')||'[]')||[]).filter(r=>Date.now()-r.at<15*60*1000)}catch(e){}
+  const faits=lire('reouv_faits',{}), qs=lire('quittes',{});
+  L.concat(loc).filter(r=>r.sid===moi.id).forEach(r=>{
+    const k=r.cle+'@'+r.at; if(faits[k])return;
+    Object.values(qs).filter(D=>D.cle===r.cle&&D.quitte&&D.quitte<=r.at+60000).forEach(D=>{
+      const N=JSON.parse(JSON.stringify(D));
+      N.coupure=(N.coupure?N.coupure+' ':'')+'🔓 Accès redonné après avoir quitté le quiz'+(D.duree&&D.restant!=null?' (il lui restait '+tempsTxt(D.restant)+')':'')+'.';
+      delete N.quitte;delete N.aRenvoyer;N.envoye=false;N.debut=0;N.attenteReprise=true;N.rouvert=r.at;
+      garderBrouillon(N);
+      const f=lire('fermes',{});delete f[D.id];delete f[D.id+'#quitte'];ecrire('fermes',f);
+      delete qs[D.id];
+    });
+    faits[k]=1;
+  });
+  ecrire('quittes',qs);ecrire('reouv_faits',faits);
+}
 function quizFerme(D){
   ECRAN='message';stopSurveiller();
   app.innerHTML=`<div class="tag">${esc(D.tag)}</div><h1>${esc(D.titre)}</h1>

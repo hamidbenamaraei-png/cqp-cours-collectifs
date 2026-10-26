@@ -146,9 +146,9 @@ body.avec-barre .wrap{padding-bottom:120px}
 </head>
 <body>
 <div class="wrap" id="app"></div>
-<script src="commun.js?v=202610260829"></script>
-<script src="roue.js?v=202610260829"></script>
-<script src="fiches.js?v=202610260829"></script>
+<script src="commun.js?v=202610260838"></script>
+<script src="roue.js?v=202610260838"></script>
+<script src="fiches.js?v=202610260838"></script>
 <script>
 // ======= Réglages propres au formateur =======
 // Empreinte du code d'accès (le code lui-même n'est pas écrit ici)
@@ -902,6 +902,8 @@ function afficher(c,tests){
   // seulement les stagiaires acceptés (dès qu'il y en a au moins un)
   const acc=acceptes().filter(x=>!estTest(x)); let masques=0;
   if(acc.length&&!tests){const avant=rep.length;rep=rep.filter(l=>acc.some(a=>memeNom(a.prenom+' '+a.nom,(l[iP]||'')+' '+(l[iN]||''))));masques=avant-rep.length}
+  // si quelqu'un a envoyé plusieurs fois (accès redonné…), seul son dernier envoi compte
+  {const vus=new Map();rep.forEach(l=>vus.set(memeNomCle(((l[iP]||'')+' '+(l[iN]||'')).trim()),l));rep=[...vus.values()]}
   const zone=document.getElementById('zone');
   let h='';
   if(masques)h+=`<p class="muted">${masques} réponse${masques>1?'s':''} de personnes non acceptées ou supprimées ${masques>1?'sont masquées':'est masquée'}.</p>`;
@@ -931,7 +933,8 @@ function afficher(c,tests){
   h+=`<div class="card"><h2>Les questions</h2><p class="muted" style="margin-top:0">Bonnes réponses${sansRep.some(Boolean)?' · ⏳ = pas répondu (temps fini)':''}</p>`+
      z.questions.map((q,i)=>`<div class="row"><span>${i+1}. ${esc(q.q)}${sansRep[i]?` <span style="color:var(--ja)">· ⏳ ${sansRep[i]}</span>`:''}</span><span class="pill ${classe(bonnes[i],rep.length)}">${bonnes[i]}/${rep.length}</span></div>`).join('')+`</div>`;
   h+=`<div class="card ${diffs.length?'r':'g'}"><h2>Difficultés signalées</h2>`+
-     (diffs.length?diffs.map(x=>`<div class="stag"><b>${esc(x.n)}</b><div class="d">${esc(x.d)}</div></div>`).join(''):`<p class="muted" style="margin:0">Aucune difficulté signalée.</p>`)+`</div>`;
+     (diffs.length?diffs.map((x,k)=>{const q=x.d.startsWith('🚪'), m=q&&x.d.match(/il lui restait ([0-9]+ min [0-9]+)/), a=q&&acceptes().find(s=>memeNom(s.prenom+' '+s.nom,x.n));
+       return `<div class="stag"><b>${esc(x.n)}</b><div class="d">${esc(x.d)}</div>${q&&a?`<button class="btn small" style="margin-top:8px" data-reouv="${esc(a.id)}" data-rt="${esc(m?m[1]:'')}">🔓 Lui redonner accès${m?` (${esc(m[1])})`:''}</button>`:''}</div>`}).join(''):`<p class="muted" style="margin:0">Aucune difficulté signalée.</p>`)+`</div>`;
   h+=`<div class="card"><h2>Détail par stagiaire</h2>`+rep.map((l,n)=>{
        const R=RR[n], sc=R.score||0;
        const rs=lireRessenti(l[iR]).map(x=>x.n||'-').join(' · ');
@@ -944,6 +947,15 @@ function afficher(c,tests){
   zone.innerHTML=h;
   document.getElementById('maj').onclick=()=>reponses(c);
   if(nbTests)document.getElementById('tst').onchange=e=>afficher(c,e.target.checked);
+  app.querySelectorAll('[data-reouv]').forEach(b=>b.onclick=async()=>{const x=STAG[b.dataset.reouv];if(!x)return;
+    const t=b.dataset.rt;
+    if(!confirm(`Redonner accès au quiz à ${x.prenom} ${x.nom} ?\n\n${t?`Il récupérera exactement le temps qui lui restait : ${t}.`:'Il retrouvera ses réponses.'}`))return;
+    const cle=String(c.cle).replace(/^rev_/,'rev:');
+    b.disabled=true;b.textContent='…';
+    try{await envoyerForm(FORM_QUIZ,{[EQ.journee]:'reouvrir',[EQ.statut]:'acces',[EQ.contenu]:JSON.stringify({sid:x.id,cle})})}
+    catch(e){alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");b.disabled=false;b.textContent='🔓 Lui redonner accès';return}
+    try{const L=JSON.parse(localStorage.getItem('cqpf_local_reouv')||'[]');L.push({sid:x.id,cle,at:Date.now()});localStorage.setItem('cqpf_local_reouv',JSON.stringify(L.slice(-20)))}catch(e){}
+    b.textContent=`✅ Accès redonné${t?` (${t})`:''} · d'ici quelques minutes chez ${x.prenom}`});
   const eleves=rep.map((l,n)=>{
     const R=RR[n], nom=((l[iP]||'')+' '+(l[iN]||'')).trim();
     const pts=[];
