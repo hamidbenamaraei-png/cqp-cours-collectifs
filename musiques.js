@@ -77,7 +77,10 @@ async function mesMusiques(msg){
   app.querySelectorAll('[data-j]').forEach(b=>b.onclick=()=>muJouer(b.dataset.j,LISTES[+b.dataset.l]).then(()=>mesMusiques()));
   app.querySelectorAll('[data-tout]').forEach(b=>b.onclick=()=>{const L=LISTES[+b.dataset.tout];muJouer(L[0],L).then(()=>mesMusiques())});
   app.querySelectorAll('[data-dep]').forEach(s=>s.onchange=async()=>{const id=s.dataset.dep,[c,f]=s.value.split('|');await muOp('readwrite',st=>{const r=st.get(id);r.onsuccess=()=>{const x=r.result;if(x){x.cat=c;x.fmt=muEstTb(c)?(f||''):'';st.put(x)}};return r});mesMusiques()});
-  app.querySelectorAll('[data-sup]').forEach(b=>b.onclick=async()=>{const m=MU_LISTE.find(x=>x.id===b.dataset.sup);if(!m||!confirm(`Supprimer « ${m.nom} » de ce téléphone ?`))return;if(MU_EN===m.id){muAudio.pause();MU_EN=null}await muOp('readwrite',s=>s.delete(m.id));mesMusiques()});
+  // 1er appui : la poubelle devient « Confirmer » (4 s) ; 2e appui : supprimée, sans fenêtre
+  app.querySelectorAll('[data-sup]').forEach(b=>b.onclick=async()=>{const m=MU_LISTE.find(x=>x.id===b.dataset.sup);if(!m)return;
+    if(!b.dataset.ok){b.dataset.ok='1';b.textContent='Confirmer';b.style.background='var(--ko)';b.style.color='#fff';clearTimeout(b._t);b._t=setTimeout(()=>{delete b.dataset.ok;b.textContent='🗑️';b.style.background='';b.style.color=''},4000);return}
+    clearTimeout(b._t);if(MU_EN===m.id){muAudio.pause();MU_EN=null}await muOp('readwrite',s=>s.delete(m.id));mesMusiques()});
   app.querySelectorAll('[data-ren]').forEach(b=>b.onclick=async()=>{const old=C[+b.dataset.ren],t=(prompt('Nouveau nom :',old)||'').trim();if(!t||t===old)return;
     const L=MU_LISTE.filter(m=>m.cat===old);for(const m of L)await muOp('readwrite',st=>{const r=st.get(m.id);r.onsuccess=()=>{const x=r.result;if(x){x.cat=t;st.put(x)}};return r});
     const N=C.map(c=>c===old?t:c).filter((c,i,a)=>a.indexOf(c)===i);muCatsEcrire(N);mesMusiques()});
