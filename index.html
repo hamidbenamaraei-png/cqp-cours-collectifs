@@ -58,6 +58,7 @@ summary{cursor:pointer;font-weight:700}
 <div class="wrap" id="app"></div>
 <script src="commun.js"></script>
 <script src="roue.js"></script>
+<script src="fiches.js"></script>
 <script>
 // ======= Mémoire du téléphone (nom, prénom, quiz envoyés, historique) =======
 function lire(k,d){try{const v=localStorage.getItem('cqp_'+k);return v?JSON.parse(v):d}catch(e){return d}}
@@ -103,6 +104,7 @@ function confirmer(nom,prenom){
 
 // ======= Les quiz : une « session » = un quiz ouvert (journée ou révision) =======
 let ETAT = null, REVS = {}; // état des quiz (ouvert ou non), lu dans le tableau du formateur
+let FICHES = []; // fiches de révision ouvertes par Hamid (renfo.bas, etir.haut, meth…)
 let ROUE = null, NOMS = {}; // la roue (tirage préparé par Hamid) et les prénoms des stagiaires
 function sessionJournee(j){
   const e=ETAT[j.id];
@@ -149,6 +151,9 @@ function accueil(){
     h+=`<div class="card o"><div class="tag">🧠 Révision</div><h2 style="margin-top:4px">${esc(rev.titre)}</h2>
       <p class="muted" style="margin:0">Un petit quiz pour revoir ce qu'on a vu depuis le début. ${texteDuree(rev.quiz)}</p>
       ${boutonQuiz(S,'🧠 Faire la révision')}</div>`}
+  if(FICHES.length)h+=`<div class="card g"><div class="tag">📚 Pour réviser</div><h2 style="margin-top:4px">Les exercices et les étirements</h2>
+      <p class="muted" style="margin:0">Les fiches que Hamid a ouvertes : placement, exécution, sécurité.</p>
+      <button class="btn" id="fx">📚 Ouvrir les fiches</button></div>`;
   JOURNEES.slice().reverse().forEach(j=>{
     const e=ETAT&&ETAT[j.id], ouvert=estOuvert(e);
     let b='';
@@ -160,8 +165,40 @@ function accueil(){
   app.innerHTML = h;
   document.getElementById('evo').onclick=evolution;
   const br=document.getElementById('roue'); if(br)br.onclick=ecranRoue;
+  const bf=document.getElementById('fx'); if(bf)bf.onclick=()=>revoirFiches();
   app.querySelectorAll('[data-ses]').forEach(b=>b.onclick=()=>ouvrirSession(sessions[b.dataset.ses]));
   app.querySelectorAll('[data-cours]').forEach(b=>b.onclick=()=>cours(JOURNEES.find(j=>j.id===b.dataset.cours)));
+  haut();
+}
+// ======= 📚 Pour réviser : les fiches ouvertes par Hamid =======
+function fichesOuvertes(g){
+  let o=(g&&g.fiches&&g.fiches.ouverts)||[];
+  // sur le téléphone d'Hamid (stagiaire de test) : ce qu'il vient de décider, sans attendre Google
+  try{const l=JSON.parse(localStorage.getItem('cqpf_local_fiches')||'null');if(l&&Array.isArray(l.ouverts)&&Date.now()-l.at<15*60*1000)o=l.ouverts}catch(e){}
+  return o;
+}
+function revoirFiches(){
+  ECRAN='fiches';
+  const cats=Object.keys(FICHES_CATS).filter(k=>fxCles(k).some(c=>FICHES.includes(c)));
+  if(cats.length===1)return revoirCategorie(cats[0],true);
+  let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace stagiaires</div><h1>📚 Pour réviser</h1>`;
+  if(!cats.length)h+=`<p class="muted">Rien n'est ouvert pour l'instant.</p>`;
+  cats.forEach(k=>{const c=FICHES_CATS[k];h+=`<button class="btn sec" data-fcat="${k}" style="text-align:left">${c.emoji} ${esc(c.titre)}</button>`});
+  h+=`<button class="btn sec" id="bk2">← Retour à l'accueil</button>`;
+  app.innerHTML=h;
+  document.getElementById('bk').onclick=accueil;document.getElementById('bk2').onclick=accueil;
+  app.querySelectorAll('[data-fcat]').forEach(b=>b.onclick=()=>revoirCategorie(b.dataset.fcat));
+  haut();
+}
+function revoirCategorie(cat,seule){
+  ECRAN='fiches';
+  const C=FICHES_CATS[cat], ret=seule?accueil:revoirFiches;
+  let h=`<button class="back" id="bk">← Retour</button><div class="tag">📚 Pour réviser</div><h1>${C.emoji} ${esc(C.titre)}</h1>
+  <p class="muted" style="margin-top:0">Touche une partie pour l'ouvrir ou la refermer.</p>`;
+  h+= cat==='meth' ? fxMethodes('') : C.parties.filter(p=>FICHES.includes(cat+'.'+p.k)).map(p=>fxPartie(cat,p,'')).join('');
+  h+=`<button class="btn sec" id="bk2">← Retour</button>`;
+  app.innerHTML=h;
+  document.getElementById('bk').onclick=ret;document.getElementById('bk2').onclick=ret;
   haut();
 }
 // ======= Accès : demande envoyée au formateur, qui accepte ou refuse =======
@@ -196,7 +233,7 @@ async function verifier(){
     app.innerHTML = `<div class="card"><h2>Pas de connexion</h2><p>Vérifie ta connexion internet, puis réessaie.</p><button class="btn" id="re">Réessayer</button></div>`;
     document.getElementById('re').onclick=verifier;return;
   }
-  ETAT=g.quiz; REVS=g.revisions||{}; ROUE=g.roue||null;
+  ETAT=g.quiz; REVS=g.revisions||{}; ROUE=g.roue||null; FICHES=fichesOuvertes(g);
   NOMS={};Object.values(g.stagiaires||{}).forEach(x=>NOMS[x.id]=x.prenom);
   if(!moi.id){moi.id=nouvelId();ecrire('moi',moi);envoyerDemande();return attente(true)}
   let s=g.stagiaires[moi.id];
@@ -496,7 +533,7 @@ async function rafraichirRoue(){
     app.innerHTML=`<div class="card"><h2>Pas de connexion</h2><p>Vérifie ta connexion internet, puis réessaie.</p><button class="btn" id="re">Réessayer</button><button class="btn sec" id="ac">← Retour</button></div>`;
     document.getElementById('re').onclick=rafraichirRoue;document.getElementById('ac').onclick=accueil;return;
   }
-  ETAT=g.quiz;REVS=g.revisions||{};ROUE=g.roue||null;
+  ETAT=g.quiz;REVS=g.revisions||{};ROUE=g.roue||null;FICHES=fichesOuvertes(g);
   NOMS={};Object.values(g.stagiaires||{}).forEach(x=>NOMS[x.id]=x.prenom);
   const s=g.stagiaires[moi.id];
   if(!s||s.statut!=='accepte')return verifier();
