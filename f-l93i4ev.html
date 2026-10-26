@@ -337,12 +337,16 @@ async function decider(liste,statut){
     STAG[x.id]=Object.assign(STAG[x.id]||x,{statut});
   }
 }
+const LIEN_STAG='https://hamidbenamaraei-png.github.io/cqp-cours-collectifs/';
 function mesStagiaires(msg){
   const tous=Object.values(STAG);
   const att=tous.filter(x=>x.statut==='attente'), acc=acceptes(), aut=tous.filter(x=>x.statut==='refuse'||x.statut==='supprime');
   const doublon=x=>acc.some(a=>a.id!==x.id&&memeNom(a.prenom+' '+a.nom,x.prenom+' '+x.nom));
   let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>👥 Stagiaires / Apprentis</h1>
   ${msg?`<div class="ok" style="margin:-6px 0 14px">${msg}</div>`:''}
+  <div class="card g"><h2>🔗 Lien pour les stagiaires</h2><p style="margin:0" class="muted">Le lien à envoyer aux stagiaires et apprentis pour ouvrir leur espace.</p>
+    <div style="background:#f3f4f6;border-radius:10px;padding:10px 12px;font-size:14px;word-break:break-all;color:#111">${LIEN_STAG}</div>
+    <button class="btn" id="l-cop">📋 Copier le lien</button><button class="btn sec" id="l-wa">💬 Envoyer par WhatsApp</button></div>
   <div class="card o"><h2>Demandes en attente (${att.length})</h2>`;
   if(!att.length)h+=`<p class="muted" style="margin:0">Aucune demande pour l'instant.</p>`;
   att.forEach(x=>{h+=`<div class="stag"><span><b>${esc(x.prenom)} ${esc(x.nom)}</b>${typeBtn(x)}</span>${doublon(x)?`<div class="d" style="color:var(--ja)">⚠️ Même nom qu'un stagiaire déjà accepté (deuxième téléphone ou faux profil ?)</div>`:''}
@@ -366,6 +370,8 @@ function mesStagiaires(msg){
   app.innerHTML=h;
   document.getElementById('bk').onclick=accueil;
   document.getElementById('maj').onclick=async()=>{app.innerHTML=`<p class="muted">Chargement…</p>`;await chargerEtat();mesStagiaires()};
+  document.getElementById('l-cop').onclick=async e=>{const b=e.currentTarget,ok=await copier(LIEN_STAG);b.textContent=ok?'✅ Lien copié':'Appuie longtemps sur le lien pour le copier';setTimeout(()=>{b.textContent='📋 Copier le lien'},2500)};
+  document.getElementById('l-wa').onclick=()=>ouvrirWhatsApp(`Voici le lien de ton espace stagiaire : ${LIEN_STAG}`);
   const agir=async(btn,liste,statut,texte)=>{
     btn.disabled=true;btn.textContent='…';
     try{await decider(liste,statut)}catch(e){alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");mesStagiaires();return}
