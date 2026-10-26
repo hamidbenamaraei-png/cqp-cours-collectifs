@@ -289,7 +289,7 @@ function accueil(){
   h+=`<div class="card j"><h2>🧠 Quiz de révision</h2>
     <p style="margin:0" class="${rc?'':'muted'}">${rc?`${esc(rc.titre)} · ${ro?'<b style="color:var(--ok)">ouvert</b>':'caché aux stagiaires'}`:'Des questions de toutes les journées, depuis le début.'}</p>
     <button class="btn sec" id="rev">Ouvrir les révisions</button></div>`;
-  h+=`<div class="card o"><h2>🎡 La roue</h2><p style="margin:0" class="muted">Répartition du cours ou exercices de renforcement, tirés au hasard. Sur ton téléphone seulement.</p>
+  h+=`<div class="card o"><h2>🎡 La roue</h2><p style="margin:0" class="muted">Répartition du cours, exercices de renforcement ou d'étirement, tirés au hasard. Sur ton téléphone seulement.</p>
     <button class="btn sec" id="roue">Ouvrir la roue</button></div>`;
   h+=`<div class="card"><h2>📋 Mes exercices</h2><p style="margin:0" class="muted">Renforcement musculaire, étirements et méthodes d'étirement. Tu choisis ce que les stagiaires peuvent voir pour réviser.</p>
     <button class="btn sec" id="fiches">Ouvrir mes exercices</button></div>`;
@@ -1134,7 +1134,11 @@ const ROUE_SIMPLE_CATS={
   renfo:{titre:'Exercices de renforcement musculaire',emoji:'💪',zones:{
     bas:{t:'Bas du corps',cases:['Squat','Fente','Relevé de bassin','Élévation latérale','Extension de hanche']},
     haut:{t:'Haut du corps',cases:['Poitrine','Épaules','Dos','Biceps','Triceps']},
-    abdos:{t:'Abdos',cases:['Obliques','Grand droit','Lombaires']}}}
+    abdos:{t:'Abdos',cases:['Obliques','Grand droit','Lombaires']}}},
+  etir:{titre:"Exercices d'étirement",emoji:'🧘',zones:{
+    bas:{t:'Bas du corps',cases:['Quadriceps','Ischios','Fessiers','Psoas','Adducteurs','Mollets']},
+    haut:{t:'Haut du corps',cases:['Poitrine','Épaules','Dos','Biceps','Triceps','Cervicales']},
+    abdos:{t:'Abdos',cases:['Grand droit','Obliques','Lombaires']}}}
 };
 function roueSimple(){
   // ancienne liste unique → liste « Répartition du cours »
