@@ -34,7 +34,8 @@ function muBarre(){const b=document.getElementById('mu-lect');if(!b)return;const
   document.getElementById('mu-pr').onclick=()=>{if(muAudio.currentTime>3)muAudio.currentTime=0;else muSuivante(-1)};
   document.getElementById('mu-su').onclick=()=>muSuivante(1);
   document.getElementById('mu-pos').oninput=e=>{if(muAudio.duration)muAudio.currentTime=e.target.value/1000*muAudio.duration}}
-async function mesMusiques(msg){
+async function mesMusiques(msg,garder){
+  const pos=garder?window.scrollY:0, ouverts=garder?[...app.querySelectorAll('details[data-f][open]')].map(d=>d.dataset.f):[];
   app.innerHTML='<p class="muted">Chargement…</p>';
   try{await muCharger()}catch(e){app.innerHTML=`<button class="back" id="bk">← Retour</button><div class="err">⚠️ Ce navigateur ne peut pas garder de musiques.</div>`;document.getElementById('bk').onclick=accueil;return}
   try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
@@ -58,7 +59,7 @@ async function mesMusiques(msg){
       ${L.length&&!tb?`<button class="btn small" style="margin:0" data-tout="${liste(L.map(m=>m.id))}">▶️ Tout jouer</button>`:''}</div>`+
       (!L.length?`<p class="muted" style="margin:8px 0 0">Aucune musique.</p>`:
        tb?muFmts(L).map(f=>{const F=L.filter(m=>(m.fmt||'')===f),li=liste(F.map(m=>m.id));
-         return `<details style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px"${F.some(m=>m.id===MU_EN)?' open':''}><summary style="cursor:pointer;font-weight:800;font-size:17px">⏱️ ${esc(muFmtNom(f))} <span class="muted" style="font-weight:400">(${F.length})</span></summary>
+         return `<details data-f="${esc(c+'|'+f)}" style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px"${F.some(m=>m.id===MU_EN)||ouverts.includes(c+'|'+f)?' open':''}><summary style="cursor:pointer;font-weight:800;font-size:17px">⏱️ ${esc(muFmtNom(f))} <span class="muted" style="font-weight:400">(${F.length})</span></summary>
            <button class="btn small" style="margin:8px 0 0" data-tout="${li}">▶️ Tout jouer</button>${F.map(m=>ligne(m,li)).join('')}</details>`}).join('')
        :(()=>{const li=liste(L.map(m=>m.id));return L.map(m=>ligne(m,li)).join('')})())+
       `<div style="margin-top:8px"><button class="link" data-ren="${ci}">✏️ Renommer</button>${L.length?'':` · <button class="link" data-supc="${ci}">🗑️ Supprimer la catégorie</button>`}</div></div>`});
@@ -74,15 +75,15 @@ async function mesMusiques(msg){
     catch(e){return mesMusiques(`⚠️ ${n} musique${n>1?'s':''} importée${n>1?'s':''} seulement : le téléphone manque peut-être de place.`)}
     mesMusiques(`✅ ${n} musique${n>1?'s':''} ajoutée${n>1?'s':''} dans « ${cat} ».`)};
   document.getElementById('mu-nc').onclick=()=>{const t=(prompt('Nom de la nouvelle catégorie :')||'').trim();if(!t)return;if(!C.includes(t)){C.push(t);muCatsEcrire(C)}mesMusiques()};
-  app.querySelectorAll('[data-j]').forEach(b=>b.onclick=()=>muJouer(b.dataset.j,LISTES[+b.dataset.l]).then(()=>mesMusiques()));
-  app.querySelectorAll('[data-tout]').forEach(b=>b.onclick=()=>{const L=LISTES[+b.dataset.tout];muJouer(L[0],L).then(()=>mesMusiques())});
-  app.querySelectorAll('[data-dep]').forEach(s=>s.onchange=async()=>{const id=s.dataset.dep,[c,f]=s.value.split('|');await muOp('readwrite',st=>{const r=st.get(id);r.onsuccess=()=>{const x=r.result;if(x){x.cat=c;x.fmt=muEstTb(c)?(f||''):'';st.put(x)}};return r});mesMusiques()});
+  app.querySelectorAll('[data-j]').forEach(b=>b.onclick=()=>muJouer(b.dataset.j,LISTES[+b.dataset.l]).then(()=>mesMusiques('',1)));
+  app.querySelectorAll('[data-tout]').forEach(b=>b.onclick=()=>{const L=LISTES[+b.dataset.tout];muJouer(L[0],L).then(()=>mesMusiques('',1))});
+  app.querySelectorAll('[data-dep]').forEach(s=>s.onchange=async()=>{const id=s.dataset.dep,[c,f]=s.value.split('|');await muOp('readwrite',st=>{const r=st.get(id);r.onsuccess=()=>{const x=r.result;if(x){x.cat=c;x.fmt=muEstTb(c)?(f||''):'';st.put(x)}};return r});mesMusiques('',1)});
   // 1er appui : la poubelle devient « Confirmer » (4 s) ; 2e appui : supprimée, sans fenêtre
   app.querySelectorAll('[data-sup]').forEach(b=>b.onclick=async()=>{const m=MU_LISTE.find(x=>x.id===b.dataset.sup);if(!m)return;
     if(!b.dataset.ok){b.dataset.ok='1';b.textContent='Confirmer';b.style.background='var(--ko)';b.style.color='#fff';clearTimeout(b._t);b._t=setTimeout(()=>{delete b.dataset.ok;b.textContent='🗑️';b.style.background='';b.style.color=''},4000);return}
-    clearTimeout(b._t);if(MU_EN===m.id){muAudio.pause();MU_EN=null}await muOp('readwrite',s=>s.delete(m.id));mesMusiques()});
+    clearTimeout(b._t);if(MU_EN===m.id){muAudio.pause();MU_EN=null}await muOp('readwrite',s=>s.delete(m.id));mesMusiques('',1)});
   app.querySelectorAll('[data-ren]').forEach(b=>b.onclick=async()=>{const old=C[+b.dataset.ren],t=(prompt('Nouveau nom :',old)||'').trim();if(!t||t===old)return;
     const L=MU_LISTE.filter(m=>m.cat===old);for(const m of L)await muOp('readwrite',st=>{const r=st.get(m.id);r.onsuccess=()=>{const x=r.result;if(x){x.cat=t;st.put(x)}};return r});
     const N=C.map(c=>c===old?t:c).filter((c,i,a)=>a.indexOf(c)===i);muCatsEcrire(N);mesMusiques()});
   app.querySelectorAll('[data-supc]').forEach(b=>b.onclick=()=>{const c=C[+b.dataset.supc];if(!confirm(`Supprimer la catégorie « ${c} » ?`))return;muCatsEcrire(C.filter(k=>k!==c));mesMusiques()});
-  haut()}
+  if(garder)window.scrollTo(0,pos);else haut()}
