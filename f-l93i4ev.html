@@ -1150,6 +1150,7 @@ function roueSimple(){
   if(!Array.isArray(zones)){const z=lire('roue_zone','bas');zones=z==='tout'?ZK.slice():[z]}
   zones=zones.filter(z=>ZK.includes(z));if(!zones.length)zones=[ZK[0]];
   const acc=acceptes();
+  let multi=!!lire('roue_multi',false); // le même prénom plusieurs fois ?
   const liste=()=>lire('roue_liste_'+cat,[]);
   const zoneObj=()=>{const Z=ROUE_SIMPLE_CATS[cat].zones;return {cases:ZK.filter(k=>zones.includes(k)).flatMap(k=>Z[k].cases)}};
   // cases encore à tirer : celles sorties le moins de fois (la roue se remplit quand tout est sorti)
@@ -1158,8 +1159,9 @@ function roueSimple(){
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">${Object.entries(ROUE_SIMPLE_CATS).map(([k,c])=>`<button class="btn small ${k===cat?'':'sec'}" style="margin:0" data-cat="${k}">${c.emoji} ${esc(c.titre)}</button>`).join('')}</div>
   <div class="card o" id="rs-zone">
     ${Object.keys(ROUE_SIMPLE_CATS[cat].zones).length>1?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${Object.entries(ROUE_SIMPLE_CATS[cat].zones).map(([k,z])=>`<button class="btn small ${zones.includes(k)?'':'sec'}" style="margin:0;padding:7px 12px" data-zone="${k}">${esc(z.t)}</button>`).join('')}</div>`:''}
-    <label for="rs-nom" style="margin-top:0">Pour qui ?</label>
-    <input type="text" id="rs-nom" list="rs-noms" placeholder="Écris le prénom" autocomplete="off">
+    <label for="rs-nom" style="margin-top:0">Pour qui ? <span class="muted" style="font-weight:400">(facultatif)</span></label>
+    <input type="text" id="rs-nom" list="rs-noms" placeholder="Écris le prénom, ou lance sans nom" autocomplete="off">
+    <button class="roue-son" id="rs-multi" style="margin-top:8px"></button>
     <datalist id="rs-noms"></datalist>
     <div id="rs-boite" style="margin-top:14px"></div>
     <p class="muted" id="rs-reste" style="text-align:center;margin:8px 0 0"></p>
@@ -1174,7 +1176,7 @@ function roueSimple(){
   <div class="card"><h2>📋 La liste · ${esc(ROUE_SIMPLE_CATS[cat].titre)}</h2><div id="rs-liste"></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn small sec" id="rs-copie">📋 Copier la liste</button><button class="btn small ko" id="rs-eff">🗑️ Effacer la liste</button></div>
     <div class="ok hide" id="rs-ok"></div>
-    <p class="muted" style="margin-bottom:0">Gardée sur ce téléphone seulement. Un stagiaire ne passe qu'une fois ; ✕ pour le refaire.</p></div>`;
+    <p class="muted" style="margin-bottom:0">Gardée sur ce téléphone seulement. ✕ pour enlever une ligne.</p></div>`;
   app.innerHTML=h;
   let R=null;
   const nom=document.getElementById('rs-nom'), res=document.getElementById('rs-res'), go=document.getElementById('rs-go'), ok=document.getElementById('rs-ok');
@@ -1184,7 +1186,7 @@ function roueSimple(){
     document.getElementById('rs-liste').innerHTML=L.length?L.map((x,k)=>`<div class="row" style="align-items:center"><span><b>${esc(x.n)}</b> → <button class="link" data-vf="${k}" style="color:inherit;text-decoration:underline">${esc(x.r)}</button></span><button class="link" data-del="${k}" style="color:var(--ko)">✕</button></div>`).join(''):'<p class="muted" style="margin:0 0 8px">Personne pour l\'instant.</p>';
     app.querySelectorAll('[data-vf]').forEach(b=>b.onclick=()=>{const x=liste()[+b.dataset.vf];if(x){montrerFiche(x.r,x.n);document.getElementById('rs-fiche').scrollIntoView({behavior:'smooth'})}});
     app.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{const L2=liste();L2.splice(+b.dataset.del,1);ecrire('roue_liste_'+cat,L2);dessinerListe();dessinerRoue()});
-    document.getElementById('rs-noms').innerHTML=acc.map(x=>x.prenom+' '+x.nom).filter(n=>!L.some(y=>memeNom(y.n,n))).map(n=>`<option value="${esc(n)}">`).join('')};
+    document.getElementById('rs-noms').innerHTML=acc.map(x=>x.prenom+' '+x.nom).filter(n=>multi||!L.some(y=>memeNom(y.n,n))).map(n=>`<option value="${esc(n)}">`).join('')};
   // fiche de la case tirée (réponses pour poser des questions) — sur ce téléphone, pas en projection
   const montrerFiche=(c,qui)=>{const el=document.getElementById('rs-fiche');
     const f=(cat!=='repart'&&typeof fxCase==='function')?fxCase(cat,c):'';
@@ -1194,17 +1196,19 @@ function roueSimple(){
   app.querySelectorAll('[data-zone]').forEach(b=>b.onclick=()=>{if(ROUE_SIMPLE_TOURNE)return;const k=b.dataset.zone;let z=zones.includes(k)?zones.filter(x=>x!==k):zones.concat(k);if(!z.length)return;ecrire('roue_zones_'+cat,z);quitter();roueSimple()});
   const son=document.getElementById('rs-son');const majSon=()=>{son.textContent=roueSonActif()?'🔊 Son':'🔇 Son coupé'};majSon();
   son.onclick=()=>{roueSonChanger(!roueSonActif());majSon()};
+  const bm=document.getElementById('rs-multi');
+  const majMulti=()=>{bm.textContent=multi?'🔁 Le même prénom plusieurs fois : Oui':'🔁 Le même prénom plusieurs fois : Non'};majMulti();
+  bm.onclick=()=>{multi=!multi;ecrire('roue_multi',multi);majMulti();dessinerListe()};
   go.onclick=async()=>{
     if(ROUE_SIMPLE_TOURNE)return;
     const qui=nom.value.trim();
-    if(!qui){res.innerHTML='<small style="color:var(--ko)">Écris d\'abord le prénom</small>';nom.focus();return}
-    const deja=liste().find(y=>memeNom(y.n,qui));
+    const deja=qui&&!multi&&liste().find(y=>memeNom(y.n,qui));
     if(deja){res.innerHTML=`<small style="color:var(--ko)">⚠️ ${esc(deja.n)} a déjà eu</small>${esc(deja.r)}`;return}
     ROUE_SIMPLE_TOURNE=true;roueAudioPret();go.disabled=true;go.textContent='La roue tourne…';res.innerHTML='';document.getElementById('rs-fiche').innerHTML='';
     const C=restantes(), i=Math.floor(Math.random()*C.length);
     await R.tourner(i);
-    res.innerHTML=`<small>${esc(qui)}</small>${esc(C[i])}`;montrerFiche(C[i],qui);
-    const L=liste();L.push({n:qui,r:C[i],at:Date.now()});ecrire('roue_liste_'+cat,L);
+    res.innerHTML=`<small>${qui?esc(qui):'🎲'}</small>${esc(C[i])}`;montrerFiche(C[i],qui);
+    const L=liste();L.push({n:qui||'🎲 Sans nom',r:C[i],at:Date.now()});ecrire('roue_liste_'+cat,L);
     nom.value='';go.disabled=false;go.textContent='🎡 Lancer';ROUE_SIMPLE_TOURNE=false;
     dessinerListe();
     setTimeout(()=>{if(!ROUE_SIMPLE_TOURNE)dessinerRoue()},1800); // la case tirée sort de la roue
