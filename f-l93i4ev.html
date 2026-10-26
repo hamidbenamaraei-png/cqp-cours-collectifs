@@ -146,9 +146,9 @@ body.avec-barre .wrap{padding-bottom:120px}
 </head>
 <body>
 <div class="wrap" id="app"></div>
-<script src="commun.js?v=202610260759"></script>
-<script src="roue.js?v=202610260759"></script>
-<script src="fiches.js?v=202610260759"></script>
+<script src="commun.js?v=202610260803"></script>
+<script src="roue.js?v=202610260803"></script>
+<script src="fiches.js?v=202610260803"></script>
 <script>
 // ======= Réglages propres au formateur =======
 // Empreinte du code d'accès (le code lui-même n'est pas écrit ici)
@@ -205,7 +205,7 @@ async function chargerEtat(){
   // décisions prises sur ce téléphone depuis moins de 15 min (le temps que Google se mette à jour)
   const ls=lire('localst',{});
   Object.entries(ls).forEach(([id,v])=>{if(Date.now()-v.at<15*60*1000){STAG[id]=Object.assign(STAG[id]||{id,nom:v.nom,prenom:v.prenom},{statut:v.statut})}});
-  const lt=lire('local_types',{});Object.entries(lt).forEach(([id,v])=>{if(STAG[id]&&Date.now()-v.at<15*60*1000)STAG[id].st=v.st});
+  const lt=lire('local_types',{});Object.entries(lt).forEach(([id,v])=>{if(STAG[id]&&Date.now()-v.at<15*60*1000){if(v.st)STAG[id].st=v.st;if(v.str)STAG[id].str=v.str}});
   JOURNEES.forEach(j=>{
     const loc=lire('local_'+j.id,null);
     if(loc && Date.now()-loc.at<15*60*1000){
@@ -315,7 +315,7 @@ function accueil(){
 // ======= Écran : mes stagiaires =======
 function estTest(x){return !!(x&&String(x.id||'').startsWith('test-'))}
 function typeTxt(x){return x&&x.st==='apprenti'?'Apprenti(e)':'Stagiaire'}
-function typeBtn(x){return ` · <button class="link" data-type="${x.id}" style="color:var(--soft)">${typeTxt(x)}</button>`}
+function typeBtn(x){return ` · <button class="link" data-type="${x.id}" style="color:var(--soft)">${typeTxt(x)}</button> · <button class="link" data-str="${x.id}" style="color:var(--soft)">${x.str?esc(x.str):'structure ?'}</button>`}
 function acceptes(){return Object.values(STAG).filter(x=>x.statut==='accepte').sort((a,b)=>(a.nom+a.prenom).localeCompare(b.nom+b.prenom,'fr'))}
 async function decider(liste,statut){
   for(const x of liste){
@@ -381,8 +381,14 @@ function mesStagiaires(msg){
     if(!confirm(`${x.prenom} ${x.nom} est noté « ${typeTxt(x)} ».\n\nLe changer en « ${nv==='apprenti'?'Apprenti(e)':'Stagiaire'} » ?`))return;
     b.textContent='…';
     try{await envoyerForm(FORM_QUIZ,{[EQ.journee]:'stagiaires',[EQ.statut]:'type',[EQ.contenu]:JSON.stringify({id:x.id,st:nv})})}catch(e){alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");return mesStagiaires()}
-    const lt=lire('local_types',{});lt[x.id]={st:nv,at:Date.now()};ecrire('local_types',lt);x.st=nv;
+    const lt=lire('local_types',{});lt[x.id]=Object.assign(lt[x.id]||{},{st:nv,at:Date.now()});ecrire('local_types',lt);x.st=nv;
     const y=window.scrollY;mesStagiaires(`✅ ${esc(x.prenom)} ${esc(x.nom)} est maintenant « ${typeTxt(x)} ».`);window.scrollTo(0,y)});
+  app.querySelectorAll('[data-str]').forEach(b=>b.onclick=async()=>{const x=STAG[b.dataset.str];
+    const nv=prompt(`Structure de ${x.prenom} ${x.nom} :`,x.str||'');if(nv==null||!nv.trim()||nv.trim()===x.str)return;
+    b.textContent='…';
+    try{await envoyerForm(FORM_QUIZ,{[EQ.journee]:'stagiaires',[EQ.statut]:'type',[EQ.contenu]:JSON.stringify({id:x.id,str:nv.trim()})})}catch(e){alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");return mesStagiaires()}
+    const lt=lire('local_types',{});lt[x.id]=Object.assign(lt[x.id]||{},{str:nv.trim(),at:Date.now()});ecrire('local_types',lt);x.str=nv.trim();
+    const y=window.scrollY;mesStagiaires(`✅ Structure de ${esc(x.prenom)} ${esc(x.nom)} : ${esc(x.str)}.`);window.scrollTo(0,y)});
   app.querySelectorAll('[data-bil]').forEach(b=>b.onclick=()=>bilanStagiaire(STAG[b.dataset.bil]));
   app.querySelectorAll('[data-eff]').forEach(b=>b.onclick=()=>{const x=STAG[b.dataset.eff];
     if(confirm(`Effacer ${x.prenom} ${x.nom} de ta liste ?`))agir(b,[x],'efface',`🗑️ ${esc(x.prenom)} ${esc(x.nom)} est effacé de ta liste.`)});
