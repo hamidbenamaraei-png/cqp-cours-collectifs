@@ -27,8 +27,8 @@ const RENFO=[
 [
 "Squat pieds serrés",
 0,
-"Les pieds joints ou presque collés, les pointes vers l'avant, les bras tendus devant toi, verrouille les omoplates et lève la poitrine.",
-"Fléchis les genoux, laisse partir les fesses en arrière, penche légèrement le buste en avant en gardant le dos droit, inspire dans la descente et souffle dans la montée.",
+"Les pieds joints ou presque collés, les pointes vers l'avant, les bras le long du corps, verrouille les omoplates et lève la poitrine.",
+"Fléchis les genoux, laisse partir les fesses en arrière, penche légèrement le buste en avant en gardant le dos droit, plie les coudes (coudes vers le bas, mains devant la poitrine), inspire dans la descente et souffle dans la montée.",
 "Garde les talons au sol, les genoux serrés et dans l'axe des pieds, le dos droit et les abdominaux contractés. Descends seulement jusqu'où tu gardes le dos droit."
 ]
 ]
@@ -728,9 +728,9 @@ const BH_YTWM=[['tapis',4,10,150,120]];const BH_YTW=[['o',60,64,12,62],['o',60,7
 const BH_EG=[['o',50,128,150,128],['h',100,119]];                                               // allongé, vu depuis les pieds
 const BONHOMMES={
 // ---------- Renforcement : bas du corps ----------
-"renfo|Squat|Squat normal":[BH_DEB,{h:[80,104],t:55,hd:70,n:{l:[102,128],a:[118,81,1]},f:{l:[98,128],a:[115,82,1]}}],
+"renfo|Squat|Squat normal":[BH_DEB,{h:[80,104],t:55,hd:70,n:{l:[102,128],a:[117,70,1]},f:{l:[98,128],a:[114,71,1]}}],
 "renfo|Squat|Squat sumo":[{fv:1,h:[100,81],t:90,n:{l:[120,128],a:[102,60]},f:{l:[80,128],a:[98,60]}},{fv:1,h:[100,103],t:90,n:{l:[121,128],a:[102,82]},f:{l:[79,128],a:[98,82]}}],
-"renfo|Squat|Squat pieds serrés":[bh(BH_DEB,{n:{l:[101,128],a:{a:[0,0]}},f:{l:[99,128],a:{a:[-3,-3]}}}),{h:[84,102],t:62,hd:72,n:{l:[101,128],a:{a:[0,0]}},f:{l:[99,128],a:{a:[-3,-3]}}}],
+"renfo|Squat|Squat pieds serrés":[bh(BH_DEB,{n:{l:[101,128]},f:{l:[99,128]}}),{h:[82,103],t:57,hd:70,n:{l:[101,128],a:[118,69,1]},f:{l:[99,128],a:[115,70,1]}}],
 "renfo|Fente|Fente avant":[BH_HAN,{h:[96,93],t:90,n:{l:[122,128],a:[100,83]},f:{l:[67,121,1,-40],a:[96,83]}}],
 "renfo|Fente|Fente arrière":[BH_HAN,{h:[96,93],t:90,n:{l:[67,121,1,-40],a:[100,83]},f:{l:[122,128],a:[96,83]}}],
 "renfo|Fente|Fente latérale":[bh(BH_FDEB,{n:{a:[101,58]},f:{a:[99,58]}}),bh(BH_FL,{n:{a:[113,77]},f:{a:[111,77]}})],
