@@ -772,7 +772,7 @@ const BONHOMMES={
 "renfo|Biceps|Curl en supination":[bh(BH_DEB,{pr:[['barre','n.po']]}),bh(BH_DEB,{n:{a:[112,40,[-.1,1]]},f:{a:[110,42,[-.1,1]]},pr:[['barre','n.po']]})],
 "renfo|Biceps|Curl prise marteau":[bh(BH_DEB,{pr:[['halt','n.po','p']]}),bh(BH_DEB,{n:{a:[112,40,[-.1,1]]},f:{a:[110,42,[-.1,1]]},pr:[['halt','n.po','p']]})],
 "renfo|Biceps|Curl en pronation":[bh(BH_DEB,{pr:[['barre','n.po']]}),bh(BH_DEB,{n:{a:[112,40,[-.1,1]]},f:{a:[110,42,[-.1,1]]},pr:[['barre','n.po']]})],
-"renfo|Biceps|Curl concentré":[{h:[80,104.5],t:35,hd:50,n:{l:[106,128],a:{a:[-108.6,-90]}},f:{l:[102,128],a:[106,99]},pr:[['step',50,108,42],['halt','n.po','p']]},{h:[80,104.5],t:35,hd:50,n:{l:[106,128],a:{a:[-108.6,60]}},f:{l:[102,128],a:[106,99]},pr:[['step',50,108,42],['halt','n.po','p']]}],
+"renfo|Biceps|Curl concentré":[{h:[80,104.5],t:35,hd:50,n:{l:[106,128,-1],a:{a:[-108.6,-90]}},f:{l:[102,128,-1],a:[106,99]},pr:[['step',50,108,42],['halt','n.po','p']]},{h:[80,104.5],t:35,hd:50,n:{l:[106,128,-1],a:{a:[-108.6,60]}},f:{l:[102,128,-1],a:[106,99]},pr:[['step',50,108,42],['halt','n.po','p']]}],
 "renfo|Triceps|Dips au sol":[{s:[64,88],h:[102,110],hd:100,n:{l:[136,128],a:[60,128,-1,0]},f:{l:[132,128],a:[56,128,-1,0]}},{s:[68,104],h:[110,119],hd:100,n:{l:[138,128],a:[60,128,[-1,0],0]},f:{l:[134,128],a:[56,128,[-1,0],0]}}],
 "renfo|Triceps|Dips sur une chaise":[{s:[80,61],h:[83,105],hd:92,n:{l:[118,128],a:[78,100]},f:{l:[114,128],a:[76,100]},pr:[['chaise',44,80,103.5]]},{s:[96,78],h:[97,122],hd:92,n:{l:[134,128],a:[78,100,[-1,-.3]]},f:{l:[130,128],a:[76,100,[-1,-.3]]},pr:[['chaise',44,80,103.5]]}],
 "renfo|Triceps|Pompes serrées":[bh(BH_PH,{f:{a:[139,128]}}),bh(BH_PB,{n:{a:[140,128,[-1,-.15]]},f:{a:[139,128,[-1,-.15]]}})],
@@ -894,3 +894,13 @@ function fxMethodes(avant){
 }
 // clés d'une catégorie
 function fxCles(cat){return cat==='meth'?['meth']:FICHES_CATS[cat].parties.map(p=>cat+'.'+p.k)}
+// Une seule case ouverte à la fois (cases, parties, méthodes) : en ouvrir une referme les autres
+document.addEventListener('toggle',e=>{
+  const d=e.target;if(!d||d.tagName!=='DETAILS'||!d.open)return;
+  let freres=[];
+  if(d.classList.contains('fx-p'))freres=[...document.querySelectorAll('details.fx-p')];
+  else if(d.classList.contains('fiche')&&d.parentElement)freres=[...d.parentElement.querySelectorAll(':scope > details.fiche')];
+  else return;
+  let ferme=false;freres.forEach(x=>{if(x!==d&&x.open){x.open=false;ferme=true}});
+  if(ferme){const s=d.querySelector('summary');if(s)setTimeout(()=>s.scrollIntoView({behavior:'smooth',block:'start'}),30)}
+},true);
