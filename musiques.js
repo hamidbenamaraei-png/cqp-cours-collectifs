@@ -15,25 +15,84 @@ function muFormat(nom){const m=String(nom).match(/(?:^|\D)([1-9]\d)\s*[\/\-_x×:
 function muFmts(L){return[...new Set(L.map(m=>m.fmt||''))].sort((a,b)=>a===''?1:b===''?-1:(+a.split('/')[0]-+b.split('/')[0])||(+a.split('/')[1]-+b.split('/')[1]))}
 const muFmtNom=f=>f?'Tabata '+f:'Tabata – autres';
 function muNom(f){return f.name.replace(/\.[a-z0-9]{2,4}$/i,'').replace(/[_]+/g,' ').trim()||'Musique'}
+// ---- forme de la musique (barres) et BPM : calculés une fois, gardés avec la musique ----
+const MU_INFO={}; const MU_NB=90;
+async function muAnalyser(blob){
+  const buf=await blob.arrayBuffer(); const R=11025;
+  const oc=new (window.OfflineAudioContext||window.webkitOfflineAudioContext)(1,R,R);
+  const ab=await new Promise((ok,ko)=>{const r=oc.decodeAudioData(buf,ok,ko);if(r&&r.then)r.then(ok,ko)});
+  const n=ab.length,ch=[];for(let c=0;c<ab.numberOfChannels;c++)ch.push(ab.getChannelData(c));
+  const mono=i=>{let v=0;for(const d of ch)v+=d[i];return v/ch.length};
+  // barres : niveau moyen par morceau de musique
+  const peaks=[];const pas=Math.floor(n/MU_NB)||1;
+  for(let b=0;b<MU_NB;b++){let e=0,k=0;for(let i=b*pas;i<Math.min(n,(b+1)*pas);i+=16){const v=mono(i);e+=v*v;k++}peaks.push(Math.sqrt(e/(k||1)))}
+  const mx=Math.max(...peaks)||1;
+  // BPM : énergie toutes les 128 échantillons, montées d'énergie, puis la période qui se répète le plus (85 à 175 BPM)
+  const H=128,fps=ab.sampleRate/H,E=[];for(let i=0;i+H<n;i+=H){let e=0;for(let j=i;j<i+H;j+=2){const v=mono(j);e+=v*v}E.push(e)}
+  const O=E.map((e,i)=>i?Math.max(0,e-E[i-1]):0);const m=O.reduce((a,b)=>a+b,0)/(O.length||1);for(let i=0;i<O.length;i++)O[i]=Math.max(0,O[i]-m);
+  const lmin=Math.floor(fps*60/175),lmax=Math.ceil(fps*60/85),ac=[];
+  for(let l=lmin;l<=lmax;l++){let v=0;for(let i=l;i<O.length;i++)v+=O[i]*O[i-l];ac[l]=v}
+  let best=lmin;for(let l=lmin;l<=lmax;l++)if(ac[l]>ac[best])best=l;
+  let lb=best;if(best>lmin&&best<lmax){const a=ac[best-1],b=ac[best],c=ac[best+1],d=a-2*b+c;if(d)lb=best+.5*(a-c)/d}
+  let bpm=60*fps/lb;
+  return {peaks:peaks.map(v=>+(v/mx).toFixed(3)),bpm0:Math.round(bpm*10)/10}}
+async function muMaj(id,f){await muOp('readwrite',st=>{const r=st.get(id);r.onsuccess=()=>{const x=r.result;if(x){f(x);st.put(x)}};return r})}
+function muVitesse(){const I=MU_INFO[MU_EN];const v=I&&I.bpm0&&I.bpm?I.bpm/I.bpm0:1;muAudio.playbackRate=v;try{muAudio.preservesPitch=true;muAudio.webkitPreservesPitch=true}catch(e){}}
 async function muJouer(id,file){
   const x=await muOp('readonly',s=>s.get(id));if(!x)return;
   if(MU_URL)URL.revokeObjectURL(MU_URL);MU_URL=URL.createObjectURL(x.blob);
-  MU_EN=id;if(file)MU_FILE=file;muAudio.src=MU_URL;try{await muAudio.play()}catch(e){}
-  muBarre()}
+  MU_EN=id;if(file)MU_FILE=file;MU_INFO[id]={peaks:x.peaks||null,bpm0:x.bpmMan||x.bpm0||null,bpmAuto:x.bpm0||null,bpm:x.bpm||null};
+  muAudio.src=MU_URL;muVitesse();try{await muAudio.play()}catch(e){}
+  muBarre();
+  if(!x.peaks){try{const a=await muAnalyser(x.blob);await muMaj(id,y=>{y.peaks=a.peaks;y.bpm0=a.bpm0});
+    Object.assign(MU_INFO[id],{peaks:a.peaks,bpmAuto:a.bpm0});if(!x.bpmMan)MU_INFO[id].bpm0=a.bpm0;if(MU_EN===id){muVitesse();muBarre()}}catch(e){MU_INFO[id].err=1;if(MU_EN===id)muBarre()}}}
 function muSuivante(d){const i=MU_FILE.indexOf(MU_EN);const j=i+d;if(i<0||j<0||j>=MU_FILE.length){muBarre();return}muJouer(MU_FILE[j])}
 muAudio.addEventListener('ended',()=>muSuivante(1));
-muAudio.addEventListener('timeupdate',()=>{const r=document.getElementById('mu-pos');if(r&&muAudio.duration)r.value=Math.round(muAudio.currentTime/muAudio.duration*1000);const t=document.getElementById('mu-t');if(t)t.textContent=muTemps(muAudio.currentTime)+' / '+muTemps(muAudio.duration||0)});
+let muGlisse=false;
+function muAvance(){const w=document.getElementById('mu-onde');const d=muAudio.duration||0,t=muAudio.currentTime||0,f=d?t/d:0;
+  if(w&&!muGlisse){const R=w.querySelectorAll('rect');const k=Math.floor(f*R.length);R.forEach((r,i)=>r.setAttribute('fill',i<k?'#f08a4b':'#3d4870'));const c=w.querySelector('line');if(c){c.setAttribute('x1',f*320);c.setAttribute('x2',f*320)}}
+  const a=document.getElementById('mu-t0'),b=document.getElementById('mu-t1');if(a&&!muGlisse)a.textContent=muTemps(t);if(b)b.textContent=muTemps(d)}
+muAudio.addEventListener('timeupdate',muAvance);
 muAudio.addEventListener('play',()=>muBarre());muAudio.addEventListener('pause',()=>muBarre());
 function muTemps(s){s=Math.floor(s||0);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
 function muBarre(){const b=document.getElementById('mu-lect');if(!b)return;const x=MU_LISTE.find(m=>m.id===MU_EN);
   if(!x){b.innerHTML='<p class="muted" style="margin:0">Touche une musique pour la lancer.</p>';return}
-  b.innerHTML=`<div class="tag">▶️ En cours · ${esc(x.cat)}</div><h2 style="margin:4px 0 8px">${esc(x.nom)}</h2>
-   <input type="range" id="mu-pos" min="0" max="1000" value="0" style="width:100%"><div class="muted" id="mu-t" style="font-size:14px">0:00</div>
-   <div style="display:flex;gap:8px;margin-top:8px"><button class="btn sec" style="margin:0" id="mu-pr">⏮️</button><button class="btn" style="margin:0" id="mu-pp">${muAudio.paused?'▶️ Lecture':'⏸️ Pause'}</button><button class="btn sec" style="margin:0" id="mu-su">⏭️</button></div>`;
+  const I=MU_INFO[MU_EN]||{};const P=I.peaks;
+  const onde=P?`<svg id="mu-onde" viewBox="0 0 320 68" style="width:100%;display:block;touch-action:none;cursor:pointer">${P.map((v,i)=>{const h=Math.max(5,v*62);return `<rect x="${(i*320/P.length).toFixed(1)}" y="${((68-h)/2).toFixed(1)}" width="${(320/P.length-1.2).toFixed(1)}" height="${h.toFixed(1)}" rx="1.5" fill="#3d4870"/>`}).join('')}<line x1="0" y1="0" x2="0" y2="68" stroke="#fff" stroke-width="2"/></svg>`
+    :`<div class="muted" style="font-size:14px;padding:22px 0;text-align:center">${I.err?'Forme de la musique indisponible':'Analyse de la musique…'}</div>`;
+  const b0=I.bpm0,bp=I.bpm||b0;
+  b.innerHTML=`<div class="tag">▶️ En cours · ${esc(x.cat)}${muEstTb(x.cat)?' '+esc(x.fmt||''):''}</div><h2 style="margin:4px 0 8px">${esc(x.nom)}</h2>
+   <div style="background:#141a33;border-radius:12px;padding:8px">${onde}</div>
+   <div class="muted" style="font-size:14px;margin-top:4px;display:flex;justify-content:space-between"><span id="mu-t0">0:00</span><span id="mu-t1">0:00</span></div>
+   <div style="display:flex;gap:8px;margin-top:8px"><button class="btn sec" style="margin:0" id="mu-pr">⏮️</button><button class="btn" style="margin:0" id="mu-pp">${muAudio.paused?'▶️ Lecture':'⏸️ Pause'}</button><button class="btn sec" style="margin:0" id="mu-su">⏭️</button></div>
+   <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><b style="font-size:17px">🥁 Tempo</b><span class="muted" style="font-size:14px" id="mu-b0">${b0?`BPM d'origine : ≈ ${Math.round(b0)} <button class="link" id="mu-cor" style="padding:0">corriger</button>`:(I.err?'BPM inconnu <button class="link" id="mu-cor" style="padding:0">l\'écrire</button>':'Calcul du BPM…')}</span></div>
+    ${b0?`<div style="display:flex;align-items:center;gap:10px;margin-top:10px"><button class="btn sec" style="margin:0;width:64px;font-size:26px" id="mu-bm" aria-label="Moins vite">−</button>
+     <div style="flex:1;text-align:center"><div style="font-size:34px;font-weight:900">${Math.round(bp)}</div><div class="muted" style="font-size:13px">BPM${Math.round(bp)!==Math.round(b0)?' · '+(bp>b0?'+':'')+Math.round((bp/b0-1)*100)+' %':' · d\'origine'}</div></div>
+     <button class="btn sec" style="margin:0;width:64px;font-size:26px" id="mu-bp" aria-label="Plus vite">+</button></div>
+     ${Math.round(bp)!==Math.round(b0)?`<button class="btn small sec" style="margin-top:10px" id="mu-br">↩️ Revenir à ${Math.round(b0)} BPM</button>`:''}
+     <p class="muted" style="font-size:13px;margin:8px 0 0">💾 Ce tempo est gardé pour cette musique.</p>`:''}</div>`;
   document.getElementById('mu-pp').onclick=()=>{muAudio.paused?muAudio.play().catch(()=>{}):muAudio.pause()};
   document.getElementById('mu-pr').onclick=()=>{if(muAudio.currentTime>3)muAudio.currentTime=0;else muSuivante(-1)};
   document.getElementById('mu-su').onclick=()=>muSuivante(1);
-  document.getElementById('mu-pos').oninput=e=>{if(muAudio.duration)muAudio.currentTime=e.target.value/1000*muAudio.duration}}
+  // toucher ou glisser sur la forme : aller à cet endroit
+  const w=document.getElementById('mu-onde');
+  if(w){const ou=e=>{const r=w.getBoundingClientRect();return Math.min(1,Math.max(0,(e.clientX-r.left)/r.width))};
+    const voir=f=>{const R=w.querySelectorAll('rect'),k=Math.floor(f*R.length);R.forEach((r,i)=>r.setAttribute('fill',i<k?'#f08a4b':'#3d4870'));const c=w.querySelector('line');c.setAttribute('x1',f*320);c.setAttribute('x2',f*320);const a=document.getElementById('mu-t0');if(a)a.textContent=muTemps(f*(muAudio.duration||0))};
+    w.onpointerdown=e=>{muGlisse=true;try{w.setPointerCapture(e.pointerId)}catch(_){}voir(ou(e))};
+    w.onpointermove=e=>{if(muGlisse)voir(ou(e))};
+    w.onpointerup=w.onpointercancel=e=>{if(!muGlisse)return;muGlisse=false;const f=ou(e);if(muAudio.duration)muAudio.currentTime=f*muAudio.duration;muAvance()}}
+  muAvance();
+  const regler=async v=>{const I=MU_INFO[MU_EN];if(!I||!I.bpm0)return;v=Math.round(Math.min(I.bpm0*1.25,Math.max(I.bpm0*.75,v)));I.bpm=v;muVitesse();const id=MU_EN;await muMaj(id,y=>{y.bpm=v});muBarre()};
+  const bm=document.getElementById('mu-bm'),bpb=document.getElementById('mu-bp'),br=document.getElementById('mu-br'),cor=document.getElementById('mu-cor');
+  if(bm)bm.onclick=()=>regler(Math.round(MU_INFO[MU_EN].bpm||MU_INFO[MU_EN].bpm0)-2);
+  if(bpb)bpb.onclick=()=>regler(Math.round(MU_INFO[MU_EN].bpm||MU_INFO[MU_EN].bpm0)+2);
+  if(br)br.onclick=async()=>{const I=MU_INFO[MU_EN];I.bpm=null;muVitesse();const id=MU_EN;await muMaj(id,y=>{delete y.bpm});muBarre()};
+  if(cor)cor.onclick=()=>{const z=document.getElementById('mu-b0');const I=MU_INFO[MU_EN];
+    z.innerHTML=`<input type="number" inputmode="numeric" min="40" max="220" placeholder="BPM" value="${I.bpm0?Math.round(I.bpm0):''}" style="width:80px;padding:6px;border-radius:8px"> <button class="btn small" style="margin:0" id="mu-cok">OK</button>`;
+    const i=z.querySelector('input');i.focus();
+    const ok=async()=>{const v=+i.value;if(!(v>=40&&v<=220))return muBarre();const r=I.bpm&&I.bpm0?I.bpm/I.bpm0:1;I.bpm0=v;I.bpm=r!==1?Math.round(v*r):null;muVitesse();const id=MU_EN;await muMaj(id,y=>{y.bpmMan=v;if(I.bpm)y.bpm=I.bpm;else delete y.bpm});muBarre()};
+    document.getElementById('mu-cok').onclick=ok;i.onkeydown=e=>{if(e.key==='Enter')ok()}}}
 async function mesMusiques(msg,garder){
   const pos=garder?window.scrollY:0, ouverts=garder?[...app.querySelectorAll('details[data-f][open]')].map(d=>d.dataset.f):[];
   app.innerHTML='<p class="muted">Chargement…</p>';
