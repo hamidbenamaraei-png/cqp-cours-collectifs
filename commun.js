@@ -289,7 +289,7 @@ async function nouvellesCles(){
 }
 async function etatGeneral(){
   const etat={};JOURNEES.forEach(j=>etat[j.id]={quiz:j.quiz,ouvert:false,duree:0,ouvertAt:null,ouvCle:''});
-  const stag={}, revs={}, roue={tirage:null,lances:{},listes:{},persos:{}}, fiches={ouverts:[]}, reouv=[], retours=[];
+  const stag={}, revs={}, roue={tirage:null,lances:{},listes:{},persos:{}}, fiches={ouverts:[]}, diapos={ouverts:[]}, reouv=[], retours=[];
   const L=await lireCSV(CSV_QUIZ);
   if(L.length){
     const h=L[0].map(x=>x.trim().toLowerCase());
@@ -339,6 +339,12 @@ async function etatGeneral(){
         if(c&&c.sid&&c.cle)reouv.push({sid:String(c.sid),cle:String(c.cle),at:horoVersMs(l[0])||0});
         return;
       }
+      // diaporamas montrés aux stagiaires : liste des journées (la dernière ligne gagne)
+      if(id==='diapos'){
+        let c;try{c=JSON.parse(l[iC]||'')}catch(e){return}
+        if(st==='etat'&&c&&Array.isArray(c.ouverts))diapos.ouverts=c.ouverts.map(String);
+        return;
+      }
       if(id==='fiches'){
         let c;try{c=JSON.parse(l[iC]||'')}catch(e){return}
         if(st==='etat'&&c&&Array.isArray(c.ouverts))fiches.ouverts=c.ouverts.map(String);
@@ -362,7 +368,7 @@ async function etatGeneral(){
   }
   Object.keys(revs).forEach(k=>{if(!revs[k].quiz)delete revs[k]});
   Object.entries(CLES_EN_ATTENTE).forEach(([k,v])=>{if(stag[k]&&!stag[k].pub)stag[k].pub=v});
-  return {quiz:etat,stagiaires:stag,revisions:revs,roue,fiches,reouv,retours};
+  return {quiz:etat,stagiaires:stag,revisions:revs,roue,fiches,diapos,reouv,retours};
 }
 async function etatQuiz(){return (await etatGeneral()).quiz}
 // La révision « en cours » = la dernière préparée

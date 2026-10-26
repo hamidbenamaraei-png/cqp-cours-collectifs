@@ -56,9 +56,10 @@ summary{cursor:pointer;font-weight:700}
 </head>
 <body>
 <div class="wrap" id="app"></div>
-<script src="commun.js?v=202610260905"></script>
-<script src="roue.js?v=202610260905"></script>
-<script src="fiches.js?v=202610260905"></script>
+<script src="commun.js?v=202610260957"></script>
+<script src="roue.js?v=202610260957"></script>
+<script src="fiches.js?v=202610260957"></script>
+<script src="tabata.js?v=202610260957"></script>
 <script>
 // ======= Mémoire du téléphone (nom, prénom, quiz envoyés, historique) =======
 function lire(k,d){try{const v=localStorage.getItem('cqp_'+k);return v?JSON.parse(v):d}catch(e){return d}}
@@ -115,7 +116,7 @@ function confirmer(nom,prenom,st,str){
 
 // ======= Les quiz : une « session » = un quiz ouvert (journée ou révision) =======
 let ETAT = null, REVS = {}; // état des quiz (ouvert ou non), lu dans le tableau du formateur
-let FICHES = [], MES_RETOURS = []; // MES_RETOURS : retours d'Hamid déchiffrés sur ce téléphone // fiches de révision ouvertes par Hamid (renfo.bas, etir.haut, meth…)
+let FICHES = [], MES_RETOURS = [], DIAPOS = []; // DIAPOS : journées dont Hamid montre les diapos // MES_RETOURS : retours d'Hamid déchiffrés sur ce téléphone // fiches de révision ouvertes par Hamid (renfo.bas, etir.haut, meth…)
 let ROUE = null, NOMS = {}; // la roue (tirage préparé par Hamid) et les prénoms des stagiaires
 function sessionJournee(j){
   const e=ETAT[j.id];
@@ -164,6 +165,9 @@ function accueil(){
     h+=`<div class="card o"><div class="tag">🧠 Révision</div><h2 style="margin-top:4px">${esc(rev.titre)}</h2>
       <p class="muted" style="margin:0">Un petit quiz pour revoir ce qu'on a vu depuis le début. ${texteDuree(rev.quiz)}</p>
       ${boutonQuiz(S,'🧠 Faire la révision')}</div>`}
+  h+=`<div class="card"><div class="tag">⏱️ Tabata</div><h2 style="margin-top:4px">Minuteur travail / repos</h2>
+      <p class="muted" style="margin:0">Règle ton temps de travail, de repos et le nombre de tours.</p>
+      <button class="btn sec" id="tbt">⏱️ Ouvrir le Tabata</button></div>`;
   if(MES_RETOURS.length)h+=`<div class="card j"><div class="tag">📝 Mes retours</div><h2 style="margin-top:4px">${MES_RETOURS.length} retour${MES_RETOURS.length>1?'s':''} de Hamid</h2>
       <p class="muted" style="margin:0">Ses notes après tes passages, pour progresser.</p>
       <button class="btn" id="mr">📝 Lire mes retours</button></div>`;
@@ -176,13 +180,14 @@ function accueil(){
     if(ouvert){const S=sessionJournee(j);sessions[idSession(S)]=S;b=boutonQuiz(S,'📝 Petit bilan de ma journée')}
     h += `<div class="card"><div class="tag" style="color:var(--soft)">${esc(j.titre)}</div><h2 style="margin-top:4px">${esc(j.theme)}</h2>
      ${b}
-     <button class="btn sec" data-cours="${j.id}">📚 Revoir les diapos</button></div>`;
+     ${DIAPOS.includes(j.id)?`<button class="btn sec" data-cours="${j.id}">📚 Revoir les diapos</button>`:''}</div>`;
   });
   app.innerHTML = h;
   document.getElementById('evo').onclick=evolution;
   const br=document.getElementById('roue'); if(br)br.onclick=ecranRoue;
   const bf=document.getElementById('fx'); if(bf)bf.onclick=()=>revoirFiches();
   const bm=document.getElementById('mr'); if(bm)bm.onclick=mesRetours;
+  document.getElementById('tbt').onclick=()=>{ECRAN='tabata';tabataEcran(accueil,esc(monEspace()))};
   app.querySelectorAll('[data-ses]').forEach(b=>b.onclick=()=>ouvrirSession(sessions[b.dataset.ses]));
   app.querySelectorAll('[data-cours]').forEach(b=>b.onclick=()=>cours(JOURNEES.find(j=>j.id===b.dataset.cours)));
   haut();
@@ -210,6 +215,11 @@ function mesRetours(){
   haut();
 }
 // ======= 📚 Pour réviser : les fiches ouvertes par Hamid =======
+function diaposOuvertes(g){
+  let o=(g&&g.diapos&&g.diapos.ouverts)||[];
+  try{const l=JSON.parse(localStorage.getItem('cqpf_local_diapos')||'null');if(l&&Array.isArray(l.ouverts)&&Date.now()-l.at<15*60*1000)o=l.ouverts}catch(e){}
+  return o;
+}
 function fichesOuvertes(g){
   let o=(g&&g.fiches&&g.fiches.ouverts)||[];
   // sur le téléphone d'Hamid (stagiaire de test) : ce qu'il vient de décider, sans attendre Google
@@ -272,7 +282,7 @@ async function verifier(){
     app.innerHTML = `<div class="card"><h2>Pas de connexion</h2><p>Vérifie ta connexion internet, puis réessaie.</p><button class="btn" id="re">Réessayer</button></div>`;
     document.getElementById('re').onclick=verifier;return;
   }
-  ETAT=g.quiz; REVS=g.revisions||{}; ROUE=g.roue||null; FICHES=fichesOuvertes(g);
+  ETAT=g.quiz; REVS=g.revisions||{}; ROUE=g.roue||null; FICHES=fichesOuvertes(g); DIAPOS=diaposOuvertes(g);
   NOMS={};Object.values(g.stagiaires||{}).forEach(x=>NOMS[x.id]=x.prenom);
   if(!moi.id){moi.id=nouvelId();ecrire('moi',moi);envoyerDemande();return attente(true)}
   let s=g.stagiaires[moi.id];
@@ -303,6 +313,7 @@ async function verifier(){
 
 // ======= Écran 3 : les diapos =======
 function cours(j){
+  if(!DIAPOS.includes(j.id))return accueil();
   ECRAN='cours';
   let h = `<button class="back" id="bk">← Retour</button><div class="tag">${esc(j.titre)}</div><h1>${esc(j.theme)}</h1>
    ${(j.docs||[]).map(d=>`<a class="btn" href="${d.fichier}" download>⬇️ ${esc(d.titre)}</a>`).join('')}
@@ -648,7 +659,7 @@ async function rafraichirRoue(){
     app.innerHTML=`<div class="card"><h2>Pas de connexion</h2><p>Vérifie ta connexion internet, puis réessaie.</p><button class="btn" id="re">Réessayer</button><button class="btn sec" id="ac">← Retour</button></div>`;
     document.getElementById('re').onclick=rafraichirRoue;document.getElementById('ac').onclick=accueil;return;
   }
-  ETAT=g.quiz;REVS=g.revisions||{};ROUE=g.roue||null;FICHES=fichesOuvertes(g);
+  ETAT=g.quiz;REVS=g.revisions||{};ROUE=g.roue||null;FICHES=fichesOuvertes(g);DIAPOS=diaposOuvertes(g);
   NOMS={};Object.values(g.stagiaires||{}).forEach(x=>NOMS[x.id]=x.prenom);
   const s=g.stagiaires[moi.id];
   if(!s||s.statut!=='accepte')return verifier();

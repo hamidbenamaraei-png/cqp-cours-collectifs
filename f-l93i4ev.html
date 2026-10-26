@@ -146,9 +146,10 @@ body.avec-barre .wrap{padding-bottom:120px}
 </head>
 <body>
 <div class="wrap" id="app"></div>
-<script src="commun.js?v=202610260905"></script>
-<script src="roue.js?v=202610260905"></script>
-<script src="fiches.js?v=202610260905"></script>
+<script src="commun.js?v=202610260957"></script>
+<script src="roue.js?v=202610260957"></script>
+<script src="fiches.js?v=202610260957"></script>
+<script src="tabata.js?v=202610260957"></script>
 <script>
 // ======= Réglages propres au formateur =======
 // Empreinte du code d'accès (le code lui-même n'est pas écrit ici)
@@ -298,6 +299,8 @@ function accueil(){
     <button class="btn sec" id="fiches">Ouvrir les exercices</button></div>`;
   h+=`<div class="card o"><h2>🎡 La roue</h2><p style="margin:0" class="muted">Répartition du cours, exercices de renforcement ou d'étirement, tirés au hasard. Sur ton téléphone seulement.</p>
     <button class="btn sec" id="roue">Ouvrir la roue</button></div>`;
+  h+=`<div class="card"><h2>⏱️ Tabata</h2><p style="margin:0" class="muted">Minuteur travail / repos / tours. Les stagiaires l'ont aussi.</p>
+    <button class="btn sec" id="tbt">Ouvrir le Tabata</button></div>`;
   const rc=revisionCourante(REVS), ro=rc&&estOuvert(rc);
   h+=`<div class="card j"><h2>🧠 Quiz de révision</h2>
     <p style="margin:0" class="${rc?'':'muted'}">${rc?`${esc(rc.titre)} · ${ro?'<b style="color:var(--ok)">ouvert</b>':'caché aux stagiaires'}`:'Des questions de toutes les journées, depuis le début.'}</p>
@@ -311,6 +314,7 @@ function accueil(){
   document.getElementById('roue').onclick=()=>roueSimple();
   document.getElementById('fiches').onclick=()=>mesExercices();
   document.getElementById('obsv').onclick=()=>observationsEcran();
+  document.getElementById('tbt').onclick=()=>tabataEcran(accueil,'Espace formateur');
   document.getElementById('out').onclick=()=>{ecrire('ok','');ecranCode()};
   document.getElementById('rz').onclick=()=>{try{localStorage.removeItem('cqp_moi')}catch(e){};document.getElementById('rzok').classList.remove('hide')};
   haut();
@@ -502,12 +506,22 @@ function journee(j){
   <button class="btn sec" id="m1">📊 Réponses et résumé de la journée</button>
   <button class="btn sec" id="m2">📝 Mon quiz du jour</button>
   <button class="btn sec" id="m3">📚 Diapos et documents</button>
+  <button class="btn small ${DIAPOS_OUV.includes(j.id)?'':'sec'}" id="dtog" style="margin-top:-4px">${DIAPOS_OUV.includes(j.id)?'👀 Diapos montrées aux stagiaires · toucher pour cacher':'🙈 Diapos cachées aux stagiaires · toucher pour montrer'}</button>
+  <div class="ok hide" id="dok"></div>
   <button class="btn sec" id="m4">🖨️ Version papier (PDF)</button>
   <button class="btn sec" id="m5">✍️ Saisir une réponse papier</button>`;
   document.getElementById('bk').onclick=accueil;
   document.getElementById('m1').onclick=()=>reponses(cibleJournee(j));
   document.getElementById('m2').onclick=()=>monQuiz(j);
   document.getElementById('m3').onclick=()=>diapos(j);
+  document.getElementById('dtog').onclick=async e=>{
+    const montrer=!DIAPOS_OUV.includes(j.id), avant=DIAPOS_OUV.slice();
+    const n=montrer?[...new Set(DIAPOS_OUV.concat(j.id))]:DIAPOS_OUV.filter(x=>x!==j.id);
+    e.target.disabled=true;e.target.textContent='⏳ Un instant…';
+    try{await envoyerForm(FORM_QUIZ,{[EQ.journee]:'diapos',[EQ.statut]:'etat',[EQ.contenu]:JSON.stringify({ouverts:n})})}
+    catch(err){DIAPOS_OUV=avant;alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");return journee(j)}
+    DIAPOS_OUV=n;ecrire('local_diapos',{ouverts:n,at:Date.now()});
+    journee(j);const ok=document.getElementById('dok');ok.textContent=montrer?"✅ Diapos montrées aux stagiaires (d'ici quelques minutes).":"✅ Diapos cachées aux stagiaires (d'ici quelques minutes).";ok.classList.remove('hide')};
   document.getElementById('m4').onclick=()=>papier(j,false);
   document.getElementById('m5').onclick=()=>saisie(j);
   const prev=document.getElementById('prev');
@@ -1342,9 +1356,12 @@ function noteObservation(x,msg){
 // ======= 📋 Mes exercices (formateur) : renforcement, étirements, méthodes — partage partie par partie =======
 // Ce que les stagiaires voient (clés renfo.bas, etir.haut, meth…). Google met quelques minutes :
 // pendant 15 min ce téléphone se fie à ce que tu viens de décider.
-let FICHES_OUV=[];
+let FICHES_OUV=[], DIAPOS_OUV=[];
 function fichesChargerLocal(g){
   FICHES_OUV=(g&&g.fiches&&g.fiches.ouverts)||[];
+  DIAPOS_OUV=(g&&g.diapos&&g.diapos.ouverts)||[];
+  const ld=lire('local_diapos',null);
+  if(ld&&Array.isArray(ld.ouverts)&&Date.now()-ld.at<15*60*1000)DIAPOS_OUV=ld.ouverts;
   const l=lire('local_fiches',null);
   if(l&&Array.isArray(l.ouverts)&&Date.now()-l.at<15*60*1000)FICHES_OUV=l.ouverts;
 }
