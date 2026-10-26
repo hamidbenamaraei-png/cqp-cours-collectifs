@@ -58,8 +58,8 @@ summary{cursor:pointer;font-weight:700}
 <div class="wrap" id="app"></div>
 <script src="commun.js?v=202610260957"></script>
 <script src="roue.js?v=202610260957"></script>
-<script src="fiches.js?v=202610260957"></script>
-<script src="tabata.js?v=202610260957"></script>
+<script src="bonhommes3d.js?v=202610261640"></script>
+<script src="fiches.js?v=202610261640"></script>
 <script>
 // ======= Mémoire du téléphone (nom, prénom, quiz envoyés, historique) =======
 function lire(k,d){try{const v=localStorage.getItem('cqp_'+k);return v?JSON.parse(v):d}catch(e){return d}}
@@ -165,9 +165,6 @@ function accueil(){
     h+=`<div class="card o"><div class="tag">🧠 Révision</div><h2 style="margin-top:4px">${esc(rev.titre)}</h2>
       <p class="muted" style="margin:0">Un petit quiz pour revoir ce qu'on a vu depuis le début. ${texteDuree(rev.quiz)}</p>
       ${boutonQuiz(S,'🧠 Faire la révision')}</div>`}
-  h+=`<div class="card"><div class="tag">⏱️ Tabata</div><h2 style="margin-top:4px">Minuteur travail / repos</h2>
-      <p class="muted" style="margin:0">Règle ton temps de travail, de repos et le nombre de tours.</p>
-      <button class="btn sec" id="tbt">⏱️ Ouvrir le Tabata</button></div>`;
   if(MES_RETOURS.length)h+=`<div class="card j"><div class="tag">📝 Mes retours</div><h2 style="margin-top:4px">${MES_RETOURS.length} retour${MES_RETOURS.length>1?'s':''} de Hamid</h2>
       <p class="muted" style="margin:0">Ses notes après tes passages, pour progresser.</p>
       <button class="btn" id="mr">📝 Lire mes retours</button></div>`;
@@ -187,7 +184,7 @@ function accueil(){
   const br=document.getElementById('roue'); if(br)br.onclick=ecranRoue;
   const bf=document.getElementById('fx'); if(bf)bf.onclick=()=>revoirFiches();
   const bm=document.getElementById('mr'); if(bm)bm.onclick=mesRetours;
-  document.getElementById('tbt').onclick=()=>{ECRAN='tabata';tabataEcran(accueil,esc(monEspace()))};
+
   app.querySelectorAll('[data-ses]').forEach(b=>b.onclick=()=>ouvrirSession(sessions[b.dataset.ses]));
   app.querySelectorAll('[data-cours]').forEach(b=>b.onclick=()=>cours(JOURNEES.find(j=>j.id===b.dataset.cours)));
   haut();

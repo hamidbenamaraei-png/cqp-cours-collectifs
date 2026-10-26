@@ -148,8 +148,9 @@ body.avec-barre .wrap{padding-bottom:120px}
 <div class="wrap" id="app"></div>
 <script src="commun.js?v=202610260957"></script>
 <script src="roue.js?v=202610260957"></script>
-<script src="fiches.js?v=202610260957"></script>
-<script src="tabata.js?v=202610260957"></script>
+<script src="bonhommes3d.js?v=202610261640"></script>
+<script src="fiches.js?v=202610261640"></script>
+<script src="musiques.js?v=202610261640"></script>
 <script>
 // ======= Réglages propres au formateur =======
 // Empreinte du code d'accès (le code lui-même n'est pas écrit ici)
@@ -299,8 +300,8 @@ function accueil(){
     <button class="btn sec" id="fiches">Ouvrir les exercices</button></div>`;
   h+=`<div class="card o"><h2>🎡 La roue</h2><p style="margin:0" class="muted">Répartition du cours, exercices de renforcement ou d'étirement, tirés au hasard. Sur ton téléphone seulement.</p>
     <button class="btn sec" id="roue">Ouvrir la roue</button></div>`;
-  h+=`<div class="card"><h2>⏱️ Tabata</h2><p style="margin:0" class="muted">Minuteur travail / repos / tours. Les stagiaires l'ont aussi.</p>
-    <button class="btn sec" id="tbt">Ouvrir le Tabata</button></div>`;
+  h+=`<div class="card"><h2>🎵 Mes musiques</h2><p style="margin:0" class="muted">Tes musiques de cours, rangées par catégories. Seulement sur ce téléphone.</p>
+    <button class="btn sec" id="mus">Ouvrir mes musiques</button></div>`;
   const rc=revisionCourante(REVS), ro=rc&&estOuvert(rc);
   h+=`<div class="card j"><h2>🧠 Quiz de révision</h2>
     <p style="margin:0" class="${rc?'':'muted'}">${rc?`${esc(rc.titre)} · ${ro?'<b style="color:var(--ok)">ouvert</b>':'caché aux stagiaires'}`:'Des questions de toutes les journées, depuis le début.'}</p>
@@ -314,7 +315,7 @@ function accueil(){
   document.getElementById('roue').onclick=()=>roueSimple();
   document.getElementById('fiches').onclick=()=>mesExercices();
   document.getElementById('obsv').onclick=()=>observationsEcran();
-  document.getElementById('tbt').onclick=()=>tabataEcran(accueil,'Espace formateur');
+  document.getElementById('mus').onclick=()=>mesMusiques();
   document.getElementById('out').onclick=()=>{ecrire('ok','');ecranCode()};
   document.getElementById('rz').onclick=()=>{try{localStorage.removeItem('cqp_moi')}catch(e){};document.getElementById('rzok').classList.remove('hide')};
   haut();

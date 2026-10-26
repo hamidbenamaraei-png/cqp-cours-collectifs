@@ -854,7 +854,11 @@ const BONHOMMES={
 "etir|Lombaires|Allongé, les deux genoux à la poitrine":[bh(BH_DOS,{n:{l:{a:[130,-25]},a:[95,113]},f:{l:{a:[127,-28]},a:[93,114]}})],
 "etir|Lombaires|Assis, dos rond relâché":[{raw:[["b",80,126,97,106,110,128,118,128],["o",80,126,98,108,111,128,119,128],["o",80,126,82,108,90,98,101,96],["h",110,104],["b",100,97,108,122],["o",101,96,111,121]]}],
 };
-function fxDessin(cat,c,v){const P=BONHOMMES[cat+'|'+c+'|'+v];if(!P)return'';return`<div class="fx-des${P.length>1?' fx-des2':''}" aria-hidden="true">${P.map(bhSvg).join('<span class="fx-fle">→</span>')}</div>`}
+function fxDessin(cat,c,v){
+  // 26/10 : dessins en 3D (bonhommes3d.js) quand ils existent, sinon les anciens
+  const Q=typeof B3_RENFO!=='undefined'&&B3_RENFO[cat+'|'+c+'|'+v];
+  if(Q){try{return`<div class="fx-des fx-des3" aria-hidden="true">${Q.map(f=>b3svg(f,f.lab).replace(/ width="(\d+)"/,(m,w)=>` style="flex:${w} 1 0"`)).join('<span class="fx-fle">→</span>')}</div>`}catch(e){}}
+  const P=BONHOMMES[cat+'|'+c+'|'+v];if(!P)return'';return`<div class="fx-des${P.length>1?' fx-des2':''}" aria-hidden="true">${P.map(bhSvg).join('<span class="fx-fle">→</span>')}</div>`}
 (function(){const st=document.createElement('style');st.textContent=`
 .fx-ps{list-style:none;display:flex;align-items:center;gap:10px;cursor:pointer}
 .fx-ps::-webkit-details-marker{display:none}
@@ -868,6 +872,9 @@ details[open]>.fx-ps .fx-fl{transform:rotate(90deg)}
 .fx-des svg{display:block;width:100%;height:auto;max-width:62%;margin:0 auto}
 .fx-des2 svg{flex:1;min-width:0;max-width:none}
 .fx-fle{flex:none;font-size:22px;color:var(--mute)}
+.fx-des3{background:#fff;border-radius:12px;padding:6px 8px}
+.fx-des3 svg{min-width:0;max-width:none;width:100%;height:auto;margin:0}
+.fx-des3 .fx-fle{color:#8a92b2}
 `;document.head.appendChild(st)})();
 function fxEsc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 function fxLigne(t,v){return v?`<div class="fl"><b>${t}</b>${fxEsc(v)}</div>`:''}
