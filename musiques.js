@@ -45,6 +45,7 @@ async function mesMusiques(msg,garder){
   const dest=[];C.forEach(c=>{if(muEstTb(c)){(tbF.length?tbF:['']).forEach(f=>dest.push([c+'|'+f,muFmtNom(f)]));if(!tbF.includes(''))dest.push([c+'|','Tabata – autres'])}else dest.push([c+'|',c])});
   const ligne=(m,liste)=>`<div style="display:flex;align-items:center;gap:6px;margin-top:10px"><button class="btn sec" style="margin:0;text-align:left;flex:1;font-size:16px;padding:12px" data-j="${m.id}" data-l="${liste}">${MU_EN===m.id?'🔊':'▶️'} ${esc(m.nom)}</button>
         <select data-dep="${m.id}" aria-label="Changer de catégorie" style="max-width:120px;padding:10px;border-radius:10px">${dest.map(([v,t])=>`<option value="${esc(v)}"${v===m.cat+'|'+(muEstTb(m.cat)?m.fmt||'':'')?' selected':''}>${esc(t)}</option>`).join('')}</select>
+        <button class="btn small sec" style="margin:0" data-renm="${m.id}" aria-label="Renommer">✏️</button>
         <button class="btn small ko" style="margin:0" data-sup="${m.id}" aria-label="Supprimer">🗑️</button></div>`;
   const LISTES=[];const liste=ids=>{LISTES.push(ids);return LISTES.length-1};
   let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>🎵 Mes musiques</h1>
@@ -78,6 +79,14 @@ async function mesMusiques(msg,garder){
   app.querySelectorAll('[data-j]').forEach(b=>b.onclick=()=>muJouer(b.dataset.j,LISTES[+b.dataset.l]).then(()=>mesMusiques('',1)));
   app.querySelectorAll('[data-tout]').forEach(b=>b.onclick=()=>{const L=LISTES[+b.dataset.tout];muJouer(L[0],L).then(()=>mesMusiques('',1))});
   app.querySelectorAll('[data-dep]').forEach(s=>s.onchange=async()=>{const id=s.dataset.dep,[c,f]=s.value.split('|');await muOp('readwrite',st=>{const r=st.get(id);r.onsuccess=()=>{const x=r.result;if(x){x.cat=c;x.fmt=muEstTb(c)?(f||''):'';st.put(x)}};return r});mesMusiques('',1)});
+  // ✏️ renommer une musique dans la page (le format Tabata est relu dans le nouveau nom)
+  app.querySelectorAll('[data-renm]').forEach(b=>b.onclick=()=>{const m=MU_LISTE.find(x=>x.id===b.dataset.renm);if(!m)return;
+    const j=app.querySelector(`[data-j="${m.id}"]`);if(!j)return;const z=document.createElement('div');z.style.cssText='flex:1;display:flex;gap:6px;min-width:0';
+    z.innerHTML=`<input type="text" value="${esc(m.nom)}" style="flex:1;min-width:0;padding:10px;border-radius:10px;font-size:16px" aria-label="Nouveau nom"><button class="btn small" style="margin:0">OK</button>`;
+    j.replaceWith(z);const i=z.querySelector('input');i.focus();i.select();
+    const ok=async()=>{const t=i.value.trim();if(!t||t===m.nom)return mesMusiques('',1);
+      await muOp('readwrite',st=>{const r=st.get(m.id);r.onsuccess=()=>{const x=r.result;if(x){x.nom=t;if(muEstTb(x.cat)){const f=muFormat(t);if(f)x.fmt=f}st.put(x)}};return r});mesMusiques('',1)};
+    z.querySelector('button').onclick=ok;i.onkeydown=e=>{if(e.key==='Enter')ok()}});
   // 1er appui : la poubelle devient « Confirmer » (4 s) ; 2e appui : supprimée, sans fenêtre
   app.querySelectorAll('[data-sup]').forEach(b=>b.onclick=async()=>{const m=MU_LISTE.find(x=>x.id===b.dataset.sup);if(!m)return;
     if(!b.dataset.ok){b.dataset.ok='1';b.textContent='Confirmer';b.style.background='var(--ko)';b.style.color='#fff';clearTimeout(b._t);b._t=setTimeout(()=>{delete b.dataset.ok;b.textContent='🗑️';b.style.background='';b.style.color=''},4000);return}
