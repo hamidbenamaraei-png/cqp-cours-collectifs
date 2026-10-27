@@ -191,7 +191,8 @@ function estRoue(l){return (l[1]||'').trim()==='__roue__'}
 let lignes=[], OBS=[];
 async function chargerReponses(){
   const L=await lireCSV(CSV_REPONSES);
-  lignes=L.length?[L[0]].concat(L.slice(1).filter(l=>!estObs(l)&&!estRoue(l)&&!estRetour(l))):[];
+  lignes=L.length?[L[0]].concat(L.slice(1).filter(l=>!estObs(l)&&!estRoue(l)&&!estRetour(l)&&!estNote(l))):[];
+  NOTES=L.slice(1).filter(estNote).map(l=>{try{return JSON.parse(l[6]||'')}catch(e){return null}}).filter(x=>x&&x.nid);
   RETOURS=L.slice(1).filter(estRetour).map(l=>{try{return JSON.parse(l[6]||'')}catch(e){return null}}).filter(x=>x&&x.sid&&x.texte);
   OBS=L.slice(1).filter(estObs);
   MARQUES_EN_LIGNE=L.slice(1).filter(estRoue);
@@ -445,7 +446,8 @@ async function bilanStagiaire(x){
   haut();
   try{await chargerReponses()}catch(e){document.getElementById('zb').innerHTML=`<div class="card r"><h2>Impossible de lire les réponses</h2><p>Vérifie ta connexion internet, puis réessaie.</p><button class="btn" id="re">Réessayer</button></div>`;document.getElementById('re').onclick=()=>bilanStagiaire(x);return}
   const H=historiqueStagiaire(x), RT=retoursDe(x.id);
-  let h=`<div class="card j"><h2>📝 Mes retours (${RT.length})</h2>`+(RT.length?RT.map(r=>`<div class="stag"><div class="d" style="color:var(--soft)">${esc(r.date||dateJour(r.at))}${r.titre?' · <b>'+esc(r.titre)+'</b>':''}</div><div style="white-space:pre-wrap;margin-top:4px">${esc(r.texte)}</div></div>`).join(''):`<p class="muted" style="margin:0">Aucun retour envoyé pour l'instant.</p>`)+`<button class="btn sec" id="nobs">📝 Nouvelle observation</button></div>`;
+  const NG=notesGardees(x.id), TOUT=NG.map(n=>Object.assign({garde:true},n)).concat(RT).sort((a,b)=>b.at-a.at);
+  let h=`<div class="card j"><h2>📝 Mes notes et retours (${TOUT.length})</h2><p class="muted" style="margin-top:0">🔒 Gardée pour moi : ${esc(x.prenom)} ne la voit pas · 📤 Envoyée : elle est dans son espace.</p>`+(TOUT.length?TOUT.map(r=>`<div class="stag"><div class="d" style="color:var(--soft)">${r.garde?'🔒 Gardée pour moi':'📤 Envoyée'} · ${esc(r.date||dateJour(r.at))}${r.titre?' · <b>'+esc(r.titre)+'</b>':''}</div><div style="white-space:pre-wrap;margin-top:4px">${esc(r.texte)}</div>${r.garde?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn small" data-nenv="${esc(r.nid)}">📤 Lui envoyer</button><button class="btn small ko" data-nsup="${esc(r.nid)}">🗑️ Supprimer</button></div>`:''}</div>`).join(''):`<p class="muted" style="margin:0">Aucune note pour l'instant.</p>`)+`<button class="btn sec" id="nobs">📝 Nouvelle observation</button></div>`;
   h+=`<div class="card j"><h2>📲 Nouveau téléphone ?</h2><p class="muted" style="margin-top:0">Envoie-lui un lien qui récupère son espace et son évolution sur son nouveau téléphone (valable 7 jours, à ouvrir une seule fois).</p>
     <button class="btn wa" id="tel">📲 Envoyer son historique sur son nouveau téléphone</button><div class="muted hide" id="telinfo" style="margin-top:8px"></div></div>`;
   if(!H.length)h+=`<div class="card"><p class="muted" style="margin:0">Pas encore de réponse pour ce stagiaire.</p></div>`;
@@ -473,6 +475,17 @@ async function bilanStagiaire(x){
   });
   document.getElementById('zb').innerHTML=h;
   document.getElementById('nobs').onclick=()=>noteObservation(x);
+  app.querySelectorAll('[data-nenv]').forEach(b=>b.onclick=async()=>{const n=NG.find(z=>z.nid===b.dataset.nenv);if(!n)return;
+    if(!x.pub)return alert(`${x.prenom} n'a pas encore ouvert son espace avec la nouvelle version : demande-lui de l'ouvrir, puis réessaie dans quelques minutes.`);
+    if(!confirm(`Envoyer cette note à ${x.prenom} ${x.nom} ?\n\nCe sera dans son espace, « 📝 Mes retours ».`))return;
+    b.disabled=true;b.textContent='Envoi…';
+    try{await envoyerRetour(x,n.titre,n.texte,n.nid)}catch(e){alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");b.disabled=false;b.textContent='📤 Lui envoyer';return}
+    const y=window.scrollY;await bilanStagiaire(x);window.scrollTo(0,y)});
+  app.querySelectorAll('[data-nsup]').forEach(b=>b.onclick=async()=>{const n=NG.find(z=>z.nid===b.dataset.nsup);if(!n)return;
+    if(!confirm('Supprimer cette note ? Elle disparaît de son bilan.'))return;
+    b.disabled=true;b.textContent='…';
+    try{await enregistrerNote({nid:n.nid,sid:n.sid,supprime:true,at:Date.now()})}catch(e){alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");b.disabled=false;b.textContent='🗑️ Supprimer';return}
+    const y=window.scrollY;await bilanStagiaire(x);window.scrollTo(0,y)});
   document.getElementById('tel').onclick=async()=>{
     const b=document.getElementById('tel'), info=document.getElementById('telinfo');
     b.disabled=true;
@@ -1306,6 +1319,27 @@ function retoursDe(sid){
   const loc=lire('retours_locaux',[]).filter(x=>!RETOURS.some(y=>y.at===x.at&&y.sid===x.sid));
   return RETOURS.concat(loc).filter(x=>!sid||x.sid===sid).sort((a,b)=>b.at-a.at);
 }
+// 27/10 : notes « gardées pour moi » (bilan du stagiaire, jamais visibles par lui tant qu'elles ne sont pas envoyées).
+// En ligne : ligne « __note__ » du tableau des réponses ; une suppression = même nid avec « supprime ».
+let NOTES=[];
+function estNote(l){return (l[1]||'').trim()==='__note__'}
+function notesGardees(sid){
+  const tout=NOTES.concat(lire('notes_locales',[]).filter(x=>!NOTES.some(y=>y.nid===x.nid&&!!y.supprime===!!x.supprime)));
+  const sup=new Set(tout.filter(x=>x.supprime).map(x=>x.nid)), envoyees=new Set(retoursDe(sid).map(r=>r.nid).filter(Boolean)), vu=new Set();
+  return tout.filter(x=>!x.supprime&&x.sid===sid&&!sup.has(x.nid)&&!envoyees.has(x.nid)&&!vu.has(x.nid)&&vu.add(x.nid)).sort((a,b)=>b.at-a.at);
+}
+async function enregistrerNote(n){
+  await envoyerForm(FORM,{[E.nom]:'__note__',[E.prenom]:n.sid,[E.journee]:'Note',[E.ressenti]:'',[E.reponses]:'',[E.difficulte]:JSON.stringify(n)});
+  const L=lire('notes_locales',[]);L.push(n);ecrire('notes_locales',L.slice(-200));
+}
+// envoi d'un retour au stagiaire (tout de suite, ou plus tard depuis son bilan pour une note gardée)
+async function envoyerRetour(x,titre,texte,nid){
+  const at=Date.now(), r={sid:x.id,nom:x.prenom+' '+x.nom,titre,texte,at,date:dateJour(at)}; if(nid)r.nid=nid;
+  const m=await chiffrerPour(x.pub,{titre,texte,at,date:r.date});
+  await envoyerForm(FORM_QUIZ,{[EQ.journee]:'retour',[EQ.statut]:'msg',[EQ.contenu]:JSON.stringify(Object.assign({sid:x.id},m))});
+  await envoyerForm(FORM,{[E.nom]:'__retour__',[E.prenom]:x.id,[E.journee]:'Retour',[E.ressenti]:'',[E.reponses]:'',[E.difficulte]:JSON.stringify(r)});
+  const L=lire('retours_locaux',[]);L.push(r);ecrire('retours_locaux',L.slice(-50));
+}
 function dateJour(ms){return new Date(ms).toLocaleDateString('fr-FR',{timeZone:'Europe/Paris',weekday:'long',day:'numeric',month:'long'})}
 function jourISO(ms){return new Date(ms).toLocaleDateString('fr-CA',{timeZone:'Europe/Paris'})}
 async function observationsEcran(msg){
@@ -1334,6 +1368,7 @@ function noteObservation(x,msg){
    <input type="text" id="ot" placeholder="Titre (facultatif), ex. : Renfo 20 min" value="${esc(lire(cle+'_t',''))}">
    <textarea id="ox" style="min-height:260px;margin-top:10px" placeholder="Ce que tu observes pendant son passage…">${esc(lire(cle,''))}</textarea>
    <div class="muted" id="osv" style="margin-top:6px"></div>
+   <button class="btn sec" id="ogar">💾 Garder pour moi (dans son bilan)</button>
    <button class="btn" id="oenv">📤 Envoyer à ${esc(x.prenom)}</button>
    ${x.pub?'':`<p class="muted" style="margin:8px 0 0">ℹ️ ${esc(x.prenom)} doit d'abord ouvrir son espace une fois avec la nouvelle version. Tes notes restent gardées en attendant.</p>`}
    <button class="btn small ko" id="oeff" style="margin-top:6px">🗑️ Effacer ces notes</button></div>`;
@@ -1345,19 +1380,22 @@ function noteObservation(x,msg){
   ox.oninput=sauver;ot.oninput=sauver;
   document.getElementById('bk').onclick=()=>observationsEcran();
   document.getElementById('oeff').onclick=()=>{if(!ox.value.trim()||confirm('Effacer ces notes ?')){ecrire(cle,'');ecrire(cle+'_t','');noteObservation(x)}};
+  document.getElementById('ogar').onclick=async e=>{
+    const texte=ox.value.trim(), titre=ot.value.trim();
+    if(!texte)return noteObservation(x,'⚠️ Écris d\'abord tes notes.');
+    e.target.disabled=true;e.target.textContent='Enregistrement…';
+    const at=Date.now(), n={nid:'n'+at+Math.random().toString(36).slice(2,6),sid:x.id,nom:x.prenom+' '+x.nom,titre,texte,at,date:dateJour(at)};
+    try{await enregistrerNote(n)}catch(err){e.target.disabled=false;e.target.textContent='💾 Garder pour moi (dans son bilan)';return noteObservation(x,"⚠️ Ça n'a pas marché. Vérifie ta connexion internet et réessaie : tes notes sont toujours là.")}
+    ecrire(cle,'');ecrire(cle+'_t','');
+    noteObservation(x,`✅ Gardé dans le bilan de ${x.prenom}. ${x.prenom} ne le voit pas : tu pourras le lui envoyer plus tard depuis son bilan.`);
+  };
   document.getElementById('oenv').onclick=async e=>{
     const texte=ox.value.trim(), titre=ot.value.trim();
     if(!texte)return noteObservation(x,'⚠️ Écris d\'abord tes notes.');
     if(!x.pub)return noteObservation(x,`⚠️ ${x.prenom} n'a pas encore ouvert son espace avec la nouvelle version : demande-lui de l'ouvrir, puis réessaie dans quelques minutes (🔄 Actualiser dans Stagiaires / Apprentis).`);
     if(!confirm(`Envoyer ce retour à ${x.prenom} ${x.nom} ?\n\nCe sera dans son espace, « 📝 Mes retours ».`))return;
     e.target.disabled=true;e.target.textContent='Envoi…';
-    const at=Date.now(), r={sid:x.id,nom:x.prenom+' '+x.nom,titre,texte,at,date:dateJour(at)};
-    try{
-      const m=await chiffrerPour(x.pub,{titre,texte,at,date:r.date});
-      await envoyerForm(FORM_QUIZ,{[EQ.journee]:'retour',[EQ.statut]:'msg',[EQ.contenu]:JSON.stringify(Object.assign({sid:x.id},m))});
-      await envoyerForm(FORM,{[E.nom]:'__retour__',[E.prenom]:x.id,[E.journee]:'Retour',[E.ressenti]:'',[E.reponses]:'',[E.difficulte]:JSON.stringify(r)});
-    }catch(err){e.target.disabled=false;e.target.textContent=`📤 Envoyer à ${x.prenom}`;return noteObservation(x,"⚠️ Ça n'a pas marché. Vérifie ta connexion internet et réessaie : tes notes sont toujours là.")}
-    const L=lire('retours_locaux',[]);L.push(r);ecrire('retours_locaux',L.slice(-50));
+    try{ await envoyerRetour(x,titre,texte) }catch(err){e.target.disabled=false;e.target.textContent=`📤 Envoyer à ${x.prenom}`;return noteObservation(x,"⚠️ Ça n'a pas marché. Vérifie ta connexion internet et réessaie : tes notes sont toujours là.")}
     ecrire(cle,'');ecrire(cle+'_t','');
     noteObservation(x,`✅ Envoyé à ${x.prenom}. Ce sera dans son espace, « 📝 Mes retours », d'ici quelques minutes.`);
   };
