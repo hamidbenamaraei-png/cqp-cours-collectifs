@@ -455,9 +455,9 @@ async function bilanStagiaire(x){
   H.slice().reverse().forEach(e=>{
     vu[e.l]=(vu[e.l]||0)+1;
     const sc=e.R.score||0, tot=e.R.total||e.z.questions.length, c=classe(sc,tot);
-    h+=`<div class="card ${c==='p-ok'?'g':c==='p-moy'?'j':'r'}">
-      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><div><div class="tag" style="color:var(--soft)">${esc(e.tag)}${nb[e.l]>1?` · envoi ${nb[e.l]-vu[e.l]+1}`:''}</div><h2 style="margin:4px 0 0">${esc(e.titre)}</h2></div><span class="pill ${c}">${sc}/${tot}</span></div>
-      <p class="muted" style="margin:6px 0 0">Envoyé le ${esc(e.h)}${e.R.papier?' · feuille papier':''}</p>
+    h+=`<details class="card ${c==='p-ok'?'g':c==='p-moy'?'j':'r'}"><summary style="cursor:pointer;list-style:none">
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><div><div class="tag" style="color:var(--soft)">${esc(e.tag)}${nb[e.l]>1?` · envoi ${nb[e.l]-vu[e.l]+1}`:''}</div><h2 style="margin:4px 0 0">${esc(e.titre)} <span class="muted" style="font-weight:400;font-size:15px">▸</span></h2></div><span class="pill ${c}">${sc}/${tot}</span></div>
+      <p class="muted" style="margin:6px 0 0">Envoyé le ${esc(e.h)}${e.R.papier?' · feuille papier':''}</p></summary>
       <label>Ressenti « J'ai compris… »</label>`;
     e.rs.forEach(k=>{h+=`<div class="row"><span>${esc(k.t)}</span><span class="pill ${k.n?classe(k.n,5):'p-ko'}">${k.n?k.n+'/5':'⏳ -'}</span></div>`});
     if(!e.rs.length)h+=`<p class="muted" style="margin:0">Pas de ressenti dans ce quiz.</p>`;
@@ -471,7 +471,7 @@ async function bilanStagiaire(x){
       else h+=`<div class="d muted">Pas de réponse</div>`;
       h+=`</div>`;
     });
-    h+=`<label>Difficulté signalée</label><p style="margin:0" class="${e.dif?'':'muted'}">${e.dif?esc(e.dif):'Aucune.'}</p></div>`;
+    h+=`<label>Difficulté signalée</label><p style="margin:0" class="${e.dif?'':'muted'}">${e.dif?esc(e.dif):'Aucune.'}</p></details>`;
   });
   document.getElementById('zb').innerHTML=h;
   document.getElementById('nobs').onclick=()=>noteObservation(x);
