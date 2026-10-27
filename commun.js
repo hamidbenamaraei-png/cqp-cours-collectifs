@@ -457,3 +457,29 @@ async function decoderLien(t){
 // Prépare les journées (le quiz du jour est écrit avec les numéros de la banque)
 function preparerJournee(j){if(j.quiz&&Array.isArray(j.quiz.questions))j.quiz.questions=j.quiz.questions.map(q=>typeof q==='string'?copieQ(questionParId(q)):q)}
 JOURNEES.forEach(preparerJournee);
+
+// ===== 27/10 : cadres repliables (espace stagiaires et espace formateur) =====
+// Toucher le titre d'un cadre le ferme (seul le titre reste) ; le retoucher le rouvre. Ouvert par défaut ;
+// le choix est retenu sur ce téléphone. Jamais pour : formulaires (quiz, notes, code), messages d'erreur ou d'attente.
+(function(){
+  const CLE='cqpf_plies', NON=/connexion|impossible|quitté|code d'accès|qui es-tu|c'est bien toi|demande est envoyée|accès non actif|déjà à un autre nom|arrive bientôt|tu as \d+ minute/i;
+  let plies; try{plies=new Set(JSON.parse(localStorage.getItem(CLE)||'[]'))}catch(e){plies=new Set()}
+  const garder=()=>{try{localStorage.setItem(CLE,JSON.stringify([...plies].slice(-300)))}catch(e){}};
+  const st=document.createElement('style');
+  st.textContent='.card.plie>*:not(h2.pli-t){display:none!important}.card.plie{padding-bottom:14px}h2.pli-t{cursor:pointer;-webkit-tap-highlight-color:transparent}.pli-f{font-size:.7em;opacity:.55;margin-left:6px;font-weight:400}';
+  document.head.appendChild(st);
+  const titre=c=>[...c.children].find(x=>x.tagName==='H2');
+  const cle=(c,h)=>(location.pathname.split('/').pop()||'index')+'|'+h.textContent.replace(/[▸▾]/g,'').replace(/\(?\d+\)?/g,'#').replace(/\s+/g,' ').trim();
+  const prep=c=>{
+    if(c.dataset.pli||c.tagName==='DETAILS'||c.classList.contains('nopli'))return;
+    const h=titre(c); if(!h||c.querySelector('input,textarea,select')||NON.test(h.textContent))return;
+    c.dataset.pli=1; h.classList.add('pli-t');
+    const f=document.createElement('span');f.className='pli-f';h.appendChild(f);
+    const k=cle(c,h), maj=()=>{const p=plies.has(k);c.classList.toggle('plie',p);f.textContent=p?'▸':'▾'};
+    maj();
+    h.addEventListener('click',e=>{if(e.target.closest('button,a,input'))return;plies.has(k)?plies.delete(k):plies.add(k);garder();maj()});
+  };
+  const tout=()=>document.querySelectorAll('#app .card').forEach(prep);
+  const go=()=>{const a=document.getElementById('app');if(!a)return;tout();new MutationObserver(tout).observe(a,{childList:true,subtree:true})};
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',go);else go();
+})();

@@ -56,7 +56,7 @@ summary{cursor:pointer;font-weight:700}
 </head>
 <body>
 <div class="wrap" id="app"></div>
-<script src="commun.js?v=202610260957"></script>
+<script src="commun.js?v=202610270208"></script>
 <script src="roue.js?v=202610260957"></script>
 <script src="bonhommes3d.js?v=202610261832"></script>
 <script src="fiches.js?v=202610261640"></script>
@@ -338,7 +338,7 @@ function ouvrirSession(S){
   if(D0)return quiz(D0);
   ECRAN='intro';
   app.innerHTML=`<button class="back" id="bk">← Retour</button><div class="tag">${esc(S.tag)}</div><h1>${esc(S.titre)}</h1>
-   <div class="card o"><h2>⏱️ Tu as ${S.duree} minute${S.duree>1?'s':''}</h2>
+   <div class="card o nopli"><h2>⏱️ Tu as ${S.duree} minute${S.duree>1?'s':''}</h2>
     <p>Le chrono démarre quand tu touches « Commencer ».</p>
     <p class="muted">Quand le temps est fini, tes réponses partent toutes seules. Une question sans réponse compte comme « pas répondu ». Tu ne pourras l'envoyer qu'une fois.</p>
     <p style="margin:10px 0 0;padding:10px 12px;border-radius:10px;background:#3a2a1a;color:#ffd2b8;font-weight:700">⚠️ Pendant le quiz, ne change pas d\'application et n\'éteins pas ton écran, sinon le quiz sera fermé.</p>
@@ -678,7 +678,7 @@ function deplierHisto(p){
 function ecranMessage(titre,texte,classe){
   ECRAN='message';
   app.innerHTML=`<div class="tag">${esc(monEspace())}</div><h1>${esc(monEspace())}</h1>
-   <div class="card ${classe||'o'}"><h2>${titre}</h2><p>${texte}</p><button class="btn" id="ok">Continuer</button></div>`;
+   <div class="card nopli ${classe||'o'}"><h2>${titre}</h2><p>${texte}</p><button class="btn" id="ok">Continuer</button></div>`;
   document.getElementById('ok').onclick=demarrer;
   haut();
 }
