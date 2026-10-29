@@ -56,10 +56,11 @@ summary{cursor:pointer;font-weight:700}
 </head>
 <body>
 <div class="wrap" id="app"></div>
-<script src="commun.js?v=202610270208"></script>
+<script src="commun.js?v=202610291200"></script>
 <script src="roue.js?v=202610260957"></script>
 <script src="bonhommes3d.js?v=202610261832"></script>
 <script src="fiches.js?v=202610261640"></script>
+<script src="tabata.js?v=202610291200"></script>
 <script>
 // ======= Mémoire du téléphone (nom, prénom, quiz envoyés, historique) =======
 function lire(k,d){try{const v=localStorage.getItem('cqp_'+k);return v?JSON.parse(v):d}catch(e){return d}}
@@ -117,7 +118,7 @@ function confirmer(nom,prenom,st,str){
 // ======= Les quiz : une « session » = un quiz ouvert (journée ou révision) =======
 let ETAT = null, REVS = {}; // état des quiz (ouvert ou non), lu dans le tableau du formateur
 let FICHES = [], MES_RETOURS = [], DIAPOS = []; // DIAPOS : journées dont Hamid montre les diapos // MES_RETOURS : retours d'Hamid déchiffrés sur ce téléphone // fiches de révision ouvertes par Hamid (renfo.bas, etir.haut, meth…)
-let ROUE = null, NOMS = {}; // la roue (tirage préparé par Hamid) et les prénoms des stagiaires
+let ROUE = null, NOMS = {}, MINUTEUR = false; // MINUTEUR : Hamid montre le minuteur ⏱️ aux stagiaires // la roue (tirage préparé par Hamid) et les prénoms des stagiaires
 function sessionJournee(j){
   const e=ETAT[j.id];
   return {cle:j.id,label:`${j.titre} – ${j.theme}`,tag:j.titre,titre:'Petit bilan de ma journée',z:e.quiz,duree:e.duree||0,ouvCle:e.ouvCle||''};
@@ -171,19 +172,25 @@ function accueil(){
   if(FICHES.length)h+=`<div class="card g"><div class="tag">📚 Pour réviser</div><h2 style="margin-top:4px">Les exercices et les étirements</h2>
       <p class="muted" style="margin:0">Les fiches que Hamid a ouvertes : placement, exécution, sécurité.</p>
       <button class="btn" id="fx">📚 Ouvrir les fiches</button></div>`;
-  JOURNEES.slice().reverse().forEach(j=>{
-    const e=ETAT&&ETAT[j.id], ouvert=estOuvert(e);
+  if(MINUTEUR)h+=`<div class="card j"><div class="tag">⏱️ Minuteur</div><h2 style="margin-top:4px">Le minuteur de la séance</h2>
+      <p class="muted" style="margin:0">Travail, repos et tours, en grand, avec des bips.</p>
+      <button class="btn" id="tbo">⏱️ Ouvrir le minuteur</button></div>`;
+  // 29/10 : une journée n'apparaît que s'il y a quelque chose (quiz ouvert ou diapos montrées)
+  JOURNEES.slice().sort((a,b)=>a.id<b.id?1:-1).forEach(j=>{
+    const e=ETAT&&ETAT[j.id], ouvert=estOuvert(e)&&!quizVide(e.quiz);
+    if(!ouvert&&!j.diapos)return;
     let b='';
     if(ouvert){const S=sessionJournee(j);sessions[idSession(S)]=S;b=boutonQuiz(S,'📝 Petit bilan de ma journée')}
     h += `<div class="card"><div class="tag" style="color:var(--soft)">${esc(j.titre)}</div><h2 style="margin-top:4px">${esc(j.theme)}</h2>
      ${b}
-     ${DIAPOS.includes(j.id)?`<button class="btn sec" data-cours="${j.id}">📚 Revoir les diapos</button>`:''}</div>`;
+     ${j.diapos&&DIAPOS.includes(j.id)?`<button class="btn sec" data-cours="${j.id}">📚 Revoir les diapos</button>`:''}</div>`;
   });
   app.innerHTML = h;
   document.getElementById('evo').onclick=evolution;
   const br=document.getElementById('roue'); if(br)br.onclick=ecranRoue;
   const bf=document.getElementById('fx'); if(bf)bf.onclick=()=>revoirFiches();
   const bm=document.getElementById('mr'); if(bm)bm.onclick=mesRetours;
+  const bt=document.getElementById('tbo'); if(bt)bt.onclick=()=>{ECRAN='minuteur';tabataEcran(accueil,monEspace())};
 
   app.querySelectorAll('[data-ses]').forEach(b=>b.onclick=()=>ouvrirSession(sessions[b.dataset.ses]));
   app.querySelectorAll('[data-cours]').forEach(b=>b.onclick=()=>cours(JOURNEES.find(j=>j.id===b.dataset.cours)));
@@ -215,6 +222,11 @@ function mesRetours(){
 function diaposOuvertes(g){
   let o=(g&&g.diapos&&g.diapos.ouverts)||[];
   try{const l=JSON.parse(localStorage.getItem('cqpf_local_diapos')||'null');if(l&&Array.isArray(l.ouverts)&&Date.now()-l.at<15*60*1000)o=l.ouverts}catch(e){}
+  return o;
+}
+function minuteurMontre(g){
+  let o=!!(g&&g.minuteur&&g.minuteur.montrer);
+  try{const l=JSON.parse(localStorage.getItem('cqpf_local_minuteur')||'null');if(l&&typeof l.montrer==='boolean'&&Date.now()-l.at<15*60*1000)o=l.montrer}catch(e){}
   return o;
 }
 function fichesOuvertes(g){
@@ -279,7 +291,7 @@ async function verifier(){
     app.innerHTML = `<div class="card"><h2>Pas de connexion</h2><p>Vérifie ta connexion internet, puis réessaie.</p><button class="btn" id="re">Réessayer</button></div>`;
     document.getElementById('re').onclick=verifier;return;
   }
-  ETAT=g.quiz; REVS=g.revisions||{}; ROUE=g.roue||null; FICHES=fichesOuvertes(g); DIAPOS=diaposOuvertes(g);
+  ETAT=g.quiz; REVS=g.revisions||{}; ROUE=g.roue||null; FICHES=fichesOuvertes(g); DIAPOS=diaposOuvertes(g); MINUTEUR=minuteurMontre(g);
   NOMS={};Object.values(g.stagiaires||{}).forEach(x=>NOMS[x.id]=x.prenom);
   if(!moi.id){moi.id=nouvelId();ecrire('moi',moi);envoyerDemande();return attente(true)}
   let s=g.stagiaires[moi.id];
@@ -310,7 +322,7 @@ async function verifier(){
 
 // ======= Écran 3 : les diapos =======
 function cours(j){
-  if(!DIAPOS.includes(j.id))return accueil();
+  if(!j||!j.diapos||!DIAPOS.includes(j.id))return accueil();
   ECRAN='cours';
   let h = `<button class="back" id="bk">← Retour</button><div class="tag">${esc(j.titre)}</div><h1>${esc(j.theme)}</h1>
    ${(j.docs||[]).map(d=>`<a class="btn" href="${d.fichier}" download>⬇️ ${esc(d.titre)}</a>`).join('')}
@@ -476,13 +488,19 @@ function correction(D,auto){
   document.getElementById('er').classList.add('hide');
   app.querySelectorAll('.scale button, .opt').forEach(b=>b.disabled=true);
   document.getElementById('dif').readOnly=true;
-  app.querySelectorAll('[data-q]').forEach(g=>{const i=+g.dataset.q;
-    g.querySelectorAll('.opt').forEach(b=>{const k=+b.dataset.k;b.classList.remove('on');if(k===z.questions[i].b)b.classList.add('good');else if(k===D.rep[i])b.classList.add('bad')});
+  // 29/10 : correction question par question (✅ juste / ❌ faux, la bonne réponse et l'explication)
+  app.querySelectorAll('[data-q]').forEach(g=>{const i=+g.dataset.q, q=z.questions[i], juste=D.rep[i]===q.b;
+    g.querySelectorAll('.opt').forEach(b=>{const k=+b.dataset.k;b.classList.remove('on');if(k===q.b)b.classList.add('good');else if(k===D.rep[i])b.classList.add('bad')});
+    const t=g.previousElementSibling; if(t&&t.classList.contains('q')&&!t.dataset.c){t.dataset.c=1;t.textContent=(juste?'✅ ':D.rep[i]<0?'⏳ ':'❌ ')+t.textContent}
     const ex=document.getElementById('ex'+i);
-    ex.textContent=(D.rep[i]===z.questions[i].b?'✅ Bien vu. ':D.rep[i]<0?'⏳ Pas répondu. ':'❌ ')+(z.questions[i].e||'');ex.classList.remove('hide')});
-  document.getElementById('fin').innerHTML=`<div class="card g"><div class="done">✅ Merci ${esc(moi.prenom)}, c'est envoyé !</div>
+    ex.innerHTML=juste?`<b style="color:var(--ok)">✅ Juste !</b>${q.e?' '+esc(q.e):''}`
+      :`<b style="color:${D.rep[i]<0?'var(--ja)':'var(--ko)'}">${D.rep[i]<0?'⏳ Pas répondu.':'❌ Faux.'}</b> <span style="color:var(--ok)">Bonne réponse : ${esc(q.o[q.b])}</span>${q.e?`<br>💡 ${esc(q.e)}`:''}`;
+    ex.classList.remove('hide')});
+  const nq=z.questions.length, nb=z.questions.filter((q,i)=>D.rep[i]===q.b).length;
+  document.getElementById('fin').innerHTML=`${nq?`<div class="card o nopli" style="text-align:center"><div class="tag">Ma note</div><div style="font-size:46px;font-weight:900;line-height:1.1;margin:6px 0">${nb}/${nq}</div>
+    <p class="muted" style="margin:0">Cette note est facultative : elle sert seulement à suivre ton évolution.</p></div>`:''}<div class="card g"><div class="done">✅ Merci ${esc(moi.prenom)}, c'est envoyé !</div>
     ${auto==='quitte'?`<p style="color:var(--ko);font-weight:700">⚠️ Tu as quitté la page : ton quiz est fermé. Tes réponses déjà données ont été envoyées.</p>`:auto?`<p>⏱️ Le temps est fini : tes réponses sont parties toutes seules.</p>`:''}
-    <p>Regarde les corrections juste au-dessus.</p>
+    <p>${nq?'Regarde ta correction juste au-dessus : ✅ juste, ❌ faux avec la bonne réponse.':'Merci pour ton ressenti.'}</p>
     <button class="btn" id="evo2">📈 Mes révisions</button><button class="btn sec" id="ret">Retour à l'accueil</button></div>`;
   document.getElementById('evo2').onclick=evolution;
   document.getElementById('ret').onclick=accueil;
@@ -551,7 +569,8 @@ function evolution(){
       ${liste.map(x=>`<div class="frise"><span>${esc(x.nom)}</span><span class="p">${x.v.map(v=>v.p).join('')}</span></div>`).join('')}</div>`;
     html+=`<h2 style="margin:22px 0 10px">Mes quiz</h2>`;
     h.slice().reverse().forEach((e,n)=>{
-      html+=`<details${n===0?' open':''}><summary>${esc(jjmm(e.d))} · ${esc(e.l)}</summary>`+
+      const nOk=e.it.filter(i=>i.s==='ok').length;
+      html+=`<details${n===0?' open':''}><summary>${esc(jjmm(e.d))} · ${esc(e.l)}${e.it.length?` · <span style="color:var(--or)">${nOk}/${e.it.length}</span>`:''}</summary>`+
         e.it.map(i=>`<div class="item"><b>${i.s==='ok'?'✅ Juste':i.s==='na'?'⏳ Pas répondu':'❌ À revoir'}</b><div style="margin-top:4px">${esc(i.q)}</div>
           ${i.s==='ko'?`<div class="d">Ta réponse : ${esc(i.r)}</div>`:''}
           ${i.s!=='ok'?`<div class="d" style="color:var(--ok)">Bonne réponse : ${esc(i.b)}</div>`:''}
@@ -656,7 +675,7 @@ async function rafraichirRoue(){
     app.innerHTML=`<div class="card"><h2>Pas de connexion</h2><p>Vérifie ta connexion internet, puis réessaie.</p><button class="btn" id="re">Réessayer</button><button class="btn sec" id="ac">← Retour</button></div>`;
     document.getElementById('re').onclick=rafraichirRoue;document.getElementById('ac').onclick=accueil;return;
   }
-  ETAT=g.quiz;REVS=g.revisions||{};ROUE=g.roue||null;FICHES=fichesOuvertes(g);DIAPOS=diaposOuvertes(g);
+  ETAT=g.quiz;REVS=g.revisions||{};ROUE=g.roue||null;FICHES=fichesOuvertes(g);DIAPOS=diaposOuvertes(g);MINUTEUR=minuteurMontre(g);
   NOMS={};Object.values(g.stagiaires||{}).forEach(x=>NOMS[x.id]=x.prenom);
   const s=g.stagiaires[moi.id];
   if(!s||s.statut!=='accepte')return verifier();

@@ -73,6 +73,7 @@ textarea{min-height:90px;resize:vertical}
 .apq .th{font-size:13px;color:var(--mute);margin-top:6px}
 .choix{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .choix .btn{flex:1 1 30%;margin:0}
+.ordre{flex:none;width:40px;height:38px;border-radius:10px;border:2px solid var(--line);background:#1c2442;color:#fff;font-size:17px;cursor:pointer;padding:0}
 .duree{display:inline-block;margin-top:6px;padding:3px 10px;border-radius:999px;background:#141b33;color:var(--soft);font-size:14px;font-weight:700}
 /* Barre de dictée, collée en bas sur tous les écrans */
 #barre-dictee{position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;gap:8px;align-items:center;padding:10px 12px;background:var(--ko);color:#fff;box-shadow:0 -4px 14px rgba(0,0,0,.4)}
@@ -150,11 +151,12 @@ body.avec-barre .wrap{padding-bottom:120px}
 </head>
 <body>
 <div class="wrap" id="app"></div>
-<script src="commun.js?v=202610270208"></script>
+<script src="commun.js?v=202610291200"></script>
 <script src="roue.js?v=202610260957"></script>
 <script src="bonhommes3d.js?v=202610261832"></script>
 <script src="fiches.js?v=202610261640"></script>
 <script src="musiques.js?v=202610261915"></script>
+<script src="tabata.js?v=202610291200"></script>
 <script>
 // ======= Réglages propres au formateur =======
 // Empreinte du code d'accès (le code lui-même n'est pas écrit ici)
@@ -164,7 +166,6 @@ const WHATSAPP_GROUPE = '';
 // Tableau des réponses des stagiaires (publié en CSV). Il n'est lu QUE sur cette page :
 // les stagiaires n'y ont pas accès (il contient les réponses de tout le monde et tes observations).
 const CSV_REPONSES = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ0Q6CmVaNRB_wzqusRfYaLQjon3iYJ9qjfPRGaimeo687QAkNxIeem81Mf_HeHGIdTqe3AsVerGOnx/pub?gid=1231707561&single=true&output=csv';
-const DUREES_CHRONO = [3,5,7,10];
 
 // ======= Outils =======
 function lire(k,d){try{const v=localStorage.getItem('cqpf_'+k);return v?JSON.parse(v):d}catch(e){return d}}
@@ -202,12 +203,15 @@ async function chargerReponses(){
 // ======= État des quiz (tableau Google + ce que tu viens de faire sur ce téléphone) =======
 // Le tableau Google met quelques minutes à se mettre à jour : pendant 15 min, ce téléphone
 // se fie à ce que tu viens d'enregistrer.
-let ETAT = null, STAG = {}, REVS = {};
+let ETAT = null, STAG = {}, REVS = {}, DEROULES = {}, MINUTEUR_MONTRE = false;
 async function chargerEtat(){
   let g=null;
   try{g=await etatGeneral()}catch(e){g=null}
   if(g){ETAT=g.quiz;STAG=g.stagiaires;REVS=g.revisions||{}}
   else{ETAT={};STAG={};REVS={};JOURNEES.forEach(j=>ETAT[j.id]={quiz:j.quiz,ouvert:false,horsLigne:true})}
+  DEROULES=(g&&g.deroules)||{};
+  MINUTEUR_MONTRE=!!(g&&g.minuteur&&g.minuteur.montrer);
+  {const lm=lire('local_minuteur',null);if(lm&&typeof lm.montrer==='boolean'&&Date.now()-lm.at<15*60*1000)MINUTEUR_MONTRE=lm.montrer}
   roueChargerLocal(g);
   fichesChargerLocal(g);
   // décisions prises sur ce téléphone depuis moins de 15 min (le temps que Google se mette à jour)
@@ -244,13 +248,21 @@ function etatTexte(e){
   if(e&&e.ouvert&&finQuiz(e))return `Quiz fermé tout seul à ${heureParis(finQuiz(e))} (temps fini)`;
   return 'Quiz caché aux stagiaires';
 }
-// Choix de la durée du chrono avant d'ouvrir un quiz
+// Choix de la durée du chrono avant d'ouvrir un quiz (29/10 : Hamid écrit le nombre de minutes qu'il veut)
+function lireMinutes(v){const n=Math.round(parseFloat(String(v||'').replace(',','.')));return n>=1&&n<=180?n:0}
 function choixDuree(zone,ouvrir){
-  zone.innerHTML=`<div class="card o" style="margin-top:12px"><h2>⏱️ Combien de temps pour répondre ?</h2>
-    <p class="muted" style="margin-top:0">Le chrono démarre quand chaque stagiaire ouvre le quiz : tout le monde a le même temps. Le quiz se ferme pour tous 15 minutes + cette durée après l'ouverture.</p>
-    <div class="choix">${DUREES_CHRONO.map(d=>`<button class="btn" data-d="${d}">${d} min</button>`).join('')}</div>
-    <button class="btn sec" data-d="0">Sans chrono</button></div>`;
-  zone.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{zone.querySelectorAll('[data-d]').forEach(x=>x.disabled=true);ouvrir(+b.dataset.d)});
+  zone.innerHTML=`<div class="card o nopli" style="margin-top:12px"><h2>⏱️ Combien de temps pour répondre ?</h2>
+    <p class="muted" style="margin-top:0">Écris le nombre de minutes (par exemple 3, 7 ou 12). Le chrono démarre quand chaque stagiaire / apprenti ouvre le quiz : tout le monde a le même temps. Quand le temps est fini, ses réponses déjà données partent toutes seules. Le quiz se ferme pour tous 15 minutes + cette durée après l'ouverture.</p>
+    <label for="durmin">Nombre de minutes</label>
+    <input type="number" id="durmin" inputmode="numeric" min="1" max="180" step="1" placeholder="Par exemple : 7" value="${esc(lire('duree_der','')||'')}">
+    <div class="err hide" id="durer">Écris un nombre de minutes entre 1 et 180.</div>
+    <button class="btn" id="durok">🔓 Ouvrir avec ce temps</button>
+    <button class="btn sec" id="dur0">Sans chrono</button></div>`;
+  const inp=zone.querySelector('#durmin'), ok=zone.querySelector('#durok'), z0=zone.querySelector('#dur0');
+  const fin=d=>{ok.disabled=true;z0.disabled=true;ouvrir(d)};
+  ok.onclick=()=>{const d=lireMinutes(inp.value);if(!d){zone.querySelector('#durer').classList.remove('hide');return}ecrire('duree_der',d);fin(d)};
+  inp.onkeydown=e=>{if(e.key==='Enter')ok.click()};
+  z0.onclick=()=>fin(0);
   zone.scrollIntoView({behavior:'smooth',block:'center'});
 }
 function messageWhatsApp(titre,e){
@@ -301,6 +313,9 @@ const PLANNING=[
 ];
 function isoJour(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0') }
 
+// ce qui est prêt pour une journée (quiz, diapos)
+function prepTexte(j){const z=quizDe(j), n=(z&&z.questions||[]).length;
+  return (n?`📝 Quiz : ${n} question${n>1?'s':''}`:'🛠️ Quiz à préparer')+(j.diapos?` · 📚 ${j.diapos} diapos`:'')}
 // ======= Écran : accueil =======
 function accueil(){
   let h=`<div class="tag">Espace formateur</div><h1>Bonjour Hamid 👋</h1>`;
@@ -310,15 +325,16 @@ function accueil(){
   const carteJ=(j,tete)=>{ const o=estOuvert(ETAT[j.id]);
     return `<div class="card nopli">${tete?`<div class="tag" style="color:var(--ok)">${tete}</div>`:''}<div class="tag" style="color:var(--soft)">${esc(j.titre)}</div><h2 style="margin-top:4px">${esc(j.theme)}</h2>
     <div class="statut" style="font-size:15px"><span class="dot" style="background:${o?'var(--ok)':'var(--mute)'}"></span>${esc(etatTexte(ETAT[j.id]))}</div>
+    <p class="muted" style="margin:6px 0 0">${prepTexte(j)}</p>
     <button class="btn" data-j="${j.id}">Ouvrir cette journée</button></div>` };
   const carteP=(p,tete)=>`<div class="card nopli">${tete?`<div class="tag" style="color:var(--ok)">${tete}</div>`:''}<div class="tag" style="color:var(--soft)">${esc(p.titre)}</div><h2 style="margin-top:4px">${esc(p.theme)}</h2>
     <p class="muted" style="margin:0">🛠️ À préparer : pas encore de diapos ni de quiz pour cette journée.</p></div>`;
   const avenir=PLANNING.filter(p=>p.id>=auj), passees=JOURNEES.filter(j=>j.id<auj).sort((a,b)=>b.id<a.id?-1:1);
   const p0=avenir[0];
   if(p0){ const j0=JOURNEES.find(j=>j.id===p0.id); const tete=p0.id===auj?'📍 Aujourd\'hui':'⏭️ Prochaine journée'; h+=j0?carteJ(j0,tete):carteP(p0,tete) }
-  JOURNEES.filter(j=>j.id>=auj&&(!p0||j.id!==p0.id)).sort((a,b)=>a.id<b.id?-1:1).forEach(j=>{ h+=carteJ(j,'') });
+  // 29/10 : chaque journée du planning a son bouton (quiz possible même sans diapos)
   if(avenir.length>1) h+=`<details class="card"><summary style="cursor:pointer;list-style:none;font-weight:700;font-size:18px">🗓️ Mes prochaines journées <span class="muted" style="font-weight:400">(${avenir.length-1})</span></summary>
-    ${avenir.slice(1).map(p=>`<p style="margin:8px 0 0">• <b>${esc(p.titre)}</b> – ${esc(p.theme)}${JOURNEES.some(j=>j.id===p.id)?' ✅':' <span class="muted">(à préparer)</span>'}</p>`).join('')}</details>`;
+    ${avenir.slice(1).map(p=>{const j=JOURNEES.find(x=>x.id===p.id);return `<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(127,127,127,.25)"><div class="tag" style="color:var(--soft)">${esc(p.titre)}</div><div style="font-weight:700">${esc(p.theme)}</div>${j?`<div class="muted" style="margin-top:2px">${prepTexte(j)}${estOuvert(ETAT[j.id])?' · <b style="color:var(--ok)">quiz ouvert</b>':''}</div><button class="btn sec" data-j="${j.id}">Ouvrir cette journée</button>`:''}</div>`}).join('')}</details>`;
   if(passees.length) h+=`<details class="card"><summary style="cursor:pointer;list-style:none;font-weight:700;font-size:18px">📁 Journées passées <span class="muted" style="font-weight:400">(${passees.length})</span></summary>
     ${passees.map(j=>`<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(127,127,127,.25)"><div class="tag" style="color:var(--soft)">${esc(j.titre)}</div><div class="b" style="font-weight:700">${esc(j.theme)}</div><button class="btn sec" data-j="${j.id}">Ouvrir cette journée</button></div>`).join('')}</details>`;
   h+=`<div class="card j"><h2>📝 Observations</h2><p style="margin:0" class="muted">Prends des notes pendant le passage d'un stagiaire, puis envoie-lui ton retour.</p>
@@ -332,6 +348,10 @@ function accueil(){
     <button class="btn sec" id="roue">Ouvrir la roue</button></div>`;
   h+=`<div class="card"><h2>🎵 Mes musiques</h2><p style="margin:0" class="muted">Tes musiques de cours, rangées par catégories. Seulement sur ce téléphone.</p>
     <button class="btn sec" id="mus">Ouvrir mes musiques</button></div>`;
+  h+=`<div class="card g"><h2>⏱️ Minuteur</h2><p style="margin:0" class="muted">Travail, repos, tours (ou sans fin), en grand et avec des bips. Pour tes séances et les passages.</p>
+    <button class="btn sec" id="tbo">Ouvrir le minuteur</button>
+    <button class="btn small ${MINUTEUR_MONTRE?'':'sec'}" id="tbm">${MINUTEUR_MONTRE?'👀 Montrer le minuteur aux stagiaires / apprentis : Oui · toucher pour Non':'🙈 Montrer le minuteur aux stagiaires / apprentis : Non · toucher pour Oui'}</button>
+    <div class="ok hide" id="tbmok"></div></div>`;
   const rc=revisionCourante(REVS), ro=rc&&estOuvert(rc);
   h+=`<div class="card j"><h2>🧠 Quiz de révision</h2>
     <p style="margin:0" class="${rc?'':'muted'}">${rc?`${esc(rc.titre)} · ${ro?'<b style="color:var(--ok)">ouvert</b>':'caché aux stagiaires'}`:'Des questions de toutes les journées, depuis le début.'}</p>
@@ -346,6 +366,14 @@ function accueil(){
   document.getElementById('fiches').onclick=()=>mesExercices();
   document.getElementById('obsv').onclick=()=>observationsEcran();
   document.getElementById('mus').onclick=()=>mesMusiques();
+  document.getElementById('tbo').onclick=()=>tabataEcran(accueil,'Espace formateur');
+  document.getElementById('tbm').onclick=async e=>{
+    const nv=!MINUTEUR_MONTRE, b=e.currentTarget;b.disabled=true;b.textContent='⏳ Un instant…';
+    try{await envoyerForm(FORM_QUIZ,{[EQ.journee]:'minuteur',[EQ.statut]:'etat',[EQ.contenu]:JSON.stringify({montrer:nv})})}
+    catch(err){alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");return accueil()}
+    MINUTEUR_MONTRE=nv;ecrire('local_minuteur',{montrer:nv,at:Date.now()});
+    const y=window.scrollY;accueil();window.scrollTo(0,y);
+    const ok=document.getElementById('tbmok');ok.textContent=nv?"✅ Le minuteur apparaîtra dans l'espace stagiaires / apprentis d'ici quelques minutes.":"✅ Le minuteur disparaîtra de l'espace stagiaires / apprentis d'ici quelques minutes.";ok.classList.remove('hide')};
   document.getElementById('out').onclick=()=>{ecrire('ok','');ecranCode()};
   document.getElementById('rz').onclick=()=>{try{localStorage.removeItem('cqp_moi')}catch(e){};document.getElementById('rzok').classList.remove('hide')};
   haut();
@@ -476,6 +504,11 @@ async function bilanStagiaire(x){
   h+=`<details class="card j"><summary style="cursor:pointer;list-style:none;font-weight:700;font-size:18px">📲 Nouveau téléphone ? <span class="muted" style="font-weight:400">▸</span></summary><p class="muted">Envoie-lui un lien qui récupère son espace et son évolution sur son nouveau téléphone (valable 7 jours, à ouvrir une seule fois).</p>
     <button class="btn wa" id="tel">📲 Envoyer son historique sur son nouveau téléphone</button><div class="muted hide" id="telinfo" style="margin-top:8px"></div></details>`;
   if(!H.length)h+=`<div class="card"><p class="muted" style="margin:0">Pas encore de réponse pour ce stagiaire.</p></div>`;
+  // 29/10 : ses notes, quiz après quiz (la plus ancienne en haut) — le ressenti ne compte pas dans la note
+  else{let avant=null;
+    h+=`<div class="card g"><h2>📈 Ses notes, quiz après quiz</h2><p class="muted" style="margin-top:0">Pour voir son évolution. Le ressenti ne compte pas dans la note.</p>`+H.map(e=>{
+      const sc=e.R.score||0, tot=e.R.total||e.z.questions.length, p=tot?sc/tot:0, fl=avant==null?'':p>avant+0.001?' <span style="color:var(--ok)">↗</span>':p<avant-0.001?' <span style="color:var(--ko)">↘</span>':' <span class="muted">→</span>';avant=p;
+      return `<div class="row" style="align-items:center"><span><span class="muted">${esc(e.d?jjmm(e.d):'')}</span> · ${esc(e.tag)} – ${esc(e.titre)}</span><span style="flex:none;white-space:nowrap"><span class="pill ${classe(sc,tot)}">${sc}/${tot}</span>${fl}</span></div>`}).join('')+`</div>`}
   const nb={};H.forEach(e=>nb[e.l]=(nb[e.l]||0)+1);const vu={};
   H.slice().reverse().forEach(e=>{
     vu[e.l]=(vu[e.l]||0)+1;
@@ -490,9 +523,9 @@ async function bilanStagiaire(x){
     e.items.forEach((it,i)=>{
       const q=it.q;
       h+=`<div class="stag"><b>${i+1}. ${esc(q?q.q:'Question '+(i+1))}</b>`;
-      if(it.etat==='ok')h+=`<div class="d">✅ ${esc(q?q.o[q.b]:'Bonne réponse')}</div>`;
-      else if(it.etat==='ko')h+=`<div class="d">❌ A répondu : ${esc(it.rep)}</div>${q?`<div class="d" style="color:var(--ok)">Bonne réponse : ${esc(q.o[q.b])}</div>`:''}`;
-      else if(it.etat==='na')h+=`<div class="d" style="color:var(--ja)">⏳ Pas répondu (temps fini)</div>${q?`<div class="d" style="color:var(--ok)">Bonne réponse : ${esc(q.o[q.b])}</div>`:''}`;
+      if(it.etat==='ok')h+=`<div class="d">✅ Juste : ${esc(q?q.o[q.b]:'bonne réponse')}</div>`;
+      else if(it.etat==='ko')h+=`<div class="d">❌ Faux · a répondu : ${esc(it.rep)}</div>${q?`<div class="d" style="color:var(--ok)">Bonne réponse : ${esc(q.o[q.b])}</div>${q.e?`<div class="d">💡 ${esc(q.e)}</div>`:''}`:''}`;
+      else if(it.etat==='na')h+=`<div class="d" style="color:var(--ja)">⏳ Pas répondu (temps fini)</div>${q?`<div class="d" style="color:var(--ok)">Bonne réponse : ${esc(q.o[q.b])}</div>${q.e?`<div class="d">💡 ${esc(q.e)}</div>`:''}`:''}`;
       else h+=`<div class="d muted">Pas de réponse</div>`;
       h+=`</div>`;
     });
@@ -546,23 +579,31 @@ function journee(j){
   <div class="card ${o?'g':'j'}">
    <div class="statut"><span class="dot" style="background:${o?'var(--ok)':'var(--mute)'}"></span>${esc(etatTexte(e))}</div>
    <p class="muted" style="margin:6px 0 0">${o?'Les stagiaires voient le bouton « Petit bilan de ma journée ».':'Les stagiaires ne voient pas encore le quiz. Ouvre-le quand tu veux, par exemple en fin de journée.'}</p>
+   <p class="muted" style="margin:6px 0 0">${prepTexte(j)}</p>
    ${o?`<button class="btn wa" id="prev">📲 Prévenir les stagiaires sur WhatsApp</button><button class="btn ko" id="tog">🔒 Fermer le quiz</button>`
       :`<button class="btn" id="tog">🔓 Ouvrir le quiz aux stagiaires</button>`}
    <div id="dur"></div>
    <div class="ok hide" id="togok"></div>
    ${e.horsLigne?`<div class="err">Je n'ai pas pu lire ton tableau des quiz. Vérifie ta connexion internet.</div>`:''}
   </div>
+  <div class="card j"><h2>📋 Mon déroulé prévu</h2>
+   <p class="muted" style="margin-top:0">Ton plan de la journée, pour toi seul : les stagiaires / apprentis ne le voient jamais. Écris ou dicte, modifie quand tu veux. Gardé sur ce téléphone et sauvegardé en ligne (tu le retrouves sur un autre téléphone).</p>
+   <textarea id="der" data-cle="der:${esc(j.id)}" style="min-height:160px" placeholder="Ex. : 8h30 accueil · 9h briefing sécurité · 9h15 passages de 20 min…"></textarea>
+   <div class="muted hide" id="deretat" data-cle="der:${esc(j.id)}" style="margin-top:6px"></div>
+   <button class="btn sec" id="dmic">🎤 Dicter</button>
+   <div class="muted hide" id="dmicinfo" style="margin-top:8px"></div></div>
   <button class="btn sec" id="m1">📊 Réponses et résumé de la journée</button>
   <button class="btn sec" id="m2">📝 Mon quiz du jour</button>
-  <button class="btn sec" id="m3">📚 Diapos et documents</button>
+  ${j.diapos?`<button class="btn sec" id="m3">📚 Diapos et documents</button>
   <button class="btn small ${DIAPOS_OUV.includes(j.id)?'':'sec'}" id="dtog" style="margin-top:-4px">${DIAPOS_OUV.includes(j.id)?'👀 Diapos montrées aux stagiaires · toucher pour cacher':'🙈 Diapos cachées aux stagiaires · toucher pour montrer'}</button>
-  <div class="ok hide" id="dok"></div>
-  <button class="btn sec" id="m4">🖨️ Version papier (PDF)</button>
-  <button class="btn sec" id="m5">✍️ Saisir une réponse papier</button>`;
+  <div class="ok hide" id="dok"></div>`:''}
+  ${quizVide(quizDe(j))?'':`<button class="btn sec" id="m4">🖨️ Version papier (PDF)</button>
+  <button class="btn sec" id="m5">✍️ Saisir une réponse papier</button>`}`;
   document.getElementById('bk').onclick=accueil;
   document.getElementById('m1').onclick=()=>reponses(cibleJournee(j));
   document.getElementById('m2').onclick=()=>monQuiz(j);
-  document.getElementById('m3').onclick=()=>diapos(j);
+  brancherDeroule(j);
+  if(j.diapos){document.getElementById('m3').onclick=()=>diapos(j);
   document.getElementById('dtog').onclick=async e=>{
     const montrer=!DIAPOS_OUV.includes(j.id), avant=DIAPOS_OUV.slice();
     const n=montrer?[...new Set(DIAPOS_OUV.concat(j.id))]:DIAPOS_OUV.filter(x=>x!==j.id);
@@ -570,9 +611,9 @@ function journee(j){
     try{await envoyerForm(FORM_QUIZ,{[EQ.journee]:'diapos',[EQ.statut]:'etat',[EQ.contenu]:JSON.stringify({ouverts:n})})}
     catch(err){DIAPOS_OUV=avant;alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");return journee(j)}
     DIAPOS_OUV=n;ecrire('local_diapos',{ouverts:n,at:Date.now()});
-    journee(j);const ok=document.getElementById('dok');ok.textContent=montrer?"✅ Diapos montrées aux stagiaires (d'ici quelques minutes).":"✅ Diapos cachées aux stagiaires (d'ici quelques minutes).";ok.classList.remove('hide')};
-  document.getElementById('m4').onclick=()=>papier(j,false);
-  document.getElementById('m5').onclick=()=>saisie(j);
+    journee(j);const ok=document.getElementById('dok');ok.textContent=montrer?"✅ Diapos montrées aux stagiaires (d'ici quelques minutes).":"✅ Diapos cachées aux stagiaires (d'ici quelques minutes).";ok.classList.remove('hide')};}
+  if(!quizVide(quizDe(j))){document.getElementById('m4').onclick=()=>papier(j,false);
+  document.getElementById('m5').onclick=()=>saisie(j);}
   const prev=document.getElementById('prev');
   if(prev)prev.onclick=()=>ouvrirWhatsApp(messageWhatsApp(`Le petit bilan de la journée (${j.titre} – ${j.theme})`,e));
   const tog=document.getElementById('tog');
@@ -588,8 +629,27 @@ function journee(j){
     t.textContent=nouveau?`✅ Quiz ouvert${duree?` avec un chrono de ${duree} min`:''}. Il apparaîtra chez les stagiaires d'ici quelques minutes (le temps que Google se mette à jour).`:"✅ Quiz fermé. Il disparaîtra chez les stagiaires d'ici quelques minutes.";
     t.classList.remove('hide');
   };
-  tog.onclick=()=>{if(o)changer(false);else choixDuree(document.getElementById('dur'),d=>changer(true,d))};
+  tog.onclick=()=>{if(o)return changer(false);
+    if(quizVide(quizDe(j))){const t=document.getElementById('togok');t.className='err';t.textContent="Ce quiz est vide : ajoute d'abord des questions dans « 📝 Mon quiz du jour », puis enregistre-le.";return}
+    choixDuree(document.getElementById('dur'),d=>changer(true,d))};
   haut();
+}
+
+// ======= 29/10 : 📋 Mon déroulé prévu (formateur seulement) =======
+// Gardé sur ce téléphone (clé obs_der:<journée>, comme les observations, pour la dictée) et en ligne dans
+// le formulaire « Mes quiz CQP » (Journée = deroule, Contenu = {id, texte, at}). Jamais affiché côté stagiaires.
+function brancherDeroule(j){
+  const cle='der:'+j.id, ta=document.getElementById('der');
+  let local=lire('obs_'+cle,''), atLocal=lire('der_at_'+j.id,0);
+  const enLigne=DEROULES[j.id];
+  if(enLigne&&enLigne.texte!==local&&(!local.trim()||(enLigne.at||0)>atLocal)){local=enLigne.texte;ecrire('obs_'+cle,local);ecrire('obs_envoye_'+cle,local);ecrire('der_at_'+j.id,enLigne.at||Date.now());if(local.trim())etatObs(cle,'☁️ Repris depuis ta sauvegarde en ligne.')}
+  ta.value=local;
+  ta.oninput=()=>{ecrire('obs_'+cle,ta.value);ecrire('der_at_'+j.id,Date.now());etatObs(cle,'✏️ Gardé sur ce téléphone…');programmerSauvegarde(cle)};
+  ta.onblur=()=>sauverObsEnLigne(cle);
+  OBS_LABELS[cle]='Mon déroulé · '+j.titre;
+  const mb=document.getElementById('dmic'), mi=document.getElementById('dmicinfo');
+  if(!SRdispo()){mb.onclick=()=>{mi.textContent="Sur ce téléphone, touche la case puis le petit micro 🎤 de ton clavier pour dicter.";mi.classList.remove('hide');ta.focus()}}
+  majBoutonMic();
 }
 
 // ======= Écran : diapos et documents =======
@@ -609,13 +669,55 @@ function monQuiz(j,zDepart,msg){
   editeur({tag:j.titre,titre:'Mon quiz du jour',z:zDepart||copie(quizDe(j)),msg,banque:j,max:5,
     retour:()=>journee(j),
     reouvrir:(z,m)=>monQuiz(j,z,m),
-    defaut:()=>copie(j.quiz), defautTexte:'↩️ Revenir au quiz préparé avec Claude',
+    defaut:quizVide(j.quiz)?null:()=>copie(j.quiz), defautTexte:'↩️ Revenir au quiz préparé avec Claude',
     note:'Si le quiz est déjà ouvert, les changements s\'appliquent aux stagiaires qui ne l\'ont pas encore rempli.',
     enregistrer:async propre=>{
       await envoyerForm(FORM_QUIZ,{[EQ.journee]:j.id,[EQ.statut]:'quiz',[EQ.contenu]:JSON.stringify(propre)});
       ETAT[j.id].quiz=propre; noterLocal(j.id,'quiz',propre);
       return `✅ Quiz enregistré${estOuvert(ETAT[j.id])?" : les stagiaires verront la nouvelle version d'ici quelques minutes.":". Il reste caché tant que tu ne l'as pas ouvert."}`;
     }});
+}
+// ======= 29/10 : ➕ Ajouter une question (tirée au hasard dans les fiches d'exercices) =======
+// Hamid choisit un thème → une question proposée → ✅ Garder ou 🔄 Une autre. Jamais de doublon dans le quiz.
+const GEN={ouvert:false,theme:null,prop:null,vus:new Set(),msg:''};
+function genReset(){GEN.ouvert=false;GEN.prop=null;GEN.msg='';GEN.vus=new Set();GEN.theme=lire('gen_theme',null);if(GEN.theme&&GEN.theme!=='tout'&&!GEN_THEMES[GEN.theme])GEN.theme=null}
+function genNouvelle(z,sauf){const q=genProposer(GEN.theme,z.questions.concat(sauf?[sauf]:[]),GEN.vus);if(q)GEN.vus.add(q.id);return q}
+function htmlGen(z){
+  if(!GEN.ouvert)return `<button class="btn" id="genadd">➕ Ajouter une question</button>`;
+  const deja=new Set(z.questions.map(q=>q.id).filter(Boolean));
+  const reste=t=>genIds(t).filter(id=>!deja.has(id)).length;
+  const puce=(t,txt)=>`<button class="rchip ${GEN.theme===t?'on':''}" data-gth="${t}">${txt} <small>(${reste(t)})</small></button>`;
+  let h=`<div class="apq nopli" id="genbox" style="border-left-color:var(--ja)">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b style="font-size:18px">➕ Ajouter une question</b><button class="link" id="genx">✕ Fermer</button></div>
+    <p class="muted" style="margin:8px 0 4px">1. Choisis le thème :</p>
+    <div style="font-weight:700;margin-top:6px">💪 Renfo</div><div class="choix" style="margin-top:6px">${puce('renfo.bas','Bas du corps')}${puce('renfo.haut','Haut du corps')}${puce('renfo.abdos','Abdos')}</div>
+    <div style="font-weight:700;margin-top:10px">🧘 Étirements</div><div class="choix" style="margin-top:6px">${puce('etir.bas','Bas du corps')}${puce('etir.haut','Haut du corps')}${puce('etir.abdos','Abdos')}</div>
+    <div class="choix">${puce('tout','🎲 Tout')}</div>`;
+  if(GEN.msg)h+=`<div class="ok">${esc(GEN.msg)}</div>`;
+  if(GEN.theme){
+    const q=GEN.prop;
+    if(q)h+=`<p class="muted" style="margin:14px 0 4px">2. La question proposée (✓ = bonne réponse) :</p>
+      <div style="background:#1c2442;border-radius:12px;padding:12px"><b>${esc(q.q)}</b>
+       ${q.o.map((o,k)=>`<div class="${k===q.b?'bon':'muted'}" style="margin-top:6px">${k===q.b?'✓':'•'} ${esc(o)}</div>`).join('')}
+       ${q.e?`<div class="expl">💡 ${esc(q.e)}</div>`:''}<div class="th">${esc(nomTheme(q.theme))}</div></div>
+      <div style="display:flex;gap:8px"><button class="btn" id="genok" style="flex:1">✅ Garder</button><button class="btn sec" id="genautre" style="flex:1">🔄 Une autre</button></div>`;
+    else h+=`<p class="muted" style="margin-top:12px">Il n'y a plus de nouvelle question dans ce thème : elles sont toutes déjà dans ton quiz. Choisis un autre thème.</p>`;
+  }else h+=`<p class="muted" style="margin-top:12px">Touche un thème pour voir une question.</p>`;
+  return h+`</div>`;
+}
+function brancherGen(z,re){
+  const voir=()=>setTimeout(()=>{const g=document.getElementById('genbox');if(g)g.scrollIntoView({block:'start'})},0);
+  const a=document.getElementById('genadd');
+  if(a)a.onclick=()=>{re(()=>{GEN.ouvert=true;GEN.msg='';if(GEN.theme&&!GEN.prop)GEN.prop=genNouvelle(z)})();voir()};
+  const x=document.getElementById('genx');
+  if(x)x.onclick=()=>{re(()=>{GEN.ouvert=false;GEN.prop=null;GEN.msg=''})()};
+  app.querySelectorAll('[data-gth]').forEach(b=>b.onclick=()=>{re(()=>{GEN.theme=b.dataset.gth;ecrire('gen_theme',GEN.theme);GEN.msg='';GEN.prop=genNouvelle(z)})();voir()});
+  const ok=document.getElementById('genok');
+  if(ok)ok.onclick=()=>{re(()=>{const q=GEN.prop;
+    if(q&&!z.questions.some(y=>(y.id&&y.id===q.id)||genNorm(y.q)===genNorm(q.q))){z.questions.push(q);GEN.msg=`✅ Gardée : c'est la question ${z.questions.length}. Voici une autre proposition.`}
+    GEN.prop=genNouvelle(z)})();voir()};
+  const au=document.getElementById('genautre');
+  if(au)au.onclick=()=>{re(()=>{GEN.msg='';const q=genNouvelle(z,GEN.prop);if(q)GEN.prop=q;else GEN.msg="C'est la seule question encore libre dans ce thème."})();voir()};
 }
 // Éditeur de quiz (journée ou révision)
 function nettoyer(z){
@@ -629,7 +731,7 @@ function nettoyer(z){
       return r})};
 }
 function editeur(cfg){
-  const z=cfg.z;
+  const z=cfg.z; genReset();
   const dessiner=()=>{
     let h=`<button class="back" id="bk">← Retour</button><div class="tag">${esc(cfg.tag)}</div><h1>${esc(cfg.titre)}</h1>
     ${cfg.msg?`<div class="ok" style="margin:-6px 0 14px">${esc(cfg.msg)}</div>`:''}
@@ -642,14 +744,15 @@ function editeur(cfg){
     h+=`<button class="btn small sec" id="addr">+ Ajouter une ligne</button></div>
     <div class="card"><h2>Les questions</h2>`;
     z.questions.forEach((q,i)=>{
-      h+=`<div class="qed"><div style="display:flex;justify-content:space-between;align-items:center"><b>Question ${i+1}</b><button class="link" data-qx="${i}" style="color:var(--ko)">Supprimer</button></div>
+      h+=`<div class="qed"><div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><b>Question ${i+1}</b><span style="display:flex;gap:6px;align-items:center">${i>0?`<button class="ordre" data-qup="${i}" title="Monter" aria-label="Monter">⬆️</button>`:''}${i<z.questions.length-1?`<button class="ordre" data-qdn="${i}" title="Descendre" aria-label="Descendre">⬇️</button>`:''}<button class="link" data-qx="${i}" style="color:var(--ko)">🗑️ Supprimer</button></span></div>
+      ${q.theme&&GEN_THEMES[q.theme]?`<div class="th" style="font-size:13px;color:var(--mute);margin-top:4px">${esc(GEN_THEMES[q.theme])}</div>`:''}
       <textarea data-qq="${i}" style="min-height:70px;margin-top:8px">${esc(q.q)}</textarea>
       <label style="margin-top:10px">Réponses proposées</label>`;
-      q.o.forEach((o,k)=>{h+=`<div class="ligne"><button class="bonne ${q.b===k?'on':''}" data-qb="${i}:${k}" title="Bonne réponse">✓</button><input type="text" data-qo="${i}:${k}" value="${esc(o)}">${q.o.length>2?`<button class="x" data-qox="${i}:${k}">✕</button>`:''}</div>`});
+      q.o.forEach((o,k)=>{h+=`<div class="ligne"><button class="bonne ${q.b===k?'on':''}" data-qb="${i}:${k}" title="Bonne réponse">✓</button>${String(o).length>55?`<textarea data-qo="${i}:${k}" style="flex:1;min-height:76px">${esc(o)}</textarea>`:`<input type="text" data-qo="${i}:${k}" value="${esc(o)}">`}${q.o.length>2?`<button class="x" data-qox="${i}:${k}">✕</button>`:''}</div>`});
       if(q.o.length<4)h+=`<button class="btn small sec" data-qoa="${i}">+ Ajouter une réponse</button>`;
       h+=`<label>Explication (affichée après l'envoi)</label><textarea data-qe="${i}" style="min-height:70px">${esc(q.e||'')}</textarea></div>`;
     });
-    h+=`<button class="btn small sec" id="addq">+ Ajouter une question</button></div>
+    h+=htmlGen(z)+`<button class="btn small sec" id="addq">✏️ Écrire ma propre question</button></div>
     <div class="err hide" id="er"></div>
     <button class="btn" id="sav">💾 ${esc(cfg.texteEnregistrer||'Enregistrer le quiz')}</button>
     <div class="ok hide" id="okk"></div>
@@ -674,6 +777,10 @@ function editeur(cfg){
     app.querySelectorAll('[data-rsx]').forEach(b=>b.onclick=re(()=>z.ressenti.splice(+b.dataset.rsx,1)));
     document.getElementById('addq').onclick=re(()=>z.questions.push({q:'',o:['','',''],b:-1,e:''}));
     app.querySelectorAll('[data-qx]').forEach(b=>b.onclick=re(()=>z.questions.splice(+b.dataset.qx,1)));
+    const bouger=(i,d)=>{const k=i+d;if(k<0||k>=z.questions.length)return;[z.questions[i],z.questions[k]]=[z.questions[k],z.questions[i]]};
+    app.querySelectorAll('[data-qup]').forEach(b=>b.onclick=re(()=>bouger(+b.dataset.qup,-1)));
+    app.querySelectorAll('[data-qdn]').forEach(b=>b.onclick=re(()=>bouger(+b.dataset.qdn,1)));
+    brancherGen(z,re);
     app.querySelectorAll('[data-qb]').forEach(b=>b.onclick=re(()=>{const [i,k]=b.dataset.qb.split(':').map(Number);z.questions[i].b=k}));
     app.querySelectorAll('[data-qoa]').forEach(b=>b.onclick=re(()=>z.questions[+b.dataset.qoa].o.push('')));
     app.querySelectorAll('[data-qox]').forEach(b=>b.onclick=re(()=>{const [i,k]=b.dataset.qox.split(':').map(Number);const q=z.questions[i];q.o.splice(k,1);if(q.b===k)q.b=-1;else if(q.b>k)q.b--}));
@@ -833,18 +940,21 @@ function nouvelleRevision(){
     let h=`<button class="back" id="bk">← Retour</button><div class="tag">Quiz de révision</div><h1>🆕 Nouvelle révision</h1>
      <div class="card"><h2>Quelles journées ?</h2>`+
      JOURNEES.filter(j=>j.banque&&j.banque.questions.length).map(j=>`<label class="check"><input type="checkbox" data-j="${j.id}" ${choix.j.includes(j.id)?'checked':''}> ${esc(j.titre)} – ${esc(j.theme)}</label>`).join('')+`</div>
-     <div class="card"><h2>Combien de temps ?</h2><div class="choix">${[5,10,15].map(d=>`<button class="btn ${choix.duree===d?'':'sec'}" data-d="${d}">${d} min</button>`).join('')}</div>
-      <p class="muted" style="margin-bottom:0">Environ ${choix.duree*2} questions.</p>
+     <div class="card"><h2>Combien de temps ?</h2>
+      <label for="rvmin" style="margin-top:0">Nombre de minutes</label>
+      <input type="number" id="rvmin" inputmode="numeric" min="1" max="60" step="1" value="${choix.duree}">
+      <p class="muted" style="margin-bottom:0" id="rvnb">Environ ${choix.duree*2} questions.</p>
       <label class="check"><input type="checkbox" id="rs" ${choix.ressenti?'checked':''}> Ajouter le ressenti « J'ai compris… » (facultatif)</label></div>
      <div class="err hide" id="er"></div>
      <button class="btn" id="go">🎲 Tirer les questions</button>`;
     app.innerHTML=h;
     document.getElementById('bk').onclick=()=>revisionEcran();
     app.querySelectorAll('[data-j]').forEach(c=>c.onchange=()=>{choix.j=[...app.querySelectorAll('[data-j]')].filter(x=>x.checked).map(x=>x.dataset.j)});
-    app.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{choix.duree=+b.dataset.d;dessiner()});
+    document.getElementById('rvmin').oninput=e=>{const d=lireMinutes(e.target.value);if(d&&d<=60){choix.duree=d;document.getElementById('rvnb').textContent=`Environ ${d*2} questions.`}};
     document.getElementById('rs').onchange=e=>{choix.ressenti=e.target.checked};
     document.getElementById('go').onclick=()=>{
       if(!choix.j.length){const er=document.getElementById('er');er.textContent='Coche au moins une journée.';er.classList.remove('hide');return}
+      {const d=lireMinutes(document.getElementById('rvmin').value);if(!d||d>60){const er=document.getElementById('er');er.textContent='Écris un nombre de minutes entre 1 et 60.';er.classList.remove('hide');return}choix.duree=d}
       tirerRevision(choix);
     };
   };
@@ -1044,7 +1154,7 @@ function afficher(c,tests){
 // En ligne : une ligne du formulaire des réponses avec Nom = « __obs__ », Prénom = la journée
 // (ou la révision), Difficulté = le texte complet. Ce tableau n'est lu que par cette page.
 const OBS_MINUTEURS={}, OBS_LABELS={};
-function etatObs(cle,txt){const e=document.getElementById('obsetat');if(e&&e.dataset.cle===cle){e.textContent=txt;e.classList.remove('hide')}}
+function etatObs(cle,txt){['obsetat','deretat'].forEach(i=>{const e=document.getElementById(i);if(e&&e.dataset.cle===cle){e.textContent=txt;e.classList.remove('hide')}})}
 function programmerSauvegarde(cle,ms){clearTimeout(OBS_MINUTEURS[cle]);OBS_MINUTEURS[cle]=setTimeout(()=>sauverObsEnLigne(cle),ms||3000)}
 async function sauverObsEnLigne(cle){
   if(!cle)return;
@@ -1053,7 +1163,11 @@ async function sauverObsEnLigne(cle){
   if(deja!==null?deja===v:!v.trim())return; // rien de nouveau
   etatObs(cle,'☁️ Sauvegarde en ligne…');
   try{
-    await envoyerForm(FORM,{[E.nom]:'__obs__',[E.prenom]:cle,[E.journee]:'Observations',[E.ressenti]:'',[E.reponses]:'',[E.difficulte]:v});
+    // 29/10 : « Mon déroulé prévu » → formulaire « Mes quiz CQP » ; observations → formulaire des réponses (comme avant)
+    if(cle.startsWith('der:')){const id=cle.slice(4), at=lire('der_at_'+id,0)||Date.now();
+      await envoyerForm(FORM_QUIZ,{[EQ.journee]:'deroule',[EQ.statut]:'texte',[EQ.contenu]:JSON.stringify({id,texte:v,at})});
+      DEROULES[id]={texte:v,at}}
+    else await envoyerForm(FORM,{[E.nom]:'__obs__',[E.prenom]:cle,[E.journee]:'Observations',[E.ressenti]:'',[E.reponses]:'',[E.difficulte]:v});
     ecrire('obs_envoye_'+cle,v);
     etatObs(cle,`☁️ Sauvegardé en ligne à ${heureParis(Date.now())}`);
   }catch(e){
@@ -1191,12 +1305,13 @@ function ajouterTexteObs(cle,t){
   const v=cur.trim()?cur.replace(/\s*$/,'')+(DICTEE.premier?'\n':' ')+t:t;
   DICTEE.premier=false;
   ecrire('obs_'+cle,v);
-  const ta=document.getElementById('obs');
-  if(ta&&ta.dataset.cle===cle)ta.value=v;
+  if(cle.startsWith('der:'))ecrire('der_at_'+cle.slice(4),Date.now());
+  ['obs','der'].forEach(i=>{const ta=document.getElementById(i);if(ta&&ta.dataset.cle===cle)ta.value=v});
   programmerSauvegarde(cle);
 }
-function majBoutonMic(){
-  const mb=document.getElementById('mic'), ta=document.getElementById('obs');
+function majBoutonMic(){[['mic','obs'],['dmic','der']].forEach(([m,t])=>majUnMic(m,t))}
+function majUnMic(idMic,idTa){
+  const mb=document.getElementById(idMic), ta=document.getElementById(idTa);
   if(!mb||!ta)return;
   const ici=DICTEE.voulu&&DICTEE.cle===ta.dataset.cle;
   mb.textContent=ici?(DICTEE.coupe?'🎤 Reprendre la dictée':'⏹️ Arrêter la dictée'):'🎤 Dicter';

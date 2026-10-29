@@ -203,8 +203,19 @@ const JOURNEES = [
  {id:'2026-10-27', titre:'Mardi 27 octobre', theme:'EPMSP – Préparer son passage', diapos:16, dossier:'j1',
   docs:[{titre:'Télécharger toutes les diapos', fichier:'j1/Diapos_EPMSP_27-10.pdf'}],
   banque:BANQUE_J1,
-  quiz:QUIZ_DEFAUT_J1}
+  quiz:QUIZ_DEFAUT_J1},
+ // 29/10 : les journées suivantes du planning (pas encore de diapos ; le quiz se prépare dans l'espace formateur)
+ {id:'2026-10-30', titre:'Vendredi 30 octobre (matin)', theme:'EPMSP – Passages complets de 20 min avec la grille', diapos:0, quiz:{ressenti:[],questions:[]}},
+ {id:'2026-11-06', titre:'Vendredi 6 novembre (matin)', theme:'EPMSP – Examen blanc', diapos:0, quiz:{ressenti:[],questions:[]}},
+ {id:'2026-12-11', titre:'Vendredi 11 décembre (matin)', theme:'Cours collectifs', diapos:0, quiz:{ressenti:[],questions:[]}},
+ {id:'2027-01-08', titre:'Vendredi 8 janvier (matin)', theme:'BC1 – Cours collectifs', diapos:0, quiz:{ressenti:[],questions:[]}},
+ {id:'2027-01-29', titre:'Vendredi 29 janvier (matin)', theme:'BC1 – Cours collectifs', diapos:0, quiz:{ressenti:[],questions:[]}},
+ {id:'2027-02-12', titre:'Vendredi 12 février (matin)', theme:'BC1 – Cours collectifs', diapos:0, quiz:{ressenti:[],questions:[]}},
+ {id:'2027-02-19', titre:'Vendredi 19 février (matin)', theme:'BC1 – Cours collectifs', diapos:0, quiz:{ressenti:[],questions:[]}},
+ {id:'2027-02-26', titre:'Vendredi 26 février (matin)', theme:'BC1 – Cours collectifs', diapos:0, quiz:{ressenti:[],questions:[]}}
 ];
+// Un quiz vide (aucune question, aucune ligne de ressenti) n'est jamais montré aux stagiaires
+function quizVide(z){return !z||!((z.questions||[]).length||(z.ressenti||[]).length)}
 
 // ===== Outils =====
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -290,6 +301,7 @@ async function nouvellesCles(){
 async function etatGeneral(){
   const etat={};JOURNEES.forEach(j=>etat[j.id]={quiz:j.quiz,ouvert:false,duree:0,ouvertAt:null,ouvCle:''});
   const stag={}, revs={}, roue={tirage:null,lances:{},listes:{},persos:{}}, fiches={ouverts:[]}, diapos={ouverts:[]}, reouv=[], retours=[];
+  const deroules={}, minuteur={montrer:false};
   const L=await lireCSV(CSV_QUIZ);
   if(L.length){
     const h=L[0].map(x=>x.trim().toLowerCase());
@@ -345,6 +357,18 @@ async function etatGeneral(){
         if(st==='etat'&&c&&Array.isArray(c.ouverts))diapos.ouverts=c.ouverts.map(String);
         return;
       }
+      // 29/10 : « Mon déroulé prévu » d'une journée (espace formateur seulement) : {id, texte, at} — la dernière ligne gagne
+      if(id==='deroule'){
+        let c;try{c=JSON.parse(l[iC]||'')}catch(e){return}
+        if(c&&c.id&&typeof c.texte==='string')deroules[c.id]={texte:c.texte,at:+c.at||horoVersMs(l[0])||0};
+        return;
+      }
+      // 29/10 : minuteur montré ou non aux stagiaires : {montrer:true/false} — la dernière ligne gagne
+      if(id==='minuteur'){
+        let c;try{c=JSON.parse(l[iC]||'')}catch(e){return}
+        if(st==='etat'&&c&&typeof c.montrer==='boolean')minuteur.montrer=c.montrer;
+        return;
+      }
       if(id==='fiches'){
         let c;try{c=JSON.parse(l[iC]||'')}catch(e){return}
         if(st==='etat'&&c&&Array.isArray(c.ouverts))fiches.ouverts=c.ouverts.map(String);
@@ -368,7 +392,7 @@ async function etatGeneral(){
   }
   Object.keys(revs).forEach(k=>{if(!revs[k].quiz)delete revs[k]});
   Object.entries(CLES_EN_ATTENTE).forEach(([k,v])=>{if(stag[k]&&!stag[k].pub)stag[k].pub=v});
-  return {quiz:etat,stagiaires:stag,revisions:revs,roue,fiches,diapos,reouv,retours};
+  return {quiz:etat,stagiaires:stag,revisions:revs,roue,fiches,diapos,reouv,retours,deroules,minuteur};
 }
 async function etatQuiz(){return (await etatGeneral()).quiz}
 // La révision « en cours » = la dernière préparée
@@ -382,8 +406,8 @@ function memeNom(a,b){const f=x=>String(x||'').trim().toLowerCase().normalize('N
 
 // ===== Banque de questions : outils =====
 function toutesQuestions(){const t=[];JOURNEES.forEach(j=>(j.banque&&j.banque.questions||[]).forEach(q=>t.push(Object.assign({journee:j.id},q))));return t}
-function questionParId(id){for(const j of JOURNEES){const q=(j.banque&&j.banque.questions||[]).find(x=>x.id===id);if(q)return q}return null}
-function nomTheme(t){for(const j of JOURNEES){if(j.banque&&j.banque.themes&&j.banque.themes[t])return j.banque.themes[t]}return 'Autres questions'}
+function questionParId(id){if(typeof id==='string'&&id.startsWith('g:'))return genQuestion(id);for(const j of JOURNEES){const q=(j.banque&&j.banque.questions||[]).find(x=>x.id===id);if(q)return q}return null}
+function nomTheme(t){if(GEN_THEMES[t])return GEN_THEMES[t];for(const j of JOURNEES){if(j.banque&&j.banque.themes&&j.banque.themes[t])return j.banque.themes[t]}return 'Autres questions'}
 function copieQ(q){const c=JSON.parse(JSON.stringify(q));delete c.journee;return c}
 function quizDepuisBanque(qz){return {ressenti:qz.ressenti.slice(),questions:qz.questions.map(id=>copieQ(questionParId(id))).filter(q=>q&&q.q)}}
 // Durée estimée : ≈ 15 s par ligne de ressenti, ≈ 25 s par question
@@ -414,6 +438,82 @@ function tirerQuestions(paquets,n){
   return melanger(res);
 }
 function paquetsParTheme(questions){const m={};questions.forEach(q=>(m[q.theme||'autre']=m[q.theme||'autre']||[]).push(q));return Object.values(m)}
+
+// ===== 29/10 : générateur de questions à partir des fiches d'exercices (fiches.js : RENFO et ETIR seulement) =====
+// Chaque question a un numéro « g:… » fabriqué à partir du nom de l'exercice : la même question revient
+// toujours avec les mêmes réponses (dans le même ordre), sur tous les téléphones.
+// Types : p = placement, e = exécution, s = sécurité, c = des deux côtés ?, m = méthode (étirements).
+const GEN_THEMES={'renfo.bas':'Renfo · bas du corps','renfo.haut':'Renfo · haut du corps','renfo.abdos':'Renfo · abdos',
+  'etir.bas':'Étirements · bas du corps','etir.haut':'Étirements · haut du corps','etir.abdos':'Étirements · abdos'};
+const GEN_ARTICLE={quadriceps:'des quadriceps',ischios:'des ischios',fessiers:'des fessiers',psoas:'du psoas',adducteurs:'des adducteurs',mollets:'des mollets',
+  poitrine:'de la poitrine',epaules:'des épaules',dos:'du dos',biceps:'des biceps',triceps:'des triceps',cervicales:'des cervicales',
+  'grand droit':'du grand droit',obliques:'des obliques',lombaires:'des lombaires'};
+let GEN_CACHE=null;
+function genHash(t){let h=5381;t=String(t);for(let i=0;i<t.length;i++)h=((h*33)^t.charCodeAt(i))>>>0;return h}
+function genAlea(graine){let a=genHash(graine)||1;return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function genMelanger(a,r){a=a.slice();for(let i=a.length-1;i>0;i--){const k=Math.floor(r()*(i+1));[a[i],a[k]]=[a[k],a[i]]}return a}
+function genNorm(t){return String(t||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9 ]+/g,' ').replace(/\s+/g,' ').trim()}
+function genMots(t){return new Set(genNorm(t).split(' ').filter(m=>m.length>3))}
+// ressemblance de 0 (rien en commun) à 1 (mêmes mots)
+function genProche(a,b){const A=genMots(a),B=genMots(b);if(!A.size||!B.size)return genNorm(a)===genNorm(b)?1:0;let n=0;A.forEach(m=>{if(B.has(m))n++});return n/(A.size+B.size-n)}
+function genMin(t){t=String(t||'');return /^[A-ZÀ-Ý][a-zà-ÿ]/.test(t)?t[0].toLowerCase()+t.slice(1):t}
+function genNomExo(src,g,c,v){
+  if(src==='etir'){const a=GEN_ARTICLE[genNorm(c.c)];return `Étirement ${a||'– '+c.c} (${genMin(v[0])})`}
+  if(g.k==='bas'&&!genNorm(v[0]).includes(genNorm(c.c).split(' ')[0]))return `${c.c} (${genMin(v[0])})`;
+  return v[0];
+}
+function genTout(){
+  if(GEN_CACHE)return GEN_CACHE;
+  const L=[], par={};
+  if(typeof RENFO==='undefined'||typeof ETIR==='undefined')return {liste:[],par:{}}; // fiches.js pas chargé
+  [['renfo',RENFO],['etir',ETIR]].forEach(([src,A])=>A.forEach(g=>{
+    const theme=src+'.'+g.k;
+    g.cases.forEach(c=>c.v.forEach(v=>L.push({src,theme,g,c,v,nom:genNomExo(src,g,c,v),cle:(genHash(c.c+'|'+v[0])).toString(36)})));
+  }));
+  const methodes=[...new Set(L.filter(x=>x.src==='etir'&&x.v[5]).map(x=>String(x.v[5]).trim()))];
+  const CH={p:[2,'quel est le bon placement ?','Placement'],e:[3,'quelle est la bonne exécution ?','Exécution'],s:[4,'quelle est la bonne consigne de sécurité ?','Sécurité']};
+  L.forEach(x=>{
+    const base='g:'+x.theme+'.'+x.cle+'.';
+    Object.entries(CH).forEach(([t,[f,fin,champ]])=>{
+      const bon=String(x.v[f]||'').trim(); if(!bon)return;
+      const id=base+t, r=genAlea(id);
+      // les mauvaises réponses : d'autres exercices du même thème, assez différentes de la bonne et entre elles
+      const prem=genNorm(bon).split(' ')[0];
+      let cand=L.filter(y=>y.theme===x.theme&&y!==x).map(y=>({y,t:String(y.v[f]||'').trim()}))
+        .filter(o=>o.t&&genNorm(o.t)!==genNorm(bon)&&genProche(o.t,bon)<0.45);
+      cand=genMelanger(cand,r);
+      // d'abord un autre exercice ; pour le placement, la même position de départ (sinon la réponse se devine)
+      const rang=o=>(o.y.c===x.c?2:0)+(t==='p'&&genNorm(o.t).split(' ')[0]!==prem?1:0);
+      cand.sort((a,b)=>rang(a)-rang(b));
+      const pris=[];
+      for(const o of cand){if(pris.length>=2)break;if(pris.every(p=>genNorm(p.t)!==genNorm(o.t)&&genProche(p.t,o.t)<0.45))pris.push(o)}
+      if(pris.length<2)return;
+      const o=genMelanger([bon,pris[0].t,pris[1].t],r);
+      par[id]={id,theme:x.theme,q:`${x.nom} : ${fin}`,o,b:o.indexOf(bon),e:`Fiche « ${x.nom} » – ${champ} : ${bon}`};
+    });
+    // des deux côtés ?
+    if(x.v[1]===0||x.v[1]===1){const id=base+'c';
+      par[id]={id,theme:x.theme,q:`${x.nom} : se fait-il des deux côtés ?`,o:['Oui','Non'],b:x.v[1]?0:1,
+        e:x.v[1]?`Oui : ${genMin(x.nom)} se fait d'un côté, puis de l'autre.`:`Non : ${genMin(x.nom)} ne se fait pas d'un côté puis de l'autre.`}}
+    // méthode d'étirement
+    if(x.src==='etir'&&x.v[5]&&methodes.length>=3){const id=base+'m', r=genAlea(id), bon=String(x.v[5]).trim();
+      const o=genMelanger([bon].concat(genMelanger(methodes.filter(m=>m!==bon),r).slice(0,2)),r);
+      par[id]={id,theme:x.theme,q:`${x.nom} : quelle est la méthode d'étirement ?`,o,b:o.indexOf(bon),e:`Fiche « ${x.nom} » – Méthode : ${bon}`}}
+  });
+  GEN_CACHE={liste:Object.keys(par),par};
+  return GEN_CACHE;
+}
+function genQuestion(id){const q=genTout().par[id];return q?JSON.parse(JSON.stringify(q)):null}
+// toutes les questions d'un thème (« tout » = les 6 thèmes)
+function genIds(theme){const T=genTout();return T.liste.filter(id=>theme==='tout'||T.par[id].theme===theme)}
+// une question tirée au hasard, jamais une question déjà dans le quiz (même numéro ou même texte), ni une déjà vue si possible
+function genProposer(theme,dejaQuestions,vus){
+  const ids=new Set((dejaQuestions||[]).map(q=>q.id).filter(Boolean)), txt=new Set((dejaQuestions||[]).map(q=>genNorm(q.q)));
+  const libres=genIds(theme).filter(id=>!ids.has(id)&&!txt.has(genNorm(genTout().par[id].q)));
+  if(!libres.length)return null;
+  const neufs=libres.filter(id=>!(vus&&vus.has(id))), L=neufs.length?neufs:libres;
+  return genQuestion(L[Math.floor(Math.random()*L.length)]);
+}
 
 // ===== Texte des réponses envoyées dans le formulaire =====
 // Format : « Q1 ✅ | Q2 ❌ (texte répondu) | Q3 ⏳ (pas répondu) — Score 1/3 (papier) [q:m02,j01,_] »
