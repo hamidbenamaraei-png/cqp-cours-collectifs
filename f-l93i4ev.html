@@ -151,12 +151,13 @@ body.avec-barre .wrap{padding-bottom:120px}
 </head>
 <body>
 <div class="wrap" id="app"></div>
-<script src="commun.js?v=202610291200"></script>
+<script src="commun.js?v=202610291800"></script>
 <script src="roue.js?v=202610260957"></script>
 <script src="bonhommes3d.js?v=202610261832"></script>
 <script src="fiches.js?v=202610261640"></script>
 <script src="musiques.js?v=202610261915"></script>
-<script src="tabata.js?v=202610291200"></script>
+<script src="tabata.js?v=202610291800"></script>
+<script src="cours.js?v=202610291800"></script>
 <script>
 // ======= Réglages propres au formateur =======
 // Empreinte du code d'accès (le code lui-même n'est pas écrit ici)
@@ -187,12 +188,16 @@ const copie = x => JSON.parse(JSON.stringify(x));
 function estObs(l){return (l[1]||'').trim()==='__obs__'}
 // Les lignes « __roue__ » gardent tes 🎯 de la roue (jamais un stagiaire non plus)
 function estRoue(l){return (l[1]||'').trim()==='__roue__'}
+// 29/10 : les lignes « __cours__ » sont les cours préparés envoyés par les stagiaires (📝 Je prépare mon cours)
+function estCours(l){return (l[1]||'').trim()==='__cours__'}
+let COURS_LIGNES=[];
 
 // ======= Le tableau des réponses (les observations sont mises à part) =======
 let lignes=[], OBS=[];
 async function chargerReponses(){
   const L=await lireCSV(CSV_REPONSES);
-  lignes=L.length?[L[0]].concat(L.slice(1).filter(l=>!estObs(l)&&!estRoue(l)&&!estRetour(l)&&!estNote(l))):[];
+  lignes=L.length?[L[0]].concat(L.slice(1).filter(l=>!estObs(l)&&!estRoue(l)&&!estRetour(l)&&!estNote(l)&&!estCours(l))):[];
+  COURS_LIGNES=L.slice(1).filter(estCours);
   NOTES=L.slice(1).filter(estNote).map(l=>{try{return JSON.parse(l[6]||'')}catch(e){return null}}).filter(x=>x&&x.nid);
   RETOURS=L.slice(1).filter(estRetour).map(l=>{try{return JSON.parse(l[6]||'')}catch(e){return null}}).filter(x=>x&&x.sid&&x.texte);
   OBS=L.slice(1).filter(estObs);
@@ -203,7 +208,7 @@ async function chargerReponses(){
 // ======= État des quiz (tableau Google + ce que tu viens de faire sur ce téléphone) =======
 // Le tableau Google met quelques minutes à se mettre à jour : pendant 15 min, ce téléphone
 // se fie à ce que tu viens d'enregistrer.
-let ETAT = null, STAG = {}, REVS = {}, DEROULES = {}, MINUTEUR_MONTRE = false;
+let ETAT = null, STAG = {}, REVS = {}, DEROULES = {}, MINUTEUR_MONTRE = false, PREP_COURS = null;
 async function chargerEtat(){
   let g=null;
   try{g=await etatGeneral()}catch(e){g=null}
@@ -212,6 +217,7 @@ async function chargerEtat(){
   DEROULES=(g&&g.deroules)||{};
   MINUTEUR_MONTRE=!!(g&&g.minuteur&&g.minuteur.montrer);
   {const lm=lire('local_minuteur',null);if(lm&&typeof lm.montrer==='boolean'&&Date.now()-lm.at<15*60*1000)MINUTEUR_MONTRE=lm.montrer}
+  PREP_COURS=crPrep(g);
   roueChargerLocal(g);
   fichesChargerLocal(g);
   // décisions prises sur ce téléphone depuis moins de 15 min (le temps que Google se mette à jour)
@@ -352,6 +358,11 @@ function accueil(){
     <button class="btn sec" id="tbo">Ouvrir le minuteur</button>
     <button class="btn small ${MINUTEUR_MONTRE?'':'sec'}" id="tbm">${MINUTEUR_MONTRE?'👀 Montrer le minuteur aux stagiaires / apprentis : Oui · toucher pour Non':'🙈 Montrer le minuteur aux stagiaires / apprentis : Non · toucher pour Oui'}</button>
     <div class="ok hide" id="tbmok"></div></div>`;
+  {const M=crModeleChoisi(PREP_COURS);
+  h+=`<div class="card o"><h2>📝 Je prépare mon cours</h2><p style="margin:0" class="muted">Les stagiaires / apprentis préparent leur cours (musique, exercices, temps) à partir de ton modèle. Modèle proposé : <b style="color:var(--soft)">${esc(M.nom)}</b> (${crFmt(crCibleModele(M))}).</p>
+    <button class="btn sec" id="crp">Ouvrir mes modèles de cours</button>
+    <button class="btn small ${PREP_COURS.montrer?'':'sec'}" id="crm">${PREP_COURS.montrer?'👀 Montrer aux stagiaires / apprentis : Oui · toucher pour Non':'🙈 Montrer aux stagiaires / apprentis : Non · toucher pour Oui'}</button>
+    <div class="ok hide" id="crmok"></div></div>`;}
   const rc=revisionCourante(REVS), ro=rc&&estOuvert(rc);
   h+=`<div class="card j"><h2>🧠 Quiz de révision</h2>
     <p style="margin:0" class="${rc?'':'muted'}">${rc?`${esc(rc.titre)} · ${ro?'<b style="color:var(--ok)">ouvert</b>':'caché aux stagiaires'}`:'Des questions de toutes les journées, depuis le début.'}</p>
@@ -374,8 +385,76 @@ function accueil(){
     MINUTEUR_MONTRE=nv;ecrire('local_minuteur',{montrer:nv,at:Date.now()});
     const y=window.scrollY;accueil();window.scrollTo(0,y);
     const ok=document.getElementById('tbmok');ok.textContent=nv?"✅ Le minuteur apparaîtra dans l'espace stagiaires / apprentis d'ici quelques minutes.":"✅ Le minuteur disparaîtra de l'espace stagiaires / apprentis d'ici quelques minutes.";ok.classList.remove('hide')};
+  document.getElementById('crp').onclick=()=>coursPrepEcran();
+  document.getElementById('crm').onclick=async e=>{
+    const nv=!PREP_COURS.montrer, b=e.currentTarget;b.disabled=true;b.textContent='⏳ Un instant…';
+    try{await enregistrerPrepCours(Object.assign({},PREP_COURS,{montrer:nv}))}
+    catch(err){alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");return accueil()}
+    const y=window.scrollY;accueil();window.scrollTo(0,y);
+    const ok=document.getElementById('crmok');ok.textContent=nv?"✅ « Je prépare mon cours » apparaîtra dans l'espace stagiaires / apprentis d'ici quelques minutes.":"✅ « Je prépare mon cours » disparaîtra de l'espace stagiaires / apprentis d'ici quelques minutes.";ok.classList.remove('hide')};
   document.getElementById('out').onclick=()=>{ecrire('ok','');ecranCode()};
   document.getElementById('rz').onclick=()=>{try{localStorage.removeItem('cqp_moi')}catch(e){};document.getElementById('rzok').classList.remove('hide')};
+  haut();
+}
+
+// ======= 29/10 : 📝 Je prépare mon cours — mes modèles de cours =======
+// Enregistré dans « Mes quiz CQP » (Journée = coursprep, Statut = etat) : {montrer, choisi, modeles}. La dernière ligne gagne.
+async function enregistrerPrepCours(P){
+  const v={montrer:!!P.montrer,choisi:P.choisi,modeles:P.modeles};
+  await envoyerForm(FORM_QUIZ,{[EQ.journee]:'coursprep',[EQ.statut]:'etat',[EQ.contenu]:JSON.stringify(v)});
+  PREP_COURS=JSON.parse(JSON.stringify(v));ecrire('local_coursprep',Object.assign({at:Date.now()},v));
+}
+let CRP_TRAVAIL=null; // modèles en cours de modification (pas encore enregistrés)
+function coursPrepEcran(msg){
+  if(!CRP_TRAVAIL)CRP_TRAVAIL=copie({choisi:PREP_COURS.choisi,modeles:PREP_COURS.modeles});
+  const W=CRP_TRAVAIL, modif=JSON.stringify({choisi:W.choisi,modeles:W.modeles})!==JSON.stringify({choisi:PREP_COURS.choisi,modeles:PREP_COURS.modeles});
+  let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>📝 Mes modèles de cours</h1>
+   ${msg?`<div class="ok" style="margin:-6px 0 14px">${msg}</div>`:''}
+   <p class="muted" style="margin-top:0">Un modèle = les parties du cours et leurs minutes. Les stagiaires / apprentis partent du modèle « proposé » ; le téléphone les prévient si une partie dure trop ou pas assez (à 15 s près). Ça ne les bloque jamais.</p>
+   <p class="muted">Montré aux stagiaires / apprentis : <b style="color:${PREP_COURS.montrer?'var(--ok)':'var(--soft)'}">${PREP_COURS.montrer?'Oui':'Non'}</b> (bouton sur l'accueil).</p>`;
+  W.modeles.forEach((m,mi)=>{const tot=crCibleModele(m), pro=m.id===W.choisi;
+    h+=`<div class="card ${pro?'g':''}"><div class="tag" style="color:${pro?'var(--ok)':'var(--soft)'}">${pro?'✅ Proposé aux stagiaires / apprentis':'Modèle '+(mi+1)}</div>
+     <label for="crn${mi}">Nom du modèle</label><input type="text" id="crn${mi}" data-crnom="${mi}" value="${esc(m.nom)}">
+     <label>Les parties</label>`;
+    m.parties.forEach((p,pi)=>{h+=`<div class="qed" style="padding:10px 12px;margin:10px 0">
+       <div class="ligne" style="margin:0"><input type="text" data-crpn="${mi}:${pi}" value="${esc(p.n)}" placeholder="Nom de la partie" style="min-width:0">
+       <input type="number" inputmode="decimal" data-crpm="${mi}:${pi}" value="${esc(p.m)}" style="width:72px;flex:none;text-align:center;padding:13px 4px" aria-label="Minutes"><span class="muted" style="flex:none">min</span></div>
+       <div class="ligne" style="margin:8px 0 0"><button class="ordre" data-crpup="${mi}:${pi}" ${pi===0?'disabled':''} aria-label="Monter">⬆️</button><button class="ordre" data-crpdn="${mi}:${pi}" ${pi===m.parties.length-1?'disabled':''} aria-label="Descendre">⬇️</button><span style="flex:1"></span><button class="link" data-crpx="${mi}:${pi}" style="color:var(--ko)">🗑️ Supprimer la partie</button></div></div>`});
+    h+=`<button class="btn small sec" data-crpadd="${mi}">➕ Ajouter une partie</button>
+     <p style="margin:12px 0 0;font-weight:800" id="crtot${mi}">Durée totale : ${crFmt(tot)}</p>
+     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${pro?'':`<button class="btn small" data-crpro="${mi}">✅ Proposer ce modèle</button>`}<button class="btn small sec" data-crdup="${mi}">📄 Dupliquer</button>${W.modeles.length>1?`<button class="btn small ko" data-crsup="${mi}">🗑️ Supprimer</button>`:''}</div></div>`});
+  h+=`<button class="btn sec" id="crnew">➕ Nouveau modèle (ex. « Cours 45 min »)</button>
+   <div class="err hide" id="crerr"></div>
+   <button class="btn" id="crsave" ${modif?'':'disabled'}>💾 Enregistrer mes modèles</button>
+   <p class="muted" id="crinfo">${modif?'⚠️ Changements pas encore enregistrés.':'Tout est enregistré.'}</p>`;
+  app.innerHTML=h;
+  const re=()=>{const y=window.scrollY;coursPrepEcran();window.scrollTo(0,y)};
+  const ij=t=>t.split(':').map(Number);
+  const sale=()=>{document.getElementById('crsave').disabled=false;document.getElementById('crinfo').textContent='⚠️ Changements pas encore enregistrés.'};
+  app.querySelectorAll('[data-crnom]').forEach(i=>i.oninput=()=>{W.modeles[+i.dataset.crnom].nom=i.value;sale()});
+  app.querySelectorAll('[data-crpn]').forEach(i=>i.oninput=()=>{const [a,b]=ij(i.dataset.crpn);W.modeles[a].parties[b].n=i.value;sale()});
+  app.querySelectorAll('[data-crpm]').forEach(i=>i.oninput=()=>{const [a,b]=ij(i.dataset.crpm),n=crNum(i.value);W.modeles[a].parties[b].m=n==null?0:Math.max(0,n);
+    document.getElementById('crtot'+a).textContent='Durée totale : '+crFmt(crCibleModele(W.modeles[a]));sale()});
+  app.querySelectorAll('[data-crpup],[data-crpdn]').forEach(b=>b.onclick=()=>{const [a,k]=ij(b.dataset.crpup||b.dataset.crpdn),j=k+(b.dataset.crpup?-1:1),P=W.modeles[a].parties;if(j<0||j>=P.length)return;[P[k],P[j]]=[P[j],P[k]];re()});
+  app.querySelectorAll('[data-crpx]').forEach(b=>b.onclick=()=>{const [a,k]=ij(b.dataset.crpx);const P=W.modeles[a].parties;if(!confirm(`Supprimer la partie « ${P[k].n||'sans nom'} » ?`))return;P.splice(k,1);re()});
+  app.querySelectorAll('[data-crpadd]').forEach(b=>b.onclick=()=>{W.modeles[+b.dataset.crpadd].parties.push({id:crId(),n:'',m:5});re();
+    const L=app.querySelectorAll(`[data-crpn^="${b.dataset.crpadd}:"]`);if(L.length)L[L.length-1].focus()});
+  app.querySelectorAll('[data-crpro]').forEach(b=>b.onclick=()=>{W.choisi=W.modeles[+b.dataset.crpro].id;re()});
+  app.querySelectorAll('[data-crdup]').forEach(b=>b.onclick=()=>{const m=copie(W.modeles[+b.dataset.crdup]);m.id=crId();m.nom=m.nom+' (copie)';m.parties.forEach(p=>p.id=crId());W.modeles.splice(+b.dataset.crdup+1,0,m);re()});
+  app.querySelectorAll('[data-crsup]').forEach(b=>b.onclick=()=>{const m=W.modeles[+b.dataset.crsup];if(!confirm(`Supprimer le modèle « ${m.nom} » ?`))return;W.modeles.splice(+b.dataset.crsup,1);if(!W.modeles.some(x=>x.id===W.choisi))W.choisi=W.modeles[0].id;re()});
+  document.getElementById('crnew').onclick=()=>{W.modeles.push({id:crId(),nom:'Cours 45 min',parties:[{id:crId(),n:'Échauffement',m:10},{id:crId(),n:'Corps de séance',m:25},{id:crId(),n:'Retour au calme',m:5},{id:crId(),n:'Étirements',m:5}]});re();window.scrollTo(0,document.body.scrollHeight)};
+  document.getElementById('crsave').onclick=async e=>{
+    const er=document.getElementById('crerr');er.classList.add('hide');
+    W.modeles.forEach(m=>{m.nom=String(m.nom||'').trim();m.parties.forEach(p=>p.n=String(p.n||'').trim())});
+    const pb=W.modeles.find(m=>!m.nom||!m.parties.length||m.parties.some(p=>!p.n||!(p.m>0)));
+    if(pb){er.textContent=!pb.nom?'Donne un nom à chaque modèle.':!pb.parties.length?`Le modèle « ${pb.nom} » n'a aucune partie.`:`Dans « ${pb.nom} », chaque partie doit avoir un nom et des minutes (plus de 0).`;er.classList.remove('hide');return}
+    const b=e.currentTarget;b.disabled=true;b.textContent='⏳ Enregistrement…';
+    try{await enregistrerPrepCours({montrer:PREP_COURS.montrer,choisi:W.choisi,modeles:copie(W.modeles)})}
+    catch(err){b.disabled=false;b.textContent='💾 Enregistrer mes modèles';er.textContent="Ça n'a pas marché. Vérifie ta connexion internet et réessaie.";er.classList.remove('hide');return}
+    CRP_TRAVAIL=null;coursPrepEcran("✅ Modèles enregistrés. Les stagiaires / apprentis les auront d'ici quelques minutes.")};
+  document.getElementById('bk').onclick=()=>{
+    if(!document.getElementById('crsave').disabled&&!confirm("Tes changements ne sont pas enregistrés.\n\nQuitter quand même ?"))return;
+    CRP_TRAVAIL=null;accueil()};
   haut();
 }
 
@@ -503,6 +582,15 @@ async function bilanStagiaire(x){
   let h=`<div class="card j"><h2>📝 Mes notes et retours (${TOUT.length})</h2><p class="muted" style="margin-top:0">🔒 Gardée pour moi : ${esc(x.prenom)} ne la voit pas · 📤 Envoyée : elle est dans son espace.</p>`+(TOUT.length?TOUT.map(r=>`<div class="stag"><div class="d" style="color:var(--soft)">${r.garde?'🔒 Gardée pour moi':'📤 Envoyée'} · ${esc(r.date||dateJour(r.at))}${r.titre?' · <b>'+esc(r.titre)+'</b>':''}</div><div style="white-space:pre-wrap;margin-top:4px">${esc(r.texte)}</div>${r.garde?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn small" data-nenv="${esc(r.nid)}">📤 Lui envoyer</button><button class="btn small ko" data-nsup="${esc(r.nid)}">🗑️ Supprimer</button></div>`:''}</div>`).join(''):`<p class="muted" style="margin:0">Aucune note pour l'instant.</p>`)+`<button class="btn sec" id="nobs">📝 Nouvelle observation</button></div>`;
   h+=`<details class="card j"><summary style="cursor:pointer;list-style:none;font-weight:700;font-size:18px">📲 Nouveau téléphone ? <span class="muted" style="font-weight:400">▸</span></summary><p class="muted">Envoie-lui un lien qui récupère son espace et son évolution sur son nouveau téléphone (valable 7 jours, à ouvrir une seule fois).</p>
     <button class="btn wa" id="tel">📲 Envoyer son historique sur son nouveau téléphone</button><div class="muted hide" id="telinfo" style="margin-top:8px"></div></details>`;
+  // 29/10 : ses cours préparés (📝 Je prépare mon cours), le plus récent en haut
+  const CS=crRecoller(COURS_LIGNES).filter(k=>k.sid===x.id);
+  h+=`<details class="card o"><summary style="cursor:pointer;list-style:none;font-weight:700;font-size:18px">📝 Ses cours préparés (${CS.filter(k=>!k.incomplet).length}) <span class="muted" style="font-weight:400">▸</span></summary>`+
+    (CS.length?CS.map((k,i)=>{if(k.incomplet)return `<div class="stag"><div class="d" style="color:var(--ja)">⏳ Un envoi du ${esc(k.h)} n'est pas complet (morceaux manquants). Demande-lui de le renvoyer.</div></div>`;
+      const K=crCalc(k.c);
+      return `<details class="stag" data-crb="${i}"><summary style="cursor:pointer;list-style:none"><b>${esc(k.c.nom||'Cours')}</b> <span class="muted" style="font-weight:400">▸</span>
+        <div class="d">Envoyé le ${esc(k.h||(k.at?new Date(k.at).toLocaleString('fr-FR'):''))} · ⏱️ ${crFmt(K.total)} / ${crFmt(K.cible)} · ${K.alertes.length?`<span style="color:var(--ja)">⚠️ ${K.alertes.length} alerte${K.alertes.length>1?'s':''}</span>`:'<span style="color:var(--ok)">✅ temps OK</span>'}</div></summary>
+        <div style="margin-top:10px">${crFeuille(k.c,(k.prenom||x.prenom)+' '+(k.nom||x.nom))}</div>
+        <button class="btn small sec" data-crimp="${i}">🖨️ Imprimer / PDF</button></details>`}).join(''):`<p class="muted" style="margin:10px 0 0">Aucun cours envoyé pour l'instant.</p>`)+`</details>`;
   if(!H.length)h+=`<div class="card"><p class="muted" style="margin:0">Pas encore de réponse pour ce stagiaire.</p></div>`;
   // 29/10 : ses notes, quiz après quiz (la plus ancienne en haut) — le ressenti ne compte pas dans la note
   else{let avant=null;
@@ -533,6 +621,7 @@ async function bilanStagiaire(x){
   });
   document.getElementById('zb').innerHTML=h;
   document.getElementById('nobs').onclick=()=>noteObservation(x);
+  app.querySelectorAll('[data-crimp]').forEach(b=>b.onclick=()=>{const k=CS[+b.dataset.crimp];crImprimer(k.c,()=>bilanStagiaire(x),x.prenom+' '+x.nom)});
   app.querySelectorAll('[data-nenv]').forEach(b=>b.onclick=async()=>{const n=NG.find(z=>z.nid===b.dataset.nenv);if(!n)return;
     if(!x.pub)return alert(`${x.prenom} n'a pas encore ouvert son espace avec la nouvelle version : demande-lui de l'ouvrir, puis réessaie dans quelques minutes.`);
     if(!confirm(`Envoyer cette note à ${x.prenom} ${x.nom} ?\n\nCe sera dans son espace, « 📝 Mes retours ».`))return;

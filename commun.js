@@ -301,7 +301,7 @@ async function nouvellesCles(){
 async function etatGeneral(){
   const etat={};JOURNEES.forEach(j=>etat[j.id]={quiz:j.quiz,ouvert:false,duree:0,ouvertAt:null,ouvCle:''});
   const stag={}, revs={}, roue={tirage:null,lances:{},listes:{},persos:{}}, fiches={ouverts:[]}, diapos={ouverts:[]}, reouv=[], retours=[];
-  const deroules={}, minuteur={montrer:false};
+  const deroules={}, minuteur={montrer:false}, prepCours={montrer:false,modeles:null,choisi:null};
   const L=await lireCSV(CSV_QUIZ);
   if(L.length){
     const h=L[0].map(x=>x.trim().toLowerCase());
@@ -369,6 +369,15 @@ async function etatGeneral(){
         if(st==='etat'&&c&&typeof c.montrer==='boolean')minuteur.montrer=c.montrer;
         return;
       }
+      // 29/10 : « 📝 Je prépare mon cours » : {montrer, choisi, modeles:[{id,nom,parties:[{id,n,m}]}]} — la dernière ligne gagne
+      if(id==='coursprep'){
+        let c;try{c=JSON.parse(l[iC]||'')}catch(e){return}
+        if(st==='etat'&&c&&typeof c==='object'){
+          if(typeof c.montrer==='boolean')prepCours.montrer=c.montrer;
+          if(Array.isArray(c.modeles)&&c.modeles.length){prepCours.modeles=c.modeles;prepCours.choisi=c.choisi||c.modeles[0].id}
+        }
+        return;
+      }
       if(id==='fiches'){
         let c;try{c=JSON.parse(l[iC]||'')}catch(e){return}
         if(st==='etat'&&c&&Array.isArray(c.ouverts))fiches.ouverts=c.ouverts.map(String);
@@ -392,7 +401,7 @@ async function etatGeneral(){
   }
   Object.keys(revs).forEach(k=>{if(!revs[k].quiz)delete revs[k]});
   Object.entries(CLES_EN_ATTENTE).forEach(([k,v])=>{if(stag[k]&&!stag[k].pub)stag[k].pub=v});
-  return {quiz:etat,stagiaires:stag,revisions:revs,roue,fiches,diapos,reouv,retours,deroules,minuteur};
+  return {quiz:etat,stagiaires:stag,revisions:revs,roue,fiches,diapos,reouv,retours,deroules,minuteur,prepCours};
 }
 async function etatQuiz(){return (await etatGeneral()).quiz}
 // La révision « en cours » = la dernière préparée

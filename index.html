@@ -56,11 +56,13 @@ summary{cursor:pointer;font-weight:700}
 </head>
 <body>
 <div class="wrap" id="app"></div>
-<script src="commun.js?v=202610291200"></script>
+<script src="commun.js?v=202610291800"></script>
 <script src="roue.js?v=202610260957"></script>
 <script src="bonhommes3d.js?v=202610261832"></script>
 <script src="fiches.js?v=202610261640"></script>
-<script src="tabata.js?v=202610291200"></script>
+<script src="tabata.js?v=202610291800"></script>
+<script src="cours.js?v=202610291800"></script>
+<script src="cours-stagiaire.js?v=202610291800"></script>
 <script>
 // ======= Mémoire du téléphone (nom, prénom, quiz envoyés, historique) =======
 function lire(k,d){try{const v=localStorage.getItem('cqp_'+k);return v?JSON.parse(v):d}catch(e){return d}}
@@ -175,6 +177,11 @@ function accueil(){
   if(MINUTEUR)h+=`<div class="card j"><div class="tag">⏱️ Minuteur</div><h2 style="margin-top:4px">Le minuteur de la séance</h2>
       <p class="muted" style="margin:0">Travail, repos et tours, en grand, avec des bips.</p>
       <button class="btn" id="tbo">⏱️ Ouvrir le minuteur</button></div>`;
+  // 29/10 : « Je prépare mon cours », quand Hamid le montre
+  if(COURS_PREP&&COURS_PREP.montrer){const n=crTous().length;
+    h+=`<div class="card o"><div class="tag">📝 Mon cours</div><h2 style="margin-top:4px">Je prépare mon cours</h2>
+      <p class="muted" style="margin:0">Ta musique, tes exercices, tes temps : le téléphone calcule tout.${n?` Tu as ${n} cours.`:''}</p>
+      <button class="btn" id="crs">📝 Préparer mon cours</button></div>`}
   // 29/10 : une journée n'apparaît que s'il y a quelque chose (quiz ouvert ou diapos montrées)
   JOURNEES.slice().sort((a,b)=>a.id<b.id?1:-1).forEach(j=>{
     const e=ETAT&&ETAT[j.id], ouvert=estOuvert(e)&&!quizVide(e.quiz);
@@ -191,6 +198,7 @@ function accueil(){
   const bf=document.getElementById('fx'); if(bf)bf.onclick=()=>revoirFiches();
   const bm=document.getElementById('mr'); if(bm)bm.onclick=mesRetours;
   const bt=document.getElementById('tbo'); if(bt)bt.onclick=()=>{ECRAN='minuteur';tabataEcran(accueil,monEspace())};
+  const bc=document.getElementById('crs'); if(bc)bc.onclick=()=>crListe();
 
   app.querySelectorAll('[data-ses]').forEach(b=>b.onclick=()=>ouvrirSession(sessions[b.dataset.ses]));
   app.querySelectorAll('[data-cours]').forEach(b=>b.onclick=()=>cours(JOURNEES.find(j=>j.id===b.dataset.cours)));
@@ -291,7 +299,7 @@ async function verifier(){
     app.innerHTML = `<div class="card"><h2>Pas de connexion</h2><p>Vérifie ta connexion internet, puis réessaie.</p><button class="btn" id="re">Réessayer</button></div>`;
     document.getElementById('re').onclick=verifier;return;
   }
-  ETAT=g.quiz; REVS=g.revisions||{}; ROUE=g.roue||null; FICHES=fichesOuvertes(g); DIAPOS=diaposOuvertes(g); MINUTEUR=minuteurMontre(g);
+  ETAT=g.quiz; REVS=g.revisions||{}; ROUE=g.roue||null; FICHES=fichesOuvertes(g); DIAPOS=diaposOuvertes(g); MINUTEUR=minuteurMontre(g);COURS_PREP=crPrep(g);
   NOMS={};Object.values(g.stagiaires||{}).forEach(x=>NOMS[x.id]=x.prenom);
   if(!moi.id){moi.id=nouvelId();ecrire('moi',moi);envoyerDemande();return attente(true)}
   let s=g.stagiaires[moi.id];
@@ -675,7 +683,7 @@ async function rafraichirRoue(){
     app.innerHTML=`<div class="card"><h2>Pas de connexion</h2><p>Vérifie ta connexion internet, puis réessaie.</p><button class="btn" id="re">Réessayer</button><button class="btn sec" id="ac">← Retour</button></div>`;
     document.getElementById('re').onclick=rafraichirRoue;document.getElementById('ac').onclick=accueil;return;
   }
-  ETAT=g.quiz;REVS=g.revisions||{};ROUE=g.roue||null;FICHES=fichesOuvertes(g);DIAPOS=diaposOuvertes(g);MINUTEUR=minuteurMontre(g);
+  ETAT=g.quiz;REVS=g.revisions||{};ROUE=g.roue||null;FICHES=fichesOuvertes(g);DIAPOS=diaposOuvertes(g);MINUTEUR=minuteurMontre(g);COURS_PREP=crPrep(g);
   NOMS={};Object.values(g.stagiaires||{}).forEach(x=>NOMS[x.id]=x.prenom);
   const s=g.stagiaires[moi.id];
   if(!s||s.statut!=='accepte')return verifier();

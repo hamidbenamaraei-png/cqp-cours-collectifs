@@ -1,6 +1,7 @@
 // ======= ⏱️ Minuteur : travail / repos / préparation / tours (ou sans fin), avec bips =======
 // Chargé par l'espace formateur, et par l'espace stagiaires / apprentis quand Hamid le montre.
-// Réglages gardés sur le téléphone. Les bips utilisent Web Audio (créé au toucher de « Démarrer »).
+// Réglages gardés sur le téléphone. Les sons utilisent Web Audio (créé au toucher de « Démarrer »).
+// 29/10 : buzzer au début du travail, cloche au début du repos, 3 petits bips avant chaque changement, mélodie de fin.
 const TB_PRESETS=[{t:'Tabata 20 / 10',w:20,r:10,k:8},{t:'30 / 30',w:30,r:30,k:8},{t:'40 / 20',w:40,r:20,k:8}];
 const TB_CLE='tabata_reglages';
 const TB_DEF={w:20,r:10,k:8,p:10,fin:false};
@@ -42,6 +43,44 @@ function tbBip(freq,duree,quand){
 function tbBipCourt(){tbBip(880,0.12)}
 function tbBipChangement(){tbBip(1320,0.45)}
 function tbBipFin(){tbBip(1320,0.3);tbBip(1320,0.3,0.4);tbBip(1760,0.7,0.8)}
+// ---- 29/10 : les vrais sons d'Hamid (buzzer = début du travail, cloche = début de la pause / du repos) ----
+// Les fichiers sont téléchargés dès l'ouverture de la page, puis décodés au premier toucher (ou à « Démarrer »)
+// (le téléphone n'autorise le son qu'après un toucher). Si un fichier ne charge pas : l'ancien bip.
+const TB_SONS={travail:'sons/buzzer.mp3',pause:'sons/cloche.mp3'};
+const TB_BRUT={}, TB_BUF={}, TB_DEC={};
+Object.entries(TB_SONS).forEach(([k,u])=>{try{TB_BRUT[k]=fetch(u).then(r=>{if(!r.ok)throw new Error('son');return r.arrayBuffer()}).catch(()=>null)}catch(e){TB_BRUT[k]=Promise.resolve(null)}});
+function tbDecoder(){
+  if(!TB_AUDIO)return;
+  Object.keys(TB_SONS).forEach(k=>{
+    if(TB_DEC[k])return;
+    TB_DEC[k]=TB_BRUT[k].then(ab=>new Promise(fin=>{
+      if(!ab||!TB_AUDIO)return fin(null);
+      const ok=b=>{TB_BUF[k]=b;fin(b)}, ko=()=>fin(null);
+      try{const p=TB_AUDIO.decodeAudioData(ab.slice(0),ok,ko);if(p&&p.then)p.then(ok,ko)}catch(e){ko()}
+    })).catch(()=>null);
+  });
+}
+// petit son vide joué au toucher : « déverrouille » le son sur iPhone
+function tbDeverrouiller(){try{const b=TB_AUDIO.createBuffer(1,1,22050),s=TB_AUDIO.createBufferSource();s.buffer=b;s.connect(TB_AUDIO.destination);s.start(0)}catch(e){}}
+(function(){const avant=tbAudioPret;tbAudioPret=function(){avant();if(TB_AUDIO){tbDeverrouiller();tbDecoder()}}})();
+// le premier toucher sur la page prépare déjà le son (les fichiers sont prêts avant « Démarrer »)
+(function(){const un=()=>{document.removeEventListener('pointerdown',un,true);document.removeEventListener('touchstart',un,true);tbAudioPret()};
+  document.addEventListener('pointerdown',un,true);document.addEventListener('touchstart',un,true)})();
+function tbJouer(b){const s=TB_AUDIO.createBufferSource();s.buffer=b;s.connect(TB_AUDIO.destination);s.start(0)}
+function tbSon(k){
+  try{
+    if(TB_AUDIO&&TB_BUF[k]){tbJouer(TB_BUF[k]);return}
+    // pas encore décodé : on attend un tout petit peu (au tout premier départ), sinon l'ancien bip
+    if(TB_AUDIO&&TB_DEC[k]){let fait=false;
+      const t=setTimeout(()=>{if(!fait){fait=true;tbBipChangement()}},700);
+      TB_DEC[k].then(b=>{if(fait)return;fait=true;clearTimeout(t);try{b?tbJouer(b):tbBipChangement()}catch(e){tbBipChangement()}});return}
+  }catch(e){}
+  tbBipChangement();
+}
+function tbSonTravail(){tbSon('travail')}
+function tbSonPause(){tbSon('pause')}
+// pour vérifier : quels sons sont prêts
+function tbSonsPrets(){return Object.keys(TB_SONS).filter(k=>!!TB_BUF[k])}
 
 function tabataEcran(retour,tag){
   const c=tbLire();
@@ -122,7 +161,7 @@ function tabataLancer(c,fin){
       box.className='tb-run tb-f';$('tb-ph').textContent='🎉 Terminé !';$('tb-big').textContent='0:00';$('tb-inf').textContent=`${c.k} tour${c.k>1?'s':''} · bravo !`;$('tb-rest').textContent='';$('tb-pause').textContent='✅ Fermer';$('tb-stop').style.display='none';clearInterval(minut);return}
     const sec=Math.ceil(P.reste);
     if(!pauseAt){
-      if(avantN>=0&&P.n!==avantN)tbBipChangement();
+      if(avantN>=0&&P.n!==avantN){if(P.t==='w')tbSonTravail();else if(P.t==='r')tbSonPause();else tbBipChangement()}
       else if(avantS!=null&&sec!==avantS&&sec<=3&&sec>=1)tbBipCourt();
     }
     avantN=P.n;avantS=sec;
@@ -134,6 +173,6 @@ function tabataLancer(c,fin){
   };
   tick();
   minut=setInterval(tick,100);
-  // premier bip au départ
-  tbBipChangement();
+  // au départ : bip si on commence par la préparation (elle finira par le buzzer), sinon le buzzer du travail
+  if(c.p)tbBipChangement();else tbSonTravail();
 }
