@@ -287,15 +287,40 @@ async function demarrer(){
   await chargerEtat(); accueil();
 }
 
+// ======= Planning de mes interventions (29/10/2026) : sert à afficher la journée du jour ou la prochaine =======
+const PLANNING=[
+ {id:'2026-10-27',titre:'Mardi 27 octobre',theme:'EPMSP – Préparer son passage'},
+ {id:'2026-10-30',titre:'Vendredi 30 octobre (matin)',theme:'EPMSP – Passages complets de 20 min avec la grille'},
+ {id:'2026-11-06',titre:'Vendredi 6 novembre (matin)',theme:'EPMSP – Examen blanc'},
+ {id:'2026-12-11',titre:'Vendredi 11 décembre (matin)',theme:'Cours collectifs'},
+ {id:'2027-01-08',titre:'Vendredi 8 janvier (matin)',theme:'BC1 – Cours collectifs'},
+ {id:'2027-01-29',titre:'Vendredi 29 janvier (matin)',theme:'BC1 – Cours collectifs'},
+ {id:'2027-02-12',titre:'Vendredi 12 février (matin)',theme:'BC1 – Cours collectifs'},
+ {id:'2027-02-19',titre:'Vendredi 19 février (matin)',theme:'BC1 – Cours collectifs'},
+ {id:'2027-02-26',titre:'Vendredi 26 février (matin)',theme:'BC1 – Cours collectifs'}
+];
+function isoJour(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0') }
+
 // ======= Écran : accueil =======
 function accueil(){
   let h=`<div class="tag">Espace formateur</div><h1>Bonjour Hamid 👋</h1>`;
   const nAtt=Object.values(STAG).filter(x=>x.statut==='attente').length, nAcc=Object.values(STAG).filter(x=>x.statut==='accepte').length;
-  JOURNEES.slice().reverse().forEach(j=>{
-    const o=estOuvert(ETAT[j.id]);
-    h+=`<div class="card"><div class="tag" style="color:var(--soft)">${esc(j.titre)}</div><h2 style="margin-top:4px">${esc(j.theme)}</h2>
+  // 29/10 : la journée du jour (ou la prochaine) en haut, selon le planning ; les journées passées dans un dossier
+  const auj=isoJour(new Date());
+  const carteJ=(j,tete)=>{ const o=estOuvert(ETAT[j.id]);
+    return `<div class="card nopli">${tete?`<div class="tag" style="color:var(--ok)">${tete}</div>`:''}<div class="tag" style="color:var(--soft)">${esc(j.titre)}</div><h2 style="margin-top:4px">${esc(j.theme)}</h2>
     <div class="statut" style="font-size:15px"><span class="dot" style="background:${o?'var(--ok)':'var(--mute)'}"></span>${esc(etatTexte(ETAT[j.id]))}</div>
-    <button class="btn" data-j="${j.id}">Ouvrir cette journée</button></div>`});
+    <button class="btn" data-j="${j.id}">Ouvrir cette journée</button></div>` };
+  const carteP=(p,tete)=>`<div class="card nopli">${tete?`<div class="tag" style="color:var(--ok)">${tete}</div>`:''}<div class="tag" style="color:var(--soft)">${esc(p.titre)}</div><h2 style="margin-top:4px">${esc(p.theme)}</h2>
+    <p class="muted" style="margin:0">🛠️ À préparer : pas encore de diapos ni de quiz pour cette journée.</p></div>`;
+  const avenir=PLANNING.filter(p=>p.id>=auj), passees=JOURNEES.filter(j=>j.id<auj).sort((a,b)=>b.id<a.id?-1:1);
+  const p0=avenir[0];
+  if(p0){ const j0=JOURNEES.find(j=>j.id===p0.id); const tete=p0.id===auj?'📍 Aujourd\'hui':'⏭️ Prochaine journée'; h+=j0?carteJ(j0,tete):carteP(p0,tete) }
+  JOURNEES.filter(j=>j.id>=auj&&(!p0||j.id!==p0.id)).sort((a,b)=>a.id<b.id?-1:1).forEach(j=>{ h+=carteJ(j,'') });
+  if(avenir.length>1) h+=`<details class="card"><summary style="cursor:pointer;list-style:none;font-weight:700;font-size:18px">🗓️ Mes prochaines journées <span class="muted" style="font-weight:400">(${avenir.length-1})</span></summary>
+    ${avenir.slice(1).map(p=>`<p style="margin:8px 0 0">• <b>${esc(p.titre)}</b> – ${esc(p.theme)}${JOURNEES.some(j=>j.id===p.id)?' ✅':' <span class="muted">(à préparer)</span>'}</p>`).join('')}</details>`;
+  if(passees.length) h+=`<details class="card"><summary style="cursor:pointer;list-style:none;font-weight:700;font-size:18px">📁 Journées passées <span class="muted" style="font-weight:400">(${passees.length})</span></summary>
+    ${passees.map(j=>`<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(127,127,127,.25)"><div class="tag" style="color:var(--soft)">${esc(j.titre)}</div><div class="b" style="font-weight:700">${esc(j.theme)}</div><button class="btn sec" data-j="${j.id}">Ouvrir cette journée</button></div>`).join('')}</details>`;
   h+=`<div class="card j"><h2>📝 Observations</h2><p style="margin:0" class="muted">Prends des notes pendant le passage d'un stagiaire, puis envoie-lui ton retour.</p>
     <button class="btn sec" id="obsv">Ouvrir les observations</button></div>`;
   h+=`<div class="card ${nAtt?'o':'g'}"><h2>👥 Stagiaires / Apprentis</h2>
