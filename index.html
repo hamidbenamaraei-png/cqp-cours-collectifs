@@ -33,6 +33,10 @@ textarea{min-height:90px;resize:vertical}
 .opt.on{border-color:var(--or);background:#2a2230}
 .opt.good{border-color:var(--ok);background:#173528}
 .opt.bad{border-color:var(--ko);background:#3a1c25}
+/* 30/10 : case « Je ne comprends pas bien la question » */
+.nc{display:flex;align-items:center;gap:8px;margin:2px 0 4px;font-weight:400;font-size:14px;color:var(--mute);cursor:pointer}
+.nc input{width:20px;height:20px;flex:none;margin:0;accent-color:var(--ja)}
+.nc.on{color:var(--ja)}
 .expl{margin:6px 0 4px;padding:10px 12px;border-radius:10px;background:#141b33;font-size:15px;color:var(--soft)}
 .err{color:var(--ko);font-weight:700;margin-top:10px}
 .done{font-size:18px;font-weight:700;color:var(--ok)}
@@ -56,7 +60,7 @@ summary{cursor:pointer;font-weight:700}
 </head>
 <body>
 <div class="wrap" id="app"></div>
-<script src="commun.js?v=202610301305"></script>
+<script src="commun.js?v=202610301500"></script>
 <script src="roue.js?v=202610260957"></script>
 <script src="bonhommes3d.js?v=202610261832"></script>
 <script src="fiches.js?v=202610261640"></script>
@@ -345,7 +349,7 @@ function cours(j){
 // ======= Ouvrir un quiz (avec ou sans chrono) =======
 function nouveauBrouillon(S){
   return {id:idSession(S),cle:S.cle,label:S.label,tag:S.tag,titre:S.titre,z:S.z,duree:S.duree,ouvCle:S.ouvCle,
-    r:S.z.ressenti.map(()=>0),rep:S.z.questions.map(()=>-1),dif:'',debut:0,envoye:false};
+    r:S.z.ressenti.map(()=>0),rep:S.z.questions.map(()=>-1),nc:S.z.questions.map(()=>false),dif:'',debut:0,envoye:false};
 }
 function ouvrirSession(S){
   if(!S)return accueil();
@@ -372,6 +376,7 @@ function ouvrirSession(S){
 function quiz(D){
   ECRAN='quiz'; QUIZ_AFFICHE=D;
   const z=D.z, chrono=D.duree>0;
+  if(!Array.isArray(D.nc))D.nc=z.questions.map(()=>false); // brouillon d'avant le 30/10
   let h = `${chrono?`<div class="chrono" id="chr">⏱️ ${mmss(reste(D))}<small>Temps restant</small></div>`:''}
   <button class="back" id="bk">← Retour</button><div class="tag">${esc(D.tag)}</div><h1>${esc(D.titre)}</h1>
   ${D.envoye?'':`<div class="card o" style="padding:12px 16px"><p style="margin:0;padding:10px 12px;border-radius:10px;background:#3a2a1a;color:#ffd2b8;font-weight:700">⚠️ Pendant le quiz, ne change pas d\'application et n\'éteins pas ton écran, sinon le quiz sera fermé.</p></div>`}`;
@@ -381,7 +386,8 @@ function quiz(D){
     h+=`</div>`;
   }
   h += `<div class="card"><h2>${z.questions.length} petite${z.questions.length>1?'s':''} question${z.questions.length>1?'s':''}</h2>`;
-  z.questions.forEach((q,i)=>{h+=`<div class="q">${i+1}. ${esc(q.q)}</div><div data-q="${i}">${q.o.map((o,k)=>`<button class="opt ${D.rep[i]===k?'on':''}" data-k="${k}">${esc(o)}</button>`).join('')}</div><div class="expl hide" id="ex${i}"></div>`});
+  z.questions.forEach((q,i)=>{h+=`<div class="q">${i+1}. ${esc(q.q)}</div><div data-q="${i}">${q.o.map((o,k)=>`<button class="opt ${D.rep[i]===k?'on':''}" data-k="${k}">${esc(o)}</button>`).join('')}</div>
+    <label class="nc ${D.nc[i]?'on':''}"><input type="checkbox" data-nc="${i}" ${D.nc[i]?'checked':''}>🤔 Je ne comprends pas bien la question</label><div class="expl hide" id="ex${i}"></div>`});
   h += `</div><div class="card g"><h2>Une difficulté à signaler ?</h2><p class="muted" style="margin-top:0">Facultatif.</p><textarea id="dif" placeholder="Écris ici si tu veux…">${esc(D.dif||'')}</textarea></div>
   <div class="err hide" id="er"></div><button class="btn" id="env">Envoyer</button><div id="fin"></div>`;
   app.innerHTML=h;
@@ -395,6 +401,9 @@ function quiz(D){
     if(D.envoye)return; D.r[+s.dataset.r]=+b.dataset.n; s.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b)); garder()}));
   app.querySelectorAll('[data-q]').forEach(g=>g.querySelectorAll('.opt').forEach(b=>b.onclick=()=>{
     if(D.envoye)return; D.rep[+g.dataset.q]=+b.dataset.k; g.querySelectorAll('.opt').forEach(x=>x.classList.toggle('on',x===b)); garder()}));
+  // 30/10 : la case ne bloque rien et ne change pas la note ; elle part avec les réponses
+  app.querySelectorAll('[data-nc]').forEach(c=>c.onchange=()=>{
+    if(D.envoye){c.checked=!!D.nc[+c.dataset.nc];return} D.nc[+c.dataset.nc]=c.checked; c.parentNode.classList.toggle('on',c.checked); garder()});
   document.getElementById('dif').oninput=e=>{D.dif=e.target.value;garder()};
   document.getElementById('env').onclick=()=>{
     const er=document.getElementById('er');
@@ -414,7 +423,7 @@ function envoyer(D,auto){
   D.dif = (QUIZ_AFFICHE===D&&document.getElementById('dif'))?document.getElementById('dif').value.trim():(D.dif||'').trim();
   if(D.coupure&&!D.dif.startsWith(D.coupure))D.dif=(D.coupure+' '+D.dif).trim();
   if(D.quitte&&!D.dif.includes('🚪 A quitté'))D.dif=(mentionQuitte(D)+' '+D.dif).trim();
-  const t = texteReponses(D.z,D.r,D.rep,false);
+  const t = texteReponses(D.z,D.r,D.rep,false,D.nc);
   const bt=(QUIZ_AFFICHE===D)?document.getElementById('env'):null;
   if(bt){bt.disabled=true;bt.textContent='Envoi…'}
   envoyerForm(FORM,{[E.nom]:moi.nom,[E.prenom]:moi.prenom,[E.journee]:D.label,[E.ressenti]:t.ressenti,[E.reponses]:t.reponses,[E.difficulte]:D.dif})
@@ -494,7 +503,7 @@ function correction(D,auto){
   const chr=document.getElementById('chr'); if(chr)chr.remove();
   document.getElementById('env').classList.add('hide');
   document.getElementById('er').classList.add('hide');
-  app.querySelectorAll('.scale button, .opt').forEach(b=>b.disabled=true);
+  app.querySelectorAll('.scale button, .opt, [data-nc]').forEach(b=>b.disabled=true);
   document.getElementById('dif').readOnly=true;
   // 29/10 : correction question par question (✅ juste / ❌ faux, la bonne réponse et l'explication)
   app.querySelectorAll('[data-q]').forEach(g=>{const i=+g.dataset.q, q=z.questions[i], juste=D.rep[i]===q.b;
@@ -503,6 +512,7 @@ function correction(D,auto){
     const ex=document.getElementById('ex'+i);
     ex.innerHTML=juste?`<b style="color:var(--ok)">✅ Juste !</b>${q.e?' '+esc(q.e):''}`
       :`<b style="color:${D.rep[i]<0?'var(--ja)':'var(--ko)'}">${D.rep[i]<0?'⏳ Pas répondu.':'❌ Faux.'}</b> <span style="color:var(--ok)">Bonne réponse : ${esc(q.o[q.b])}</span>${q.e?`<br>💡 ${esc(q.e)}`:''}`;
+    if(D.nc&&D.nc[i])ex.innerHTML+=`<div style="margin-top:6px;color:var(--ja)">🤔 Tu avais signalé cette question.</div>`;
     ex.classList.remove('hide')});
   const nq=z.questions.length, nb=z.questions.filter((q,i)=>D.rep[i]===q.b).length;
   document.getElementById('fin').innerHTML=`${nq?`<div class="card o nopli" style="text-align:center"><div class="tag">Ma note</div><div style="font-size:46px;font-weight:900;line-height:1.1;margin:6px 0">${nb}/${nq}</div>

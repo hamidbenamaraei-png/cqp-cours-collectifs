@@ -65,6 +65,7 @@ textarea{min-height:90px;resize:vertical}
 .bonne.on{background:var(--ok);border-color:var(--ok);color:#0b2416}
 .qed{background:#141b33;border-radius:14px;padding:14px;margin:14px 0;border-left:4px solid var(--or)}
 .qed textarea,.qed input{background:#1c2442}
+.qed.focus{border-left-color:var(--ja);box-shadow:0 0 0 3px var(--ja)}
 .verrou{flex:none;padding:8px 12px;border-radius:10px;border:2px solid var(--line);background:#141b33;color:var(--soft);font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
 .verrou.on{background:#3a321a;border-color:var(--ja);color:var(--ja)}
 .apq{background:#141b33;border-radius:14px;padding:14px;margin:12px 0;border-left:4px solid var(--bl)}
@@ -151,7 +152,7 @@ body.avec-barre .wrap{padding-bottom:120px}
 </head>
 <body>
 <div class="wrap" id="app"></div>
-<script src="commun.js?v=202610301305"></script>
+<script src="commun.js?v=202610301500"></script>
 <script src="roue.js?v=202610260957"></script>
 <script src="bonhommes3d.js?v=202610261832"></script>
 <script src="fiches.js?v=202610261640"></script>
@@ -615,6 +616,7 @@ async function bilanStagiaire(x){
       else if(it.etat==='ko')h+=`<div class="d">❌ Faux · a répondu : ${esc(it.rep)}</div>${q?`<div class="d" style="color:var(--ok)">Bonne réponse : ${esc(q.o[q.b])}</div>${q.e?`<div class="d">💡 ${esc(q.e)}</div>`:''}`:''}`;
       else if(it.etat==='na')h+=`<div class="d" style="color:var(--ja)">⏳ Pas répondu (temps fini)</div>${q?`<div class="d" style="color:var(--ok)">Bonne réponse : ${esc(q.o[q.b])}</div>${q.e?`<div class="d">💡 ${esc(q.e)}</div>`:''}`:''}`;
       else h+=`<div class="d muted">Pas de réponse</div>`;
+      if((e.R.nc||[]).includes(i))h+=`<div class="d" style="color:var(--ja)">🤔 A signalé cette question (pas claire)</div>`;
       h+=`</div>`;
     });
     h+=`<label>Difficulté signalée</label><p style="margin:0" class="${e.dif?'':'muted'}">${e.dif?esc(e.dif):'Aucune.'}</p></details>`;
@@ -797,9 +799,10 @@ function diapos(j){
 }
 
 // ======= Écran : mon quiz du jour (voir + modifier) =======
-function monQuiz(j,zDepart,msg){
-  editeur({tag:j.titre,titre:'Mon quiz du jour',z:zDepart||copie(quizDe(j)),msg,banque:j,max:5,
-    retour:()=>journee(j),
+function monQuiz(j,zDepart,msg,opts){
+  opts=opts||{};
+  editeur({tag:j.titre,titre:'Mon quiz du jour',z:zDepart||copie(quizDe(j)),msg,banque:j,max:5,focus:opts.focus,
+    retour:opts.retour||(()=>journee(j)),
     reouvrir:(z,m)=>monQuiz(j,z,m),
     defaut:quizVide(j.quiz)?null:()=>copie(j.quiz), defautTexte:'↩️ Revenir au quiz préparé avec Claude',
     note:'Si le quiz est déjà ouvert, les changements s\'appliquent aux stagiaires qui ne l\'ont pas encore rempli.',
@@ -859,11 +862,14 @@ function nettoyer(z){
       if(q.theme)r.theme=q.theme;
       // on garde le numéro de la banque seulement si la question n'a pas été changée
       const bq=q.id&&questionParId(q.id);
-      if(bq&&bq.q===r.q&&JSON.stringify(bq.o)===JSON.stringify(r.o)&&bq.b===r.b)r.id=q.id;
+      // (30/10 : une question générée gardée avec son ancien énoncé garde aussi son numéro)
+      if(bq&&(bq.q===r.q||(typeof genTexteAncien==='function'&&genTexteAncien(q.id)===r.q))&&JSON.stringify(bq.o)===JSON.stringify(r.o)&&bq.b===r.b)r.id=q.id;
       return r})};
 }
 function editeur(cfg){
   const z=cfg.z; genReset();
+  // 30/10 : question signalée « pas claire » par des stagiaires → surlignée (elle reste surlignée si on la déplace)
+  const qFocus=(cfg.focus!=null&&cfg.focus>=0)?z.questions[cfg.focus]:null;
   const dessiner=()=>{
     let h=`<button class="back" id="bk">← Retour</button><div class="tag">${esc(cfg.tag)}</div><h1>${esc(cfg.titre)}</h1>
     ${cfg.msg?`<div class="ok" style="margin:-6px 0 14px">${esc(cfg.msg)}</div>`:''}
@@ -876,9 +882,10 @@ function editeur(cfg){
     h+=`<button class="btn small sec" id="addr">+ Ajouter une ligne</button></div>
     <div class="card"><h2>Les questions</h2>`;
     z.questions.forEach((q,i)=>{
-      h+=`<div class="qed"><div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><b>Question ${i+1}</b><span style="display:flex;gap:6px;align-items:center">${i>0?`<button class="ordre" data-qup="${i}" title="Monter" aria-label="Monter">⬆️</button>`:''}${i<z.questions.length-1?`<button class="ordre" data-qdn="${i}" title="Descendre" aria-label="Descendre">⬇️</button>`:''}<button class="link" data-qx="${i}" style="color:var(--ko)">🗑️ Supprimer</button></span></div>
+      h+=`<div class="qed ${q===qFocus?'focus':''}" ${q===qFocus?'id="qfocus"':''}>${q===qFocus?`<div style="color:var(--ja);font-weight:700;margin-bottom:6px">🤔 Question signalée « pas claire » par des stagiaires : tu peux la corriger ici.</div>`:''}<div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><b>Question ${i+1}</b><span style="display:flex;gap:6px;align-items:center">${i>0?`<button class="ordre" data-qup="${i}" title="Monter" aria-label="Monter">⬆️</button>`:''}${i<z.questions.length-1?`<button class="ordre" data-qdn="${i}" title="Descendre" aria-label="Descendre">⬇️</button>`:''}<button class="link" data-qx="${i}" style="color:var(--ko)">🗑️ Supprimer</button></span></div>
       ${q.theme&&GEN_THEMES[q.theme]?`<div class="th" style="font-size:13px;color:var(--mute);margin-top:4px">${esc(GEN_THEMES[q.theme])}</div>`:''}
       <textarea data-qq="${i}" style="min-height:70px;margin-top:8px">${esc(q.q)}</textarea>
+      ${q.id&&genTexteAncien(q.id)===q.q&&genQuestion(q.id)?`<button class="btn small sec" data-qnv="${i}" style="margin-top:6px;text-align:left">✨ Mettre l'énoncé plus clair : « ${esc(genQuestion(q.id).q)} »</button>`:''}
       <label style="margin-top:10px">Réponses proposées</label>`;
       q.o.forEach((o,k)=>{h+=`<div class="ligne"><button class="bonne ${q.b===k?'on':''}" data-qb="${i}:${k}" title="Bonne réponse">✓</button>${String(o).length>55?`<textarea data-qo="${i}:${k}" style="flex:1;min-height:76px">${esc(o)}</textarea>`:`<input type="text" data-qo="${i}:${k}" value="${esc(o)}">`}${q.o.length>2?`<button class="x" data-qox="${i}:${k}">✕</button>`:''}</div>`});
       if(q.o.length<4)h+=`<button class="btn small sec" data-qoa="${i}">+ Ajouter une réponse</button>`;
@@ -914,6 +921,7 @@ function editeur(cfg){
     app.querySelectorAll('[data-qdn]').forEach(b=>b.onclick=re(()=>bouger(+b.dataset.qdn,1)));
     brancherGen(z,re);
     app.querySelectorAll('[data-qb]').forEach(b=>b.onclick=re(()=>{const [i,k]=b.dataset.qb.split(':').map(Number);z.questions[i].b=k}));
+    app.querySelectorAll('[data-qnv]').forEach(b=>b.onclick=re(()=>{const q=z.questions[+b.dataset.qnv];const n=q&&genQuestion(q.id);if(n)q.q=n.q}));
     app.querySelectorAll('[data-qoa]').forEach(b=>b.onclick=re(()=>z.questions[+b.dataset.qoa].o.push('')));
     app.querySelectorAll('[data-qox]').forEach(b=>b.onclick=re(()=>{const [i,k]=b.dataset.qox.split(':').map(Number);const q=z.questions[i];q.o.splice(k,1);if(q.b===k)q.b=-1;else if(q.b>k)q.b--}));
     const def=document.getElementById('def');
@@ -943,6 +951,7 @@ function editeur(cfg){
     };
   };
   dessiner(); haut();
+  if(qFocus)setTimeout(()=>{const e=document.getElementById('qfocus');if(e)e.scrollIntoView({block:'start'})},0);
 }
 
 // ======= Quiz tout prêts : catégories → quiz → aperçu =======
@@ -1185,11 +1194,15 @@ function saisie(j){
 // ======= Écran : réponses et résumé (journée ou révision) =======
 function cibleJournee(j){
   return {cle:j.id,tag:j.titre,titre:j.titre,sousTitre:j.theme,z:quizDe(j),dateMin:j.id,
-    filtre:l=>(l[3]||'').trim().startsWith(j.titre),retour:()=>journee(j),testTexte:`d'avant le ${j.titre.toLowerCase()}`};
+    filtre:l=>(l[3]||'').trim().startsWith(j.titre),retour:()=>journee(j),testTexte:`d'avant le ${j.titre.toLowerCase()}`,
+    editer:i=>monQuiz(j,undefined,undefined,{focus:i,retour:()=>reponses(cibleJournee(j))})};
 }
 function cibleRevision(r){
   return {cle:'rev_'+r.id,tag:'Révision',titre:r.titre,sousTitre:'Quiz de révision',z:r.quiz,dateMin:null,
-    filtre:l=>(l[3]||'').trim()===r.titre,retour:()=>revisionEcran()};
+    filtre:l=>(l[3]||'').trim()===r.titre,retour:()=>revisionEcran(),
+    editer:i=>editeur({tag:'Révision',titre:r.titre,z:copie(r.quiz),focus:i,retour:()=>reponses(cibleRevision(REVS[r.id]||r)),reouvrir:()=>revisionEcran(),
+      note:'Si la révision est déjà ouverte, les changements s\'appliquent aux stagiaires qui ne l\'ont pas encore commencée.',
+      enregistrer:async propre=>{await enregistrerRevision(r,propre);return '✅ Révision enregistrée.'}})};
 }
 async function reponses(c){
   app.innerHTML=`<button class="back" id="bk">← Retour</button>
@@ -1236,6 +1249,18 @@ function afficher(c,tests){
   const diffs=rep.map(l=>({n:`${(l[iP]||'').trim()} ${(l[iN]||'').trim()}`.trim(),d:(l[iD]||'').trim()})).filter(x=>x.d);
   const scoreTot=RR.reduce((a,R)=>a+(R.score||0),0);
   const qTexte=(R,i)=>{const q=questionDe(R,i,z);return q?q.q:'Question '+(i+1)};
+  // 30/10 : questions cochées « 🤔 Je ne comprends pas bien la question » (champ [nc:…] des réponses)
+  const sig=new Map();
+  rep.forEach((l,n)=>{const R=RR[n];(R.nc||[]).forEach(i=>{const q=questionDe(R,i,z), id=R.ids[i]||(q&&q.id)||null, txt=q?q.q:'Question '+(i+1);
+    const k=id||'t:'+genNorm(txt), s0=sig.get(k)||{id,txt,noms:[]};
+    const pr=((l[iP]||'').trim()||(l[iN]||'').trim()); if(!s0.noms.includes(pr))s0.noms.push(pr); sig.set(k,s0)})});
+  const SIG=[...sig.values()].map(x=>Object.assign(x,{idx:z.questions.findIndex(q=>(x.id&&q.id===x.id)||genNorm(q.q)===genNorm(x.txt)||(x.id&&genTexteAncien(x.id)&&genNorm(q.q)===genNorm(genTexteAncien(x.id))))}))
+    .map(x=>Object.assign(x,{txt:x.idx>=0?z.questions[x.idx].q:x.txt})) // le texte que les stagiaires ont vu
+    .sort((a,b)=>b.noms.length-a.noms.length);
+  if(SIG.length)h+=`<div class="card j"><h2>🤔 Questions pas claires</h2><p class="muted" style="margin-top:0">Les stagiaires / apprentis ont coché « Je ne comprends pas bien la question ». Touche ✏️ Corriger pour la réécrire.</p>`+
+     SIG.map(x=>`<div class="stag"><b>${x.idx>=0?(x.idx+1)+'. ':''}${esc(x.txt)}</b>
+       <div class="d">🤔 ${x.noms.length} stagiaire${x.noms.length>1?'s':''} : ${esc(x.noms.join(', '))}</div>
+       ${c.editer?`<button class="btn small" style="margin-top:8px" data-corr="${x.idx}">✏️ Corriger${x.idx<0?' (question plus dans le quiz)':''}</button>`:''}</div>`).join('')+`</div>`;
 
   h+=`<div class="card o" style="display:flex;justify-content:space-between;align-items:center">
      <div><div class="big">${rep.length}</div><div class="muted">stagiaire${rep.length>1?'s ont':' a'} répondu</div></div>
@@ -1252,7 +1277,8 @@ function afficher(c,tests){
        const R=RR[n], sc=R.score||0;
        const rs=lireRessenti(l[iR]).map(x=>x.n||'-').join(' · ');
        const erreurs=R.etats.map((e,i)=>!e?'':e.etat==='ko'?`<div class="d">❌ ${esc(qTexte(R,i))}<br><span style="color:var(--mute)">→ a répondu : ${esc(e.rep)}</span></div>`
-         :e.etat==='na'?`<div class="d">⏳ ${esc(qTexte(R,i))}<br><span style="color:var(--mute)">→ pas répondu (temps fini)</span></div>`:'').join('');
+         :e.etat==='na'?`<div class="d">⏳ ${esc(qTexte(R,i))}<br><span style="color:var(--mute)">→ pas répondu (temps fini)</span></div>`:'').join('')
+         +(R.nc||[]).map(i=>`<div class="d" style="color:var(--ja)">🤔 a signalé « ${esc(qTexte(R,i))} » (pas claire)</div>`).join('');
        const pap=R.papier?' <span class="muted">(papier)</span>':'';
        return `<div class="stag"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(((l[iP]||'')+' '+(l[iN]||'')).trim())}${pap}</b><span class="pill ${classe(sc,nq)}">${sc}/${nq}</span></div>
        ${rs?`<div class="d">Ressenti : ${esc(rs)}</div>`:''}${erreurs}</div>`}).join('')+
@@ -1260,6 +1286,7 @@ function afficher(c,tests){
   zone.innerHTML=h;
   document.getElementById('maj').onclick=()=>reponses(c);
   if(nbTests)document.getElementById('tst').onchange=e=>afficher(c,e.target.checked);
+  app.querySelectorAll('[data-corr]').forEach(b=>b.onclick=()=>c.editer(+b.dataset.corr));
   app.querySelectorAll('[data-reouv]').forEach(b=>b.onclick=async()=>{const x=STAG[b.dataset.reouv];if(!x)return;
     const t=b.dataset.rt;
     if(!confirm(`Redonner accès au quiz à ${x.prenom} ${x.nom} ?\n\n${t?`Il récupérera exactement le temps qui lui restait : ${t}.`:'Il retrouvera ses réponses.'}`))return;

@@ -477,22 +477,57 @@ function genMots(t){return new Set(genNorm(t).split(' ').filter(m=>m.length>3))}
 // ressemblance de 0 (rien en commun) à 1 (mêmes mots)
 function genProche(a,b){const A=genMots(a),B=genMots(b);if(!A.size||!B.size)return genNorm(a)===genNorm(b)?1:0;let n=0;A.forEach(m=>{if(B.has(m))n++});return n/(A.size+B.size-n)}
 function genMin(t){t=String(t||'');return /^[A-ZÀ-Ý][a-zà-ÿ]/.test(t)?t[0].toLowerCase()+t.slice(1):t}
-function genNomExo(src,g,c,v){
-  if(src==='etir'){const a=GEN_ARTICLE[genNorm(c.c)];return `Étirement ${a||'– '+c.c} (${genMin(v[0])})`}
-  if(g.k==='bas'&&!genNorm(v[0]).includes(genNorm(c.c).split(' ')[0]))return `${c.c} (${genMin(v[0])})`;
+// « ancien » = le nom d'avant le 30/10 (« (À quatre pattes) » avec une majuscule), pour reconnaître les questions déjà gardées
+function genNomExo(src,g,c,v,ancien){
+  const mi=t=>ancien?genMin(t):genMinPos(t);
+  if(src==='etir'){const a=GEN_ARTICLE[genNorm(c.c)];return `Étirement ${a||'– '+c.c} (${mi(v[0])})`}
+  if(g.k==='bas'&&!genNorm(v[0]).includes(genNorm(c.c).split(' ')[0]))return `${c.c} (${mi(v[0])})`;
   return v[0];
 }
+// 30/10 : position de départ courte, prise au début du placement (« Debout, les pieds… » → « debout »),
+// pour que l'énoncé dise dans quelle posture on est. Jamais dans une question de placement (ce serait la réponse).
+const GEN_POS_STOP=new Set(['le','la','les','un','une','des','du','de','au','aux','sur','et','ou','en','a','l','d','dans','contre','ton','ta','tes','ton','pres','vers']);
+function genMotsPos(t){return genNorm(t).split(' ').filter(m=>m&&!GEN_POS_STOP.has(m)).map(m=>m.length>3?m.replace(/[sx]$/,''):m)}
+function genPosition(v){
+  let t=String(v[2]||'').replace(/\([^)]*\)/g,' ').split(/[,.;]/)[0].replace(/\s+/g,' ').trim();
+  t=t.replace(/ sur un step ou au sol$/i,'').replace(/ stable$/i,'');
+  const n=genNorm(t);
+  const MAP=[[/^en position quadrupedie/,'à quatre pattes'],[/^le dos a plat au sol/,'allongé sur le dos'],[/^allonge face au sol/,'allongé sur le ventre'],
+    [/^en appui sur les mains et les pieds$/,'mains et pieds au sol']];
+  for(const [re,rem] of MAP)if(re.test(n))return rem;
+  if(!/^(debout|assis|allonge|a quatre pattes|a genoux|un genou au sol|face a un mur|en fente|en planche|dos a une chaise)/.test(n))return '';
+  if(t.split(' ').length>6)return '';
+  return genMinPos(t);
+}
+function genMinPos(t){t=String(t||'');return /^[A-ZÀ-Ý](\s|[a-zà-ÿ])/.test(t)?t[0].toLowerCase()+t.slice(1):t}
+// le nom de l'exercice avec sa position, seulement si le nom ne la dit pas déjà
+function genNomPos(src,nom,v){
+  const pos=genPosition(v); if(!pos)return nom;
+  const P=genMotsPos(pos), m=nom.match(/^(.*) \((.*)\)$/);
+  const inner=m?m[2]:nom, M=new Set(genMotsPos(src==='etir'||!m?inner:nom));
+  if(P.every(w=>M.has(w)))return nom;                       // déjà dit
+  if(P.some(w=>M.has(w))){                                  // en partie : on complète le début (« allongé » → « allongé sur le dos »)
+    if(!m)return nom;
+    const seg=inner.split(',')[0], S=genMotsPos(seg);
+    if(S.length&&S.every(w=>P.includes(w))&&inner.includes(','))return `${m[1]} (${pos}${inner.slice(seg.length)})`;
+    return nom;
+  }
+  return m?`${m[1]} (${pos}, ${genMinPos(inner)})`:`${nom} (${pos})`;
+}
+// ancien texte d'une question générée (avant le 30/10), pour reconnaître les questions déjà gardées dans les quiz
+function genTexteAncien(id){const T=genTout();return (T.anc&&T.anc[id])||null}
 function genTout(){
   if(GEN_CACHE)return GEN_CACHE;
-  const L=[], par={};
+  const L=[], par={}, anc={};
   if(typeof RENFO==='undefined'||typeof ETIR==='undefined')return {liste:[],par:{}}; // fiches.js pas chargé
   [['renfo',RENFO],['etir',ETIR]].forEach(([src,A])=>A.forEach(g=>{
     const theme=src+'.'+g.k;
-    g.cases.forEach(c=>c.v.forEach(v=>L.push({src,theme,g,c,v,nom:genNomExo(src,g,c,v),cle:(genHash(c.c+'|'+v[0])).toString(36)})));
+    g.cases.forEach(c=>c.v.forEach(v=>L.push({src,theme,g,c,v,nom:genNomExo(src,g,c,v),nomA:genNomExo(src,g,c,v,true),cle:(genHash(c.c+'|'+v[0])).toString(36)})));
   }));
   const methodes=[...new Set(L.filter(x=>x.src==='etir'&&x.v[5]).map(x=>String(x.v[5]).trim()))];
   const CH={p:[2,'quel est le bon placement ?','Placement'],e:[3,'quelle est la bonne exécution ?','Exécution'],s:[4,'quelle est la bonne consigne de sécurité ?','Sécurité']};
   L.forEach(x=>{
+    x.nomPos=genNomPos(x.src,x.nom,x.v);
     const base='g:'+x.theme+'.'+x.cle+'.';
     Object.entries(CH).forEach(([t,[f,fin,champ]])=>{
       const bon=String(x.v[f]||'').trim(); if(!bon)return;
@@ -509,18 +544,22 @@ function genTout(){
       for(const o of cand){if(pris.length>=2)break;if(pris.every(p=>genNorm(p.t)!==genNorm(o.t)&&genProche(p.t,o.t)<0.45))pris.push(o)}
       if(pris.length<2)return;
       const o=genMelanger([bon,pris[0].t,pris[1].t],r);
-      par[id]={id,theme:x.theme,q:`${x.nom} : ${fin}`,o,b:o.indexOf(bon),e:`Fiche « ${x.nom} » – ${champ} : ${bon}`};
+      // placement : pas de position dans l'énoncé (ce serait la réponse)
+      const qq=`${t==='p'?x.nom:x.nomPos} : ${fin}`; if(qq!==`${x.nomA} : ${fin}`)anc[id]=`${x.nomA} : ${fin}`;
+      par[id]={id,theme:x.theme,q:qq,o,b:o.indexOf(bon),e:`Fiche « ${x.nom} » – ${champ} : ${bon}`};
     });
     // des deux côtés ?
     if(x.v[1]===0||x.v[1]===1){const id=base+'c';
-      par[id]={id,theme:x.theme,q:`${x.nom} : se fait-il des deux côtés ?`,o:['Oui','Non'],b:x.v[1]?0:1,
+      if(x.nomPos!==x.nomA)anc[id]=`${x.nomA} : se fait-il des deux côtés ?`;
+      par[id]={id,theme:x.theme,q:`${x.nomPos} : se fait-il des deux côtés ?`,o:['Oui','Non'],b:x.v[1]?0:1,
         e:x.v[1]?`Oui : ${genMin(x.nom)} se fait d'un côté, puis de l'autre.`:`Non : ${genMin(x.nom)} ne se fait pas d'un côté puis de l'autre.`}}
     // méthode d'étirement
     if(x.src==='etir'&&x.v[5]&&methodes.length>=3){const id=base+'m', r=genAlea(id), bon=String(x.v[5]).trim();
       const o=genMelanger([bon].concat(genMelanger(methodes.filter(m=>m!==bon),r).slice(0,2)),r);
-      par[id]={id,theme:x.theme,q:`${x.nom} : quelle est la méthode d'étirement ?`,o,b:o.indexOf(bon),e:`Fiche « ${x.nom} » – Méthode : ${bon}`}}
+      if(x.nomPos!==x.nomA)anc[id]=`${x.nomA} : quelle est la méthode d'étirement ?`;
+      par[id]={id,theme:x.theme,q:`${x.nomPos} : quelle est la méthode d'étirement ?`,o,b:o.indexOf(bon),e:`Fiche « ${x.nom} » – Méthode : ${bon}`}}
   });
-  GEN_CACHE={liste:Object.keys(par),par};
+  GEN_CACHE={liste:Object.keys(par),par,anc};
   return GEN_CACHE;
 }
 function genQuestion(id){const q=genTout().par[id];return q?JSON.parse(JSON.stringify(q)):null}
@@ -538,20 +577,22 @@ function genProposer(theme,dejaQuestions,vus){
 // ===== Texte des réponses envoyées dans le formulaire =====
 // Format : « Q1 ✅ | Q2 ❌ (texte répondu) | Q3 ⏳ (pas répondu) — Score 1/3 (papier) [q:m02,j01,_] »
 // (le [q:…] = numéros des questions de la banque, pour retrouver les questions plus tard)
-function texteReponses(z,r,rep,papier){
+// 30/10 : [nc:2,5] = questions où le stagiaire a coché « 🤔 Je ne comprends pas bien la question » (absent = aucune)
+function texteReponses(z,r,rep,papier,nc){
   const bon=rep.filter((k,i)=>k===z.questions[i].b).length;
   const ressenti=z.ressenti.map((t,i)=>`${t} : ${r[i]>0?r[i]:'-'}/5`).join(' | ');
   const ids=z.questions.map(q=>q.id||'_');
   const reponses=z.questions.map((q,i)=>`Q${i+1} ${rep[i]<0?'⏳ (pas répondu)':rep[i]===q.b?'✅':'❌ ('+q.o[rep[i]]+')'}`).join(' | ')
     +` — Score ${bon}/${z.questions.length}`+(papier?' (papier)':'')+(ids.some(x=>x!=='_')?` [q:${ids.join(',')}]`:'');
-  return {ressenti,reponses,bon};
+  const sig=z.questions.map((q,i)=>nc&&nc[i]?i+1:0).filter(Boolean);
+  return {ressenti,reponses:reponses+(sig.length?` [nc:${sig.join(',')}]`:''),bon};
 }
 function lireReponses(s){
   s=String(s||'');
-  const m=s.match(/Score\s*(\d+)\/(\d+)/), im=s.match(/\[q:([^\]]*)\]/);
+  const m=s.match(/Score\s*(\d+)\/(\d+)/), im=s.match(/\[q:([^\]]*)\]/), inc=s.match(/\[nc:([\d,]*)\]/);
   const etats=[], re=/Q(\d+)\s*(✅|❌|⏳)(?:\s*\((.*?)\))?(?=\s*(?:\||—|$))/g;
   let x;while((x=re.exec(s))){etats[+x[1]-1]={etat:x[2]==='✅'?'ok':x[2]==='❌'?'ko':'na',rep:x[2]==='❌'?(x[3]||''):null}}
-  return {score:m?+m[1]:null,total:Math.max(m?+m[2]:0,etats.length),etats,ids:im?im[1].split(',').map(t=>t==='_'?null:t):[],papier:/\(papier\)/.test(s)};
+  return {score:m?+m[1]:null,total:Math.max(m?+m[2]:0,etats.length),etats,ids:im?im[1].split(',').map(t=>t==='_'?null:t):[],papier:/\(papier\)/.test(s),nc:inc?inc[1].split(',').filter(Boolean).map(n=>+n-1):[]};
 }
 function lireRessenti(s){return String(s||'').split('|').map(p=>{const m=p.match(/(.+?)\s*:\s*(\d|-)\/5/);return m?{t:m[1].trim(),n:m[2]==='-'?0:+m[2]}:null}).filter(Boolean)}
 
