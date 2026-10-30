@@ -31,6 +31,8 @@ function tbMmss(s){s=Math.max(0,Math.ceil(s));return Math.floor(s/60)+':'+String
 .tb-rest{font-size:18px;opacity:.75;font-weight:600}
 .tb-bt{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;justify-content:center}
 .tb-bt button{min-width:140px;padding:16px 20px;border-radius:14px;border:0;font-size:20px;font-weight:800;cursor:pointer;font-family:inherit;background:rgba(255,255,255,.2);color:#fff}
+.tb-nav{display:flex;gap:8px;margin-top:12px;justify-content:center;flex-wrap:wrap}
+.tb-nav button{min-width:66px;padding:13px 10px;border-radius:12px;border:0;font-size:18px;font-weight:800;cursor:pointer;font-family:inherit;background:rgba(255,255,255,.16);color:#fff}
 `;document.head.appendChild(st)})();
 // ---- les bips (Web Audio) ----
 let TB_AUDIO=null;
@@ -141,7 +143,8 @@ function tabataLancer(c,fin){
   try{if(box.requestFullscreen)box.requestFullscreen().catch(()=>{})}catch(e){}
   const NOM={p:'Préparation',w:'Travail',r:'Repos'};
   box.innerHTML=`<div class="tb-ph" id="tb-ph"></div><div class="tb-big" id="tb-big"></div><div class="tb-inf" id="tb-inf"></div><div class="tb-rest" id="tb-rest"></div>
-   <div class="tb-bt"><button id="tb-pause">⏸️ Pause</button><button id="tb-stop">⏹️ Arrêt</button></div>`;
+   <div class="tb-bt"><button id="tb-pause">⏸️ Pause</button><button id="tb-stop">⏹️ Arrêt</button></div>
+   <div class="tb-nav" id="tb-nav"><button id="tb-prev" aria-label="Étape précédente">⏮️</button><button id="tb-m10" aria-label="Enlever 10 secondes">−10 s</button><button id="tb-p10" aria-label="Ajouter 10 secondes">+10 s</button><button id="tb-next" aria-label="Étape suivante">⏭️</button></div>`;
   const $=id=>document.getElementById(id);
   const quitter=()=>{fini=true;clearInterval(minut);lacher();try{if(document.fullscreenElement)document.exitFullscreen()}catch(e){}box.remove();document.removeEventListener('visibilitychange',vis);fin()};
   const vis=()=>{if(document.visibilityState==='visible'&&!fini)garderAllume()};
@@ -153,12 +156,23 @@ function tabataLancer(c,fin){
     if(pauseAt){decal+=performance.now()-pauseAt;pauseAt=null;$('tb-pause').textContent='⏸️ Pause'}
     else{pauseAt=performance.now();$('tb-pause').textContent='▶️ Reprendre'}
     tick()};
+  // 30/10 : avancer / reculer (fonctionne aussi en pause)
+  const DUR=t=>t==='p'?(c.p||0):t==='w'?c.w:c.r;
+  const ec=()=>((pauseAt||performance.now())-debut-decal)/1000;
+  const aller=t=>{decal=(pauseAt||performance.now())-debut-Math.max(0,t)*1000;tick()};
+  $('tb-next').onclick=()=>{tbAudioPret();const e=ec(),P=tbPhase(c,e);if(P.fini)return;aller(e+P.reste+0.001)};
+  $('tb-prev').onclick=()=>{tbAudioPret();const e=ec(),P=tbPhase(c,e);if(P.fini)return;
+    const dans=DUR(P.t)-P.reste, cur=e-dans;
+    if(dans>2||cur<=0.01)return aller(cur+0.001);
+    const Q=tbPhase(c,cur-0.01);aller(cur-0.01-(DUR(Q.t)-Q.reste)+0.001)};
+  $('tb-m10').onclick=()=>{tbAudioPret();const e=ec(),P=tbPhase(c,e);if(P.fini)return;aller(e+Math.min(10,Math.max(0,P.reste-0.05)))};
+  $('tb-p10').onclick=()=>{tbAudioPret();const e=ec(),P=tbPhase(c,e);if(P.fini)return;aller(e-Math.min(10,DUR(P.t)-P.reste))};
   const tick=()=>{
     if(fini)return;
     const now=pauseAt||performance.now(), ecoule=(now-debut-decal)/1000, P=tbPhase(c,ecoule);
     if(P.fini){
       if(!box.classList.contains('tb-f')){tbBipFin();lacher()}
-      box.className='tb-run tb-f';$('tb-ph').textContent='🎉 Terminé !';$('tb-big').textContent='0:00';$('tb-inf').textContent=`${c.k} tour${c.k>1?'s':''} · bravo !`;$('tb-rest').textContent='';$('tb-pause').textContent='✅ Fermer';$('tb-stop').style.display='none';clearInterval(minut);return}
+      box.className='tb-run tb-f';$('tb-ph').textContent='🎉 Terminé !';$('tb-big').textContent='0:00';$('tb-inf').textContent=`${c.k} tour${c.k>1?'s':''} · bravo !`;$('tb-rest').textContent='';$('tb-pause').textContent='✅ Fermer';$('tb-stop').style.display='none';$('tb-nav').style.display='none';clearInterval(minut);return}
     const sec=Math.ceil(P.reste);
     if(!pauseAt){
       if(avantN>=0&&P.n!==avantN){if(P.t==='w')tbSonTravail();else if(P.t==='r')tbSonPause();else tbBipChangement()}

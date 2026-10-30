@@ -200,7 +200,8 @@ function crDerouler(c,fin){
   try{if(box.requestFullscreen)box.requestFullscreen().catch(()=>{})}catch(e){}
   box.innerHTML=`<div class="cr-pa" id="cr-pa"></div><div class="tb-ph" id="cr-ph"></div><div class="cr-nom" id="cr-nom"></div>
    <div class="tb-big" id="cr-big"></div><div class="tb-inf" id="cr-inf"></div><div class="cr-suiv" id="cr-suiv"></div><div class="tb-rest" id="cr-rest"></div>
-   <div class="tb-bt"><button id="cr-pause">⏸️ Pause</button><button id="cr-next">⏭️ Suivant</button><button id="cr-stop">⏹️ Arrêt</button></div>`;
+   <div class="tb-bt"><button id="cr-pause">⏸️ Pause</button><button id="cr-next">⏭️ Suivant</button><button id="cr-stop">⏹️ Arrêt</button></div>
+   <div class="tb-nav" id="cr-nav"><button id="cr-prev" aria-label="Étape précédente">⏮️</button><button id="cr-m10" aria-label="Enlever 10 secondes">−10 s</button><button id="cr-p10" aria-label="Ajouter 10 secondes">+10 s</button></div>`;
   const $=id=>document.getElementById(id);
   const vis=()=>{if(document.visibilityState==='visible'&&!fini)garder()};
   document.addEventListener('visibilitychange',vis);
@@ -217,13 +218,18 @@ function crDerouler(c,fin){
     tick()};
   $('cr-next').onclick=()=>{const t=ecoule(),i=indice(t);if(i>=S.length)return;
     const saut=S[i].debut+S[i].d-t+0.001;decal-=saut*1000;tick()};
+  const aller=t=>{decal=(pauseAt||performance.now())-debut-Math.max(0,t)*1000;tick()};
+  $('cr-prev').onclick=()=>{const t=ecoule(),i=indice(t);if(i>=S.length)return;const cur=S[i].debut;
+    if(t-cur>2||i===0)return aller(cur+0.001);aller(S[i-1].debut+0.001)};
+  $('cr-m10').onclick=()=>{const t=ecoule(),i=indice(t);if(i>=S.length)return;aller(t+Math.min(10,Math.max(0,S[i].debut+S[i].d-t-0.05)))};
+  $('cr-p10').onclick=()=>{const t=ecoule(),i=indice(t);if(i>=S.length)return;aller(Math.max(S[i].debut+0.001,t-10))};
   const tick=()=>{
     if(fini)return;
     const t=ecoule(), i=indice(t);
     if(i>=S.length){
       if(!box.classList.contains('tb-f')){try{tbBipFin()}catch(e){}lacher()}
       box.className='tb-run cr-run tb-f';$('cr-pa').textContent=c.nom||'';$('cr-ph').textContent='🎉 Terminé !';$('cr-nom').textContent='Bravo, ton cours est fini !';$('cr-big').textContent='0:00';
-      $('cr-inf').textContent=`Durée : ${crFmt(total)}`;$('cr-suiv').textContent='';$('cr-rest').textContent='';$('cr-pause').textContent='✅ Fermer';$('cr-next').style.display='none';$('cr-stop').style.display='none';clearInterval(minut);return}
+      $('cr-inf').textContent=`Durée : ${crFmt(total)}`;$('cr-suiv').textContent='';$('cr-rest').textContent='';$('cr-pause').textContent='✅ Fermer';$('cr-next').style.display='none';$('cr-stop').style.display='none';$('cr-nav').style.display='none';clearInterval(minut);return}
     const s=S[i], reste=s.debut+s.d-t, sec=Math.ceil(reste);
     if(!pauseAt){
       if(avantI>=0&&i!==avantI){try{s.t==='w'?tbSonTravail():(s.t==='r'||s.t==='x')?tbSonPause():tbBipChangement()}catch(e){}}
