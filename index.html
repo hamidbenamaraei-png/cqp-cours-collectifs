@@ -56,7 +56,7 @@ summary{cursor:pointer;font-weight:700}
 </head>
 <body>
 <div class="wrap" id="app"></div>
-<script src="commun.js?v=202610291800"></script>
+<script src="commun.js?v=202610300730"></script>
 <script src="roue.js?v=202610260957"></script>
 <script src="bonhommes3d.js?v=202610261832"></script>
 <script src="fiches.js?v=202610261640"></script>
@@ -743,6 +743,32 @@ async function traiterLien(t){
 
 function demarrer(){moi ? verifier() : ecranNom()}
 const T0 = location.hash.match(/^#t=([A-Za-z0-9_-]+)/);
+const MEMO_CLE='cqps_ecran';
+const MEMO_ECRANS={
+ accueil:{},
+ cours:{cle:j=>j&&j.id,trouver:id=>JOURNEES.find(x=>x.id===id)},
+ revoirFiches:{}, revoirCategorie:{cle:c=>c,trouver:c=>c}, mesRetours:{}, evolution:{}
+};
+// ======= 30/10 : quand on actualise la page, on reste sur le même écran (mémoire de l'onglet seulement) =======
+(function(){
+  const K=MEMO_CLE, ss={get(){try{return JSON.parse(sessionStorage.getItem(K)||'null')}catch(e){return null}},set(o){try{sessionStorage.setItem(K,JSON.stringify(o))}catch(e){}}};
+  let premier=true, enCours=false, tY=null;
+  const cible=MEMO_ECRANS;
+  for(const nom of Object.keys(cible)){
+    const fn=window[nom]; if(typeof fn!=='function') continue;
+    const cle=cible[nom].cle||(()=>null);
+    window[nom]=function(...a){ if(!enCours){ try{ss.set({s:nom,k:cle(...a),y:0})}catch(e){} } return fn.apply(this,a) };
+  }
+  const accOrig=window.accueil;
+  window.accueil=function(...a){
+    if(premier){ premier=false; const m=ss.get();
+      if(m&&m.s&&m.s!=='accueil'&&cible[m.s]){ try{ const arg=cible[m.s].trouver?cible[m.s].trouver(m.k):undefined;
+          if(!cible[m.s].trouver||arg){ enCours=true; const r=window[m.s](arg); enCours=false; ss.set(m);
+            const y=+m.y||0; if(y) Promise.resolve(r).then(()=>setTimeout(()=>window.scrollTo(0,y),350));
+            return r } }catch(e){ enCours=false } } }
+    return accOrig.apply(this,a) };
+  addEventListener('scroll',()=>{ clearTimeout(tY); tY=setTimeout(()=>{ const m=ss.get(); if(m){ m.y=Math.round(window.scrollY); ss.set(m) } },250) },{passive:true});
+})();
 T0 ? traiterLien(T0[1]) : demarrer();
 // si l'espace est déjà ouvert dans cet onglet, le lien ne recharge pas la page
 window.addEventListener('hashchange',()=>{const t=location.hash.match(/^#t=([A-Za-z0-9_-]+)/);if(t)traiterLien(t[1])});
