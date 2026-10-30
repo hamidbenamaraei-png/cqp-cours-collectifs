@@ -344,8 +344,7 @@ function accueil(){
     ${avenir.slice(1).map(p=>{const j=JOURNEES.find(x=>x.id===p.id);return `<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(127,127,127,.25)"><div class="tag" style="color:var(--soft)">${esc(p.titre)}</div><div style="font-weight:700">${esc(p.theme)}</div>${j?`<div class="muted" style="margin-top:2px">${prepTexte(j)}${estOuvert(ETAT[j.id])?' · <b style="color:var(--ok)">quiz ouvert</b>':''}</div><button class="btn sec" data-j="${j.id}">Ouvrir cette journée</button>`:''}</div>`}).join('')}</details>`;
   if(passees.length) h+=`<details class="card"><summary style="cursor:pointer;list-style:none;font-weight:700;font-size:18px">📁 Journées passées <span class="muted" style="font-weight:400">(${passees.length})</span></summary>
     ${passees.map(j=>`<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(127,127,127,.25)"><div class="tag" style="color:var(--soft)">${esc(j.titre)}</div><div class="b" style="font-weight:700">${esc(j.theme)}</div><button class="btn sec" data-j="${j.id}">Ouvrir cette journée</button></div>`).join('')}</details>`;
-  h+=`<div class="card j"><h2>📝 Observations</h2><p style="margin:0" class="muted">Prends des notes pendant le passage d'un stagiaire, puis envoie-lui ton retour.</p>
-    <button class="btn sec" id="obsv">Ouvrir les observations</button></div>`;
+  // 30/10 : carte « Observations » retirée de l'accueil (Hamid les prend dans sa journée)
   h+=`<div class="card ${nAtt?'o':'g'}"><h2>👥 Stagiaires / Apprentis</h2>
     <p style="margin:0">${nAcc} accepté${nAcc>1?'s':''}${nAtt?` · <b style="color:var(--or)">${nAtt} demande${nAtt>1?'s':''} en attente</b>`:''}</p>
     <button class="btn ${nAtt?'':'sec'}" id="stg">${nAtt?'Voir les demandes':'Gérer la liste'}</button></div>`;
@@ -376,7 +375,7 @@ function accueil(){
   document.getElementById('rev').onclick=()=>revisionEcran();
   document.getElementById('roue').onclick=()=>roueSimple();
   document.getElementById('fiches').onclick=()=>mesExercices();
-  document.getElementById('obsv').onclick=()=>observationsEcran();
+
   document.getElementById('mus').onclick=()=>mesMusiques();
   document.getElementById('tbo').onclick=()=>tabataEcran(accueil,'Espace formateur');
   document.getElementById('tbm').onclick=async e=>{
