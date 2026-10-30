@@ -207,6 +207,7 @@ const JOURNEES = [
  // 29/10 : les journées suivantes du planning (pas encore de diapos ; le quiz se prépare dans l'espace formateur)
  {id:'2026-10-30', titre:'Vendredi 30 octobre (matin)', theme:'EPMSP – Passages complets de 20 min avec la grille', diapos:7, dossier:'j2',
   docs:[{titre:'Télécharger tous les documents', fichier:'j2/Documents_30-10.pdf'}],
+  titres:["Les étapes importantes d'un cours","Compter la musique et lancer un départ","Les tempos d'un exercice","Les grandes familles de cours","Pourquoi on s'échauffe","Les 10 réflexes du coach","Fiche de cours vierge"],
   // 30/10 : ce que dit le résumé de la journée pour chaque document montré (même ordre que les documents)
   resumes:["les étapes importantes d'un cours : l'arrivée du coach, la préparation et l'organisation de la salle, le début du cours (sécurité, place pour chacun, adaptations) et le lancement avec la musique",
    "compter la musique : le temps, le « huit », la phrase musicale de 32 temps, trouver le 1 et lancer un départ avec le décompte",

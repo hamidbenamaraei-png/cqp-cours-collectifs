@@ -151,7 +151,7 @@ body.avec-barre .wrap{padding-bottom:120px}
 </head>
 <body>
 <div class="wrap" id="app"></div>
-<script src="commun.js?v=202610301235"></script>
+<script src="commun.js?v=202610301305"></script>
 <script src="roue.js?v=202610260957"></script>
 <script src="bonhommes3d.js?v=202610261832"></script>
 <script src="fiches.js?v=202610261640"></script>
@@ -661,6 +661,35 @@ async function lienTransfert(x,H){
 }
 
 // ======= Écran : une journée (le menu) =======
+// ======= 30/10 : sur chaque journée, « Vu la dernière fois » et « Reste à travailler » (documents pas encore montrés des journées d'avant) =======
+function titreDoc(j,i){return (j.titres&&j.titres[i-1])||('Diapo '+i)}
+function suiteDe(j){
+  const avant=JOURNEES.filter(x=>x.id<j.id&&x.diapos).sort((a,b)=>a.id<b.id?1:-1);
+  let vu=null;
+  for(const x of avant){const v=diaposVisibles(DIAPOS_OUV,x);if(v.length){vu={j:x,vis:v};break}}
+  const reste=[];avant.slice().reverse().forEach(x=>{const v=diaposVisibles(DIAPOS_OUV,x);for(let i=1;i<=x.diapos;i++)if(!v.includes(i))reste.push({j:x,i})});
+  return {vu,reste};
+}
+function suiteHtml(j){
+  const {vu,reste}=suiteDe(j); let h='';
+  if(vu){const x=vu.j,R=Array.isArray(x.resumes)?vu.vis.filter(i=>x.resumes[i-1]):[];
+    h+=`<div class="card"><h2>🔁 Vu la dernière fois · ${esc(x.titre)}</h2>`+(R.length?`<ul style="margin:0;padding-left:20px">${R.map(i=>`<li style="margin-bottom:6px">${esc(x.resumes[i-1])}</li>`).join('')}</ul>`:`<p class="muted" style="margin:0">${vu.vis.length} document${vu.vis.length>1?'s':''} montré${vu.vis.length>1?'s':''} aux stagiaires / apprentis.</p>`)+`<p class="muted" style="margin:8px 0 0">Pour toi seul.</p></div>`}
+  if(reste.length){
+    h+=`<div class="card j"><h2>📌 Reste à travailler (${reste.length})</h2><p class="muted" style="margin-top:0">Les documents pas encore montrés aux stagiaires / apprentis. Coche pour le montrer : il apparaîtra chez eux avec les documents de sa journée. Touche le nom pour l'ouvrir en grand.</p>`+
+      reste.map(r=>{const src=`${r.j.dossier}/${String(r.i).padStart(2,'0')}.jpg`;return `<div style="display:flex;align-items:center;gap:12px;margin:10px 0"><input type="checkbox" data-rt="${esc(r.j.id)}|${r.i}" style="width:28px;height:28px;flex:none;accent-color:#ff7a3d" aria-label="Montrer ${esc(titreDoc(r.j,r.i))}"><a href="${src}" target="_blank" rel="noopener" style="color:inherit;flex:1;min-width:0"><b>${esc(titreDoc(r.j,r.i))}</b><br><span class="muted">${esc(r.j.titre)}</span></a></div>`}).join('')+
+      `<div class="ok hide" id="rtok"></div></div>`}
+  return h;
+}
+function brancherSuite(j){
+  app.querySelectorAll('[data-rt]').forEach(cb=>cb.onchange=async()=>{
+    const [jid,n]=cb.dataset.rt.split('|'), x=JOURNEES.find(y=>y.id===jid), i=+n; if(!x)return;
+    const avant=DIAPOS_OUV.slice(), nv=diaposAvec(DIAPOS_OUV,x,i,cb.checked);
+    app.querySelectorAll('[data-rt]').forEach(y=>y.disabled=true);
+    try{await envoyerForm(FORM_QUIZ,{[EQ.journee]:'diapos',[EQ.statut]:'etat',[EQ.contenu]:JSON.stringify({ouverts:nv})})}
+    catch(err){DIAPOS_OUV=avant;alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");const y=scrollY;journee(j);scrollTo(0,y);return}
+    DIAPOS_OUV=nv;ecrire('local_diapos',{ouverts:nv,at:Date.now()});
+    const y=scrollY;journee(j);scrollTo(0,y);const ok=document.getElementById('rtok')||document.getElementById('dok');if(ok){ok.textContent=`✅ « ${titreDoc(x,i)} » montré aux stagiaires / apprentis (d'ici quelques minutes).`;ok.classList.remove('hide')}});
+}
 function journee(j){
   const e=ETAT[j.id], o=estOuvert(e);
   app.innerHTML=`<button class="back" id="bk">← Retour</button>
@@ -675,6 +704,7 @@ function journee(j){
    <div class="ok hide" id="togok"></div>
    ${e.horsLigne?`<div class="err">Je n'ai pas pu lire ton tableau des quiz. Vérifie ta connexion internet.</div>`:''}
   </div>
+  ${suiteHtml(j)}
   <div class="card j"><h2>📋 Mon déroulé prévu</h2>
    <p class="muted" style="margin-top:0">Ton plan de la journée, pour toi seul : les stagiaires / apprentis ne le voient jamais. Écris ou dicte, modifie quand tu veux. Gardé sur ce téléphone et sauvegardé en ligne (tu le retrouves sur un autre téléphone).</p>
    <textarea id="der" data-cle="der:${esc(j.id)}" style="min-height:160px" placeholder="Ex. : 8h30 accueil · 9h briefing sécurité · 9h15 passages de 20 min…"></textarea>
@@ -691,6 +721,7 @@ function journee(j){
   document.getElementById('bk').onclick=accueil;
   document.getElementById('m1').onclick=()=>reponses(cibleJournee(j));
   document.getElementById('m2').onclick=()=>monQuiz(j);
+  brancherSuite(j);
   brancherDeroule(j);
   if(j.diapos){document.getElementById('m3').onclick=()=>diapos(j);
   document.getElementById('dtog').onclick=async e=>{
