@@ -207,6 +207,14 @@ const JOURNEES = [
  // 29/10 : les journées suivantes du planning (pas encore de diapos ; le quiz se prépare dans l'espace formateur)
  {id:'2026-10-30', titre:'Vendredi 30 octobre (matin)', theme:'EPMSP – Passages complets de 20 min avec la grille', diapos:7, dossier:'j2',
   docs:[{titre:'Télécharger tous les documents', fichier:'j2/Documents_30-10.pdf'}],
+  // 30/10 : ce que dit le résumé de la journée pour chaque document montré (même ordre que les documents)
+  resumes:["les étapes importantes d'un cours : l'arrivée du coach, la préparation et l'organisation de la salle, le début du cours (sécurité, place pour chacun, adaptations) et le lancement avec la musique",
+   "compter la musique : le temps, le « huit », la phrase musicale de 32 temps, trouver le 1 et lancer un départ avec le décompte",
+   "les tempos d'un exercice (single, 2/2, 3/1, 1/3, 4/4) avec l'exemple du squat et les règles pour changer de tempo",
+   "les grandes familles de cours collectifs (renforcement, cardio, training, bien-être, programmes de marque) et le matériel le plus courant",
+   "l'échauffement : ce qu'il apporte, comment le construire en cours collectif, et ses 4 minutes à l'EPMSP",
+   "les 10 réflexes du coach de cours collectifs : musique, annonce, voix, gestes, décomposition, énergie, sécurité, relation, cadre, recul",
+   "la fiche de cours : public, matériel, tempos, musique, échauffement et le tableau mouvement / placement / exécution / sécurité"],
   quiz:{ressenti:[],questions:[]}},
  {id:'2026-11-06', titre:'Vendredi 6 novembre (matin)', theme:'EPMSP – Examen blanc', diapos:0, quiz:{ressenti:[],questions:[]}},
  {id:'2026-12-11', titre:'Vendredi 11 décembre (matin)', theme:'Cours collectifs', diapos:0, quiz:{ressenti:[],questions:[]}},

@@ -151,7 +151,7 @@ body.avec-barre .wrap{padding-bottom:120px}
 </head>
 <body>
 <div class="wrap" id="app"></div>
-<script src="commun.js?v=202610300752"></script>
+<script src="commun.js?v=202610301235"></script>
 <script src="roue.js?v=202610260957"></script>
 <script src="bonhommes3d.js?v=202610261832"></script>
 <script src="fiches.js?v=202610261640"></script>
@@ -1333,6 +1333,9 @@ function resume(c,st,obs,mode){
   mode=mode||'complet';
   const z=c.z;
   let t=`📋 Bilan CQP Cours collectifs – ${c.titre}\n${c.sousTitre}\n`;
+  // 30/10 : ce qui a été travaillé, d'après les documents montrés aux stagiaires / apprentis
+  try{const jj=JOURNEES.find(x=>x.id===c.cle); if(jj&&Array.isArray(jj.resumes)){const vis=diaposVisibles(DIAPOS_OUV,jj).filter(i=>jj.resumes[i-1]);
+    if(vis.length)t+=`\n📚 Travaillé aujourd'hui :\n`+vis.map(i=>`• ${jj.resumes[i-1]}`).join('\n')+'\n'}}catch(e){}
   const RJ=retoursDuJour(c), txtRJ=RJ.length?`\n📝 Retours individuels :\n`+RJ.map(r=>`• ${r.nom}${r.titre?' ('+r.titre+')':''} : ${r.texte.replace(/\s*\n\s*/g,' ')}`).join('\n')+'\n':'';
   if(mode==='obs'){t+=obs?`\n👀 Mes observations :\n${obs}\n`:(RJ.length?'':`\n(Pas d'observations écrites.)\n`);return t+txtRJ+`\nHamid`}
   if(!st){t+=`\nPas de réponses au quiz pour l'instant.\n`}
