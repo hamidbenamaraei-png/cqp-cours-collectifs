@@ -56,7 +56,7 @@ summary{cursor:pointer;font-weight:700}
 </head>
 <body>
 <div class="wrap" id="app"></div>
-<script src="commun.js?v=202610300730"></script>
+<script src="commun.js?v=202610300735"></script>
 <script src="roue.js?v=202610260957"></script>
 <script src="bonhommes3d.js?v=202610261832"></script>
 <script src="fiches.js?v=202610261640"></script>
@@ -185,12 +185,12 @@ function accueil(){
   // 29/10 : une journée n'apparaît que s'il y a quelque chose (quiz ouvert ou diapos montrées)
   JOURNEES.slice().sort((a,b)=>a.id<b.id?1:-1).forEach(j=>{
     const e=ETAT&&ETAT[j.id], ouvert=estOuvert(e)&&!quizVide(e.quiz);
-    if(!ouvert&&!j.diapos)return;
+    const vis=diaposVisibles(DIAPOS,j); if(!ouvert&&!vis.length)return;
     let b='';
     if(ouvert){const S=sessionJournee(j);sessions[idSession(S)]=S;b=boutonQuiz(S,'📝 Petit bilan de ma journée')}
     h += `<div class="card"><div class="tag" style="color:var(--soft)">${esc(j.titre)}</div><h2 style="margin-top:4px">${esc(j.theme)}</h2>
      ${b}
-     ${j.diapos&&DIAPOS.includes(j.id)?`<button class="btn sec" data-cours="${j.id}">📚 Revoir les diapos</button>`:''}</div>`;
+     ${vis.length?`<button class="btn sec" data-cours="${j.id}">📚 ${vis.length<j.diapos?'Voir les documents':'Revoir les diapos'}</button>`:''}</div>`;
   });
   app.innerHTML = h;
   document.getElementById('evo').onclick=evolution;
@@ -330,12 +330,12 @@ async function verifier(){
 
 // ======= Écran 3 : les diapos =======
 function cours(j){
-  if(!j||!j.diapos||!DIAPOS.includes(j.id))return accueil();
+  const vis=diaposVisibles(DIAPOS,j); if(!j||!vis.length)return accueil();
   ECRAN='cours';
   let h = `<button class="back" id="bk">← Retour</button><div class="tag">${esc(j.titre)}</div><h1>${esc(j.theme)}</h1>
-   ${(j.docs||[]).map(d=>`<a class="btn" href="${d.fichier}" download>⬇️ ${esc(d.titre)}</a>`).join('')}
+   ${vis.length===j.diapos?(j.docs||[]).map(d=>`<a class="btn" href="${d.fichier}" download>⬇️ ${esc(d.titre)}</a>`).join(''):''}
    <p class="muted" style="margin-top:16px">Touche une diapo pour l'ouvrir en grand.</p>`;
-  for(let i=1;i<=j.diapos;i++){const s=`${j.dossier}/${String(i).padStart(2,'0')}.jpg`;h+=`<a href="${s}" target="_blank" rel="noopener"><img class="slide" loading="lazy" src="${s}" alt="Diapo ${i}"></a>`}
+  for(const i of vis){const s=`${j.dossier}/${String(i).padStart(2,'0')}.jpg`;h+=`<a href="${s}" target="_blank" rel="noopener"><img class="slide" loading="lazy" src="${s}" alt="Diapo ${i}"></a>`}
   h += `<button class="btn sec" id="bk2">← Retour</button>`;
   app.innerHTML=h;
   document.getElementById('bk').onclick=accueil; document.getElementById('bk2').onclick=accueil;

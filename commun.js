@@ -594,3 +594,12 @@ JOURNEES.forEach(preparerJournee);
   const go=()=>{const a=document.getElementById('app');if(!a)return;tout();new MutationObserver(tout).observe(a,{childList:true,subtree:true})};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',go);else go();
 })();
+
+// 30/10 : documents montrés un par un (« jour » = tous, « jour#3 » = seulement le 3e)
+function diaposVisibles(ouv,j){ if(!j||!j.diapos) return []; ouv=(ouv||[]).map(String);
+  const tous=[]; for(let i=1;i<=j.diapos;i++) tous.push(i);
+  if(ouv.includes(j.id)) return tous; return tous.filter(i=>ouv.includes(j.id+'#'+i)) }
+function diaposAvec(ouv,j,i,montrer){ // renvoie la nouvelle liste après avoir coché / décoché le document i
+  let v=diaposVisibles(ouv,j); v=montrer?[...new Set(v.concat(i))]:v.filter(x=>x!==i);
+  const autres=(ouv||[]).map(String).filter(x=>x!==j.id&&!x.startsWith(j.id+'#'));
+  return v.length===j.diapos?autres.concat(j.id):autres.concat(v.sort((a,b)=>a-b).map(x=>j.id+'#'+x)) }

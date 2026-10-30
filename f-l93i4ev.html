@@ -151,7 +151,7 @@ body.avec-barre .wrap{padding-bottom:120px}
 </head>
 <body>
 <div class="wrap" id="app"></div>
-<script src="commun.js?v=202610300730"></script>
+<script src="commun.js?v=202610300735"></script>
 <script src="roue.js?v=202610260957"></script>
 <script src="bonhommes3d.js?v=202610261832"></script>
 <script src="fiches.js?v=202610261640"></script>
@@ -684,7 +684,7 @@ function journee(j){
   <button class="btn sec" id="m1">📊 Réponses et résumé de la journée</button>
   <button class="btn sec" id="m2">📝 Mon quiz du jour</button>
   ${j.diapos?`<button class="btn sec" id="m3">📚 Diapos et documents</button>
-  <button class="btn small ${DIAPOS_OUV.includes(j.id)?'':'sec'}" id="dtog" style="margin-top:-4px">${DIAPOS_OUV.includes(j.id)?'👀 Diapos montrées aux stagiaires · toucher pour cacher':'🙈 Diapos cachées aux stagiaires · toucher pour montrer'}</button>
+  <button class="btn small ${DIAPOS_OUV.includes(j.id)?'':'sec'}" id="dtog" style="margin-top:-4px">${DIAPOS_OUV.includes(j.id)?'👀 Tous les documents montrés aux stagiaires · toucher pour tout cacher':(diaposVisibles(DIAPOS_OUV,j).length?'👀 '+diaposVisibles(DIAPOS_OUV,j).length+' / '+j.diapos+' documents montrés · toucher pour tout montrer':'🙈 Documents cachés aux stagiaires · toucher pour tout montrer')}</button>
   <div class="ok hide" id="dok"></div>`:''}
   ${quizVide(quizDe(j))?'':`<button class="btn sec" id="m4">🖨️ Version papier (PDF)</button>
   <button class="btn sec" id="m5">✍️ Saisir une réponse papier</button>`}`;
@@ -695,7 +695,7 @@ function journee(j){
   if(j.diapos){document.getElementById('m3').onclick=()=>diapos(j);
   document.getElementById('dtog').onclick=async e=>{
     const montrer=!DIAPOS_OUV.includes(j.id), avant=DIAPOS_OUV.slice();
-    const n=montrer?[...new Set(DIAPOS_OUV.concat(j.id))]:DIAPOS_OUV.filter(x=>x!==j.id);
+    const n=DIAPOS_OUV.filter(x=>x!==j.id&&!String(x).startsWith(j.id+'#')).concat(montrer?[j.id]:[]);
     e.target.disabled=true;e.target.textContent='⏳ Un instant…';
     try{await envoyerForm(FORM_QUIZ,{[EQ.journee]:'diapos',[EQ.statut]:'etat',[EQ.contenu]:JSON.stringify({ouverts:n})})}
     catch(err){DIAPOS_OUV=avant;alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");return journee(j)}
@@ -745,11 +745,23 @@ function brancherDeroule(j){
 function diapos(j){
   let h=`<button class="back" id="bk">← Retour</button><div class="tag">${esc(j.titre)}</div><h1>Diapos et documents</h1>
    ${(j.docs||[]).map(d=>`<a class="btn" href="${d.fichier}" download>⬇️ ${esc(d.titre)}</a>`).join('')}
-   <p class="muted" style="margin-top:16px">Exactement ce que les stagiaires ont reçu. Touche une diapo pour l'ouvrir en grand.</p>`;
-  for(let i=1;i<=j.diapos;i++){const s=`${j.dossier}/${String(i).padStart(2,'0')}.jpg`;h+=`<a href="${s}" target="_blank" rel="noopener"><img class="slide" loading="lazy" src="${s}" alt="Diapo ${i}"></a>`}
+   <p class="muted" style="margin-top:16px">Coche les documents que les stagiaires / apprentis peuvent voir. Case vide = ils ne le voient pas. Touche un document pour l'ouvrir en grand.</p>
+   <p class="muted hide" id="dcok" style="color:var(--ok,#7bd88f)"></p>`;
+  const vis=diaposVisibles(DIAPOS_OUV,j);
+  for(let i=1;i<=j.diapos;i++){const s=`${j.dossier}/${String(i).padStart(2,'0')}.jpg`, on=vis.includes(i);
+    h+=`<label style="display:flex;align-items:center;gap:12px;margin:14px 0 6px;font-weight:700;font-size:17px;cursor:pointer"><input type="checkbox" data-dc="${i}" ${on?'checked':''} style="width:28px;height:28px;flex:none;accent-color:#ff7a3d">${on?'👀 Montré aux stagiaires / apprentis':'🙈 Pas montré (coche pour le montrer)'}</label>
+     <a href="${s}" target="_blank" rel="noopener"><img class="slide" loading="lazy" src="${s}" alt="Document ${i}" style="margin-top:0;${on?'':'opacity:.55'}"></a>`}
+  h+=`<p class="muted">Le bouton « Télécharger tous les documents » n'apparaît chez eux que quand tout est coché.</p>`;
   h+=`<button class="btn sec" id="bk2">← Retour</button>`;
   app.innerHTML=h;
   document.getElementById('bk').onclick=()=>journee(j);document.getElementById('bk2').onclick=()=>journee(j);
+  app.querySelectorAll('[data-dc]').forEach(cb=>cb.onchange=async()=>{
+    const i=+cb.dataset.dc, avant=DIAPOS_OUV.slice(), n=diaposAvec(DIAPOS_OUV,j,i,cb.checked);
+    app.querySelectorAll('[data-dc]').forEach(x=>x.disabled=true);
+    try{await envoyerForm(FORM_QUIZ,{[EQ.journee]:'diapos',[EQ.statut]:'etat',[EQ.contenu]:JSON.stringify({ouverts:n})})}
+    catch(err){DIAPOS_OUV=avant;alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");const y=scrollY;diapos(j);scrollTo(0,y);return}
+    DIAPOS_OUV=n;ecrire('local_diapos',{ouverts:n,at:Date.now()});
+    const y=scrollY;diapos(j);scrollTo(0,y);const ok=document.getElementById('dcok');ok.textContent=(cb.checked?'✅ Document '+i+' montré':'✅ Document '+i+' caché')+" (chez eux d'ici quelques minutes).";ok.classList.remove('hide')});
   haut();
 }
 
