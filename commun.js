@@ -205,7 +205,7 @@ const JOURNEES = [
   banque:BANQUE_J1,
   quiz:QUIZ_DEFAUT_J1},
  // 29/10 : les journées suivantes du planning (pas encore de diapos ; le quiz se prépare dans l'espace formateur)
- {id:'2026-10-30', titre:'Vendredi 30 octobre (matin)', theme:'EPMSP – Passages complets de 20 min avec la grille', diapos:6, dossier:'j2',
+ {id:'2026-10-30', titre:'Vendredi 30 octobre (matin)', theme:'EPMSP – Passages complets de 20 min avec la grille', diapos:7, dossier:'j2',
   docs:[{titre:'Télécharger tous les documents', fichier:'j2/Documents_30-10.pdf'}],
   quiz:{ressenti:[],questions:[]}},
  {id:'2026-11-06', titre:'Vendredi 6 novembre (matin)', theme:'EPMSP – Examen blanc', diapos:0, quiz:{ressenti:[],questions:[]}},
