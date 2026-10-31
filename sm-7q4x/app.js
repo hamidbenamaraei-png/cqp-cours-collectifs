@@ -131,6 +131,24 @@
   }
   function lsGet(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
   function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* rien */ } }
+  // 31/10 : déverrouillage par empreinte (WebAuthn, vérifié par le téléphone ; l'empreinte ne sort jamais du téléphone)
+  const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const ub64u = (str) => { const b = atob(str.replace(/-/g, '+').replace(/_/g, '/')); const a = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) a[i] = b.charCodeAt(i); return a; };
+  async function bioDispo() { try { return !!(window.PublicKeyCredential && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()); } catch (e) { return false; } }
+  async function bioActiver() {
+    const cred = await navigator.credentials.create({ publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)), rp: { name: 'ScriptMove' },
+      user: { id: crypto.getRandomValues(new Uint8Array(16)), name: 'scriptmove', displayName: 'ScriptMove' },
+      pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+      authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'preferred' }, timeout: 60000 } });
+    if (!cred) throw new Error('annulé');
+    lsSet('sm_bio', { id: b64u(cred.rawId) });
+  }
+  async function bioVerifier() {
+    const b = lsGet('sm_bio'); if (!b) return false;
+    const a = await navigator.credentials.get({ publicKey: { challenge: crypto.getRandomValues(new Uint8Array(32)), allowCredentials: [{ type: 'public-key', id: ub64u(b.id), transports: ['internal'] }], userVerification: 'required', timeout: 60000 } });
+    return !!(a && a.response && a.response.authenticatorData && (new Uint8Array(a.response.authenticatorData)[32] & 4));
+  }
   function scrLock() {
     const pin = lsGet('sm_pin');
     const creating = !pin;
@@ -144,8 +162,9 @@
         '<p id="lmsg" class="small" style="min-height:24px;color:var(--ko);font-weight:700"></p>' +
         '<div class="pad">' + [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => '<button data-act="k" data-k="' + n + '">' + n + '</button>').join('') +
         '<button data-act="del" aria-label="Effacer">⌫</button><button data-act="k" data-k="0">0</button><button class="ok" data-act="ok" aria-label="Valider">✓</button></div></div>' +
+        (creating || !lsGet('sm_bio') ? '' : '<button class="btn" data-act="bio">👆 Déverrouiller avec mon empreinte</button>') +
         (creating ? '' : '<div class="card j small"><b>Code oublié ?</b> Il n\'y a pas d\'autre moyen : touche « Tout effacer et recommencer ». Tes scripts seront perdus (sauf si tu as fait une sauvegarde 💾).</div><button class="btn ghost small" data-act="reset">🗑️ Tout effacer et recommencer</button>'),
-      { k: (b) => { if (code.length < 8) { code += b.dataset.k; draw(); } }, del: () => { code = code.slice(0, -1); draw(); }, ok: submit, reset: resetAll });
+      { k: (b) => { if (code.length < 8) { code += b.dataset.k; draw(); } }, del: () => { code = code.slice(0, -1); draw(); }, ok: submit, reset: resetAll, bio: bioEssai });
       waitMsg();
     };
     const msg = (t) => { const m = $('#lmsg'); if (m) m.textContent = t; };
@@ -154,6 +173,10 @@
       const tr = lsGet('sm_tries') || {}; clearTimeout(timer);
       if (tr.until && tr.until > Date.now()) { msg('Trop d\'essais. Attends ' + Math.ceil((tr.until - Date.now()) / 1000) + ' s.'); timer = setTimeout(waitMsg, 1000); }
       else if (tr.until) msg('');
+    }
+    async function bioEssai() {
+      try { if (await bioVerifier()) { lsSet('sm_tries', { fails: 0, locks: 0 }); return start(); } msg('Empreinte pas reconnue. Utilise ton code.'); }
+      catch (e) { msg('Empreinte annulée ou pas disponible. Utilise ton code.'); }
     }
     async function submit() {
       if (code.length < 4) { msg('Il faut au moins 4 chiffres.'); return; }
@@ -174,6 +197,7 @@
       if (!tr.until || tr.until < Date.now()) msg('Ce n\'est pas le bon code. Encore ' + (5 - tr.fails) + ' essai(s).');
     }
     draw();
+    if (!creating && lsGet('sm_bio')) setTimeout(() => { bioEssai(); }, 300);
   }
   async function resetAll() {
     const a = await ask('Tout effacer ?', 'Tous tes cours, scripts, musiques et ce que l\'appli a appris seront <b>supprimés de ce téléphone</b>. Tu pourras choisir un nouveau code.', [{ label: '🗑️ Oui, tout effacer', value: 1, cls: 'red' }, { label: 'Non, garder', value: 0, cls: 'sec' }]);
@@ -183,7 +207,7 @@
     try { (await db()).close(); } catch (e) { /* rien */ }
     dbp = null;
     await new Promise((r) => { const q = indexedDB.deleteDatabase('scriptmove'); q.onsuccess = q.onerror = q.onblocked = () => r(); });
-    try { ['sm_pin', 'sm_tries'].forEach((k) => localStorage.removeItem(k)); } catch (e) { /* rien */ }
+    try { ['sm_pin', 'sm_tries', 'sm_bio'].forEach((k) => localStorage.removeItem(k)); } catch (e) { /* rien */ }
     location.reload();
   }
 
@@ -1427,17 +1451,21 @@
     let est = '';
     try { if (navigator.storage && navigator.storage.estimate) { const e = await navigator.storage.estimate(); est = Math.round((e.usage || 0) / 1e6) + ' Mo utilisés'; } } catch (e) { /* rien */ }
     const persisted = navigator.storage && navigator.storage.persisted ? await navigator.storage.persisted().catch(() => false) : false;
+    const bio = await bioDispo();
     render('<div class="top"><button class="back" data-act="back">‹</button><h1>Réglages</h1></div>' +
       '<div class="card"><h2>Analyse des vidéos</h2><p class="soft small">« Plus précis » regarde 8 images par seconde et découpe l\'image en zones agrandies pour bien voir les personnes petites ou loin. « Plus rapide » : 6 images par seconde et 2 zones.</p><div class="chips"><button class="chip ' + (s.quality === 'rapide' ? 'on' : '') + '" data-act="q" data-v="rapide">Plus rapide</button><button class="chip ' + (s.quality !== 'rapide' ? 'on' : '') + '" data-act="q" data-v="precis">Plus précis<small style="color:var(--soft)">conseillé</small></button></div>' +
         (s.msView ? '<p class="mute">Sur ce téléphone, pour 1 h de vidéo de groupe : environ ' + fmtDur(Math.max(900, 3600 * 6 * 2 * s.msView / 1000)) + ' en « Plus rapide », ' + fmtDur(Math.max(900, 3600 * 8 * 4 * s.msView / 1000)) + ' en « Plus précis » (estimation).</p>' : '') + '</div>' +
       '<div class="card"><h2>Personnes cherchées par zone</h2><div class="chips">' + [6, 8].map((n) => '<button class="chip ' + (s.numPoses === n ? 'on' : '') + '" data-act="np" data-v="' + n + '">' + n + '</button>').join('') + '</div></div>' +
       '<div class="card"><h2>Stockage</h2><p class="soft small">' + esc(est) + (persisted ? ' · protégé ✅' : ' · non protégé (le téléphone pourrait effacer si la mémoire est pleine : fais des sauvegardes 💾)') + '</p></div>' +
+      '<div class="card"><h2>👆 Empreinte</h2>' + (bio ? (lsGet('sm_bio') ? '<p class="soft small">Activée ✅ : à l\'ouverture, pose ton doigt. Ton code marche toujours.</p><button class="btn sec" data-act="bioOff">Désactiver l\'empreinte</button>' : '<p class="soft small">Ouvre l\'appli avec ton empreinte. Ton code reste possible. Ton empreinte ne sort jamais du téléphone.</p><button class="btn" data-act="bioOn">👆 Activer l\'empreinte</button>') : '<p class="soft small">Ce téléphone ou ce navigateur ne permet pas l\'empreinte ici. Utilise Chrome.</p>') + '</div>' +
       '<button class="btn ghost" data-act="reset">🗑️ Tout effacer et recommencer</button>' +
       '<p class="mute" style="text-align:center">ScriptMove · tout est calculé dans ton téléphone</p>',
     {
       back: () => scrHome(),
       q: async (b) => { s.quality = b.dataset.v; await saveKV('settings'); scrSettings(); },
       np: async (b) => { s.numPoses = +b.dataset.v; await saveKV('settings'); scrSettings(); },
+      bioOn: async () => { try { await bioActiver(); toast('Empreinte activée ✅'); } catch (e) { toast('Empreinte pas activée (annulée ou pas disponible).'); } scrSettings(); },
+      bioOff: async () => { try { localStorage.removeItem('sm_bio'); } catch (e) { /* rien */ } toast('Empreinte désactivée'); scrSettings(); },
       reset: () => resetAll()
     });
   }
