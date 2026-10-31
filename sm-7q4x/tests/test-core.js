@@ -176,15 +176,15 @@ section('12. Conversion temps vidéo → temps musique (recalage sûr)');
 section('13. Durées par BPM / tempo (musique pas retrouvée avec certitude, ou script sans horaires)');
 {
   const B = C.beatsPerRep;
-  ok(B('single') === 2 && B('2/2') === 4 && B('3/1') === 4 && B('1/3') === 4 && B('4/4') === 8 && B('pulses') === 1 && B('—') === null && B('') === null, 'temps par répétition : single 2, 2/2 4, 3/1 4, 1/3 4, 4/4 8, pulses 1');
-  const lines = [{ id: 'a', name: 'Squat', reps: 16, tempo: 'single' }, { id: 'b', name: 'Squat', reps: 8, tempo: '3/1' }, { id: 'c', name: 'Squat', reps: 16, tempo: 'pulses' }, { id: 'd', name: 'Squat', reps: 4, tempo: '4/4' }];
+  ok(B('single') === 2 && B('2/2') === 4 && B('3/1') === 4 && B('1/3') === 4 && B('4/4') === 8 && B('pulses') === 8 && B('—') === null && B('') === null, 'anciens tempos encore compris : single 2, 2/2 4, 3/1 4, 1/3 4, 4/4 8, pulses (= 8 pulses) 8');
+  const lines = [{ id: 'a', name: 'Squat', reps: 16, tempo: '1-1' }, { id: 'b', name: 'Squat', reps: 8, tempo: '3-1' }, { id: 'c', name: 'Squat', reps: 4, tempo: '3 pulses' }, { id: 'd', name: 'Squat', reps: 4, tempo: '4-4' }];
   const tl = C.buildTimeline(lines, { bpm: 120, attack: 2 });
   const d = tl.items.map((x) => Math.round((x.end - x.start) * 1000) / 1000);
   ok(tl.mode === 'bpm' && tl.items[0].start === 2, 'sans horaires : départ au 1er temps fort de la musique (2 s)');
-  ok(d.join() === '16,16,8,16', `à 120 BPM : 16 single = 16 s, 8 × 3/1 = 16 s, 16 pulses = 8 s, 4 × 4/4 = 16 s → ${d.join(' / ')}`);
+  ok(d.join() === '16,16,8,16', `à 120 BPM : 16 × 1-1 = 16 s, 8 × 3-1 = 16 s, 4 × 3 pulses = 8 s, 4 × 4-4 = 16 s → ${d.join(' / ')}`);
   ok(tl.items[3].start === 42, 'les lignes s\'enchaînent (4e ligne à 42 s)');
   const ps = C.playState(tl.items, 2 + 5.1);
-  ok(ps.seg.id === 'a' && ps.rep === 6, `à 5,1 s du départ (single = 1 s à 120 BPM) : Squat répétition ${ps.rep} / 16`);
+  ok(ps.seg.id === 'a' && ps.rep === 6, `à 5,1 s du départ (1-1 = 1 s à 120 BPM) : Squat répétition ${ps.rep} / 16`);
   // musique proposée (pas sûre), horaires vidéo + recalage au rythme : on part de l'heure convertie, durées au BPM
   const sync = { mode: 'tempo', v0: 300, a0: 1.5, ratio: 1, vTop: 300 };
   const t2 = C.buildTimeline([{ id: 'a', name: 'Rowing', reps: 8, tempo: '2/2', t: 310 }, { id: 'b', name: 'Curl', reps: 8, tempo: 'single', t: 330 }], { sync, sure: false, bpm: 128 });
@@ -205,14 +205,14 @@ section('14. Migration des anciens cours vers les dossiers');
   const custom = { id: 'c3', name: 'Zumba 1', style: 'zumba', created: 3, morceaux: [] };
   const ch = C.migrateCourse(old, C.BASE_FOLDERS, mk);
   ok(ch && old.folder === 'pump', 'cours Pump → dossier 📁 Pump');
-  ok(old.morceaux[0].lines.length === 2 && old.morceaux[0].lines[0].name === 'Squat' && old.morceaux[0].lines[0].reps === 16 && old.morceaux[0].lines[0].tempo === '2/2' && old.morceaux[0].lines[0].t === 140.2, 'ancien script repris dans « Mon script » (heures gardées, pauses vides retirées)');
+  ok(old.morceaux[0].lines.length === 2 && old.morceaux[0].lines[0].name === 'Squat' && old.morceaux[0].lines[0].reps === 16 && old.morceaux[0].lines[0].tempo === '2-2' && old.morceaux[0].lines[1].tempo === '1-1' && old.morceaux[0].lines[0].t === 140.2, 'ancien script repris dans « Mon script » (heures gardées, pauses vides retirées)');
   ok(old.morceaux[0].segments.length === 3 && old.morceaux[1].lines.length === 0, 'rien n\'est perdu (ancien script gardé aussi)');
   ok(!C.migrateCourse(old, C.BASE_FOLDERS, mk), 'une 2e migration ne change rien');
   C.migrateCourse(combat, C.BASE_FOLDERS, mk); C.migrateCourse(custom, C.BASE_FOLDERS, mk);
   ok(combat.folder === 'combat' && custom.folder === 'pump', 'Combat → 📁 Combat ; style inconnu → 📁 Pump');
   const mine = C.BASE_FOLDERS.concat([{ id: 'f_z', name: 'Zumba', style: 'f_z' }]);
   const z = { id: 'c4', name: 'Zumba 2', style: 'f_z', folder: 'f_z', morceaux: [] };
-  ok(!C.migrateCourse(Object.assign(z, { version: 3 }), mine, mk) && z.folder === 'f_z', 'une édition déjà dans son propre dossier y reste');
+  ok(!C.migrateCourse(Object.assign(z, { version: C.COURSE_VERSION }), mine, mk) && z.folder === 'f_z', 'une édition déjà dans son propre dossier y reste');
   ok(C.editionNumber('Pump 99') === 99 && C.editionNumber('Pump – 31/10/2026') === null && C.editionNumber('BodyPump 101 (oct.)') === 101, 'numéro d\'édition lu dans le nom (dates ignorées)');
   const ord = C.sortEditions([{ name: 'Pump 98', created: 5 }, { name: 'Pump – 31/10/2026', created: 9 }, { name: 'Pump 99', created: 1 }, { name: 'Pump 100', created: 2 }]).map((x) => x.name);
   ok(ord.join(' | ') === 'Pump 100 | Pump 99 | Pump 98 | Pump – 31/10/2026', 'éditions triées par numéro décroissant : ' + ord.join(', '));
@@ -242,10 +242,71 @@ section('15. Copier un bloc, coller à l\'heure de la vidéo, dupliquer, déplac
   ok(D2.find((l) => l.id === 'd2').t === 42 && D2[2].id === 'd2', 'dupliquer sans avancer la vidéo : copie placée juste après (16 × 2/2 à 120 BPM = 32 s)');
   const M = C.moveLine(L, 'b', -1);
   ok(M.lines.map((l) => l.name).join(',') === 'Rowing,Squat,Curl' && M.lines[0].t === 10 && M.lines[1].t === 40 && M.lines[0].id === 'b', 'déplacer vers le haut : le contenu change de place, les heures restent dans l\'ordre');
-  ok(C.lineText({ name: 'Squat', reps: 16, tempo: '2/2' }, 0) === '1. Squat × 16 (2/2)' && C.lineText({ kind: 'pause', name: 'Pause', reps: 0 }, 1) === '2. Pause' && C.lineText({ name: 'Fentes', reps: 8, tempo: '—', note: 'jambe droite' }, 2) === '3. Fentes × 8 – jambe droite', 'texte du script : « 1. Squat × 16 (2/2) »');
+  ok(C.lineText({ name: 'Squat', reps: 16, tempo: '2/2' }, 0) === '1. Squat × 16 (2-2)' && C.lineText({ name: 'Squat', reps: 8, tempo: 'pulses' }, 0) === '1. Squat × 8 (8 pulses)' && C.lineText({ kind: 'pause', name: 'Pause', reps: 0 }, 1) === '2. Pause' && C.lineText({ name: 'Fentes', reps: 8, tempo: '—', note: 'jambe droite' }, 2) === '3. Fentes × 8 – jambe droite', 'texte du script : « 1. Squat × 16 (2-2) » (ancien tempo affiché à la nouvelle façon)');
   ok(C.norm('Élévations') === 'elevations', 'recherche sans accents');
 }
 
+/* ---------- 16. Nouveaux noms de mouvements Pump et nouveaux tempos (31/10) ---------- */
+section('16. Mouvements Pump, tempos, migration');
+{
+  const q = C.QUICK.pump;
+  ok(q.join('|') === ['Curl biceps', 'Développé militaire', 'Squat', 'Descente lever', 'Descente tirage', 'Triple descente tirage', 'Épaulé', 'Épaulé jeté', 'Triple épaulé jeté', 'Développé couché', 'Pompes', 'Extension triceps', 'Dips', 'Fentes', 'Élévations latérales'].join('|'), 'boutons rapides Pump : 15, dans l\'ordre demandé (5 lignes de 3)');
+  ok(!C.MOVES.pump.includes('Soulevé de terre') && !C.MOVES.pump.includes('Rowing') && ['Élévations frontales', 'Gainage', 'Crunch', 'Pont fessier'].every((n) => C.MOVES.pump.includes(n)), 'anciens noms retirés, les autres mouvements restent');
+  ok(C.TEMPOS.join('|') === '1-1|2-2|3-1|1-3|4-4|BB 2-2|Pause|3 pulses|8 pulses|Enroule les épaules', 'tempos dans l\'ordre demandé');
+  const B = C.beatsPerRep;
+  const exp = { '1-1': 2, '2-2': 4, '3-1': 4, '1-3': 4, '4-4': 8, 'BB 2-2': 4, '3 pulses': 4, '8 pulses': 8, 'Enroule les épaules': 4, 'Pause': 4, 'Tempo inventé': 4 };
+  ok(Object.keys(exp).every((k) => B(k) === exp[k]), 'temps par répétition : ' + Object.keys(exp).map((k) => k + ' = ' + B(k)).join(', '));
+  const tl = C.buildTimeline([{ id: 'p', name: 'Squat', reps: 3, tempo: 'Pause' }, { id: 'e', name: 'Épaulé', reps: 4, tempo: 'Enroule les épaules' }, { id: 'b', name: 'Squat', reps: 2, tempo: 'BB 2-2' }, { id: 'h', name: 'Curl biceps', reps: 2, tempo: '8 pulses' }], { bpm: 120 });
+  const d = tl.items.map((x) => Math.round((x.end - x.start) * 1000) / 1000);
+  ok(d.join() === '6,8,4,8', 'à 120 BPM : 3 × Pause = 12 temps (6 s), 4 × Enroule = 8 s, 2 × BB 2-2 = 4 s, 2 × 8 pulses = 8 s → ' + d.join(' / '));
+  ok(C.normTempo('single') === '1-1' && C.normTempo('2/2') === '2-2' && C.normTempo('3/1') === '3-1' && C.normTempo('1/3') === '1-3' && C.normTempo('4/4') === '4-4' && C.normTempo('pulses') === '8 pulses' && C.normTempo('—') === '' && C.normTempo('bb 2-2') === 'BB 2-2', 'anciens tempos → nouveaux (single → 1-1 … pulses → 8 pulses)');
+  // ancien script enregistré (version 3) avec les anciens noms et tempos
+  const c = { id: 'x', name: 'Pump 98', style: 'pump', folder: 'pump', version: 3, morceaux: [{ id: 'm', name: '02 Squats', lines: [
+    { id: 'a', name: 'Soulevé de terre', reps: 16, tempo: '2/2', t: 10 }, { id: 'b', name: 'Rowing', reps: 8, tempo: 'pulses', t: 20 }, { id: 'c', name: 'Squat', reps: 4, tempo: 'single', note: 'garder', t: 30 }, { id: 'd', kind: 'pause', name: 'Pause', t: 40 }],
+    segments: [{ name: 'Rowing', reps: 8, tempo: '3/1', start: 1, end: 2 }] }] };
+  ok(C.migrateCourse(c, C.BASE_FOLDERS) && c.version === C.COURSE_VERSION, 'ancien script migré (version ' + c.version + ')');
+  const L = c.morceaux[0].lines;
+  ok(L.map((l) => l.name + ':' + (l.tempo || '')).join('|') === 'Descente lever:2-2|Descente tirage:8 pulses|Squat:1-1|Pause:' && L[2].note === 'garder' && L.length === 4 && L[0].t === 10 && c.morceaux[0].segments[0].name === 'Descente tirage' && c.morceaux[0].segments[0].tempo === '3-1', 'noms et tempos remplacés, rien de perdu (heures, notes, pauses)');
+  ok(!C.migrateCourse(c, C.BASE_FOLDERS), 'la migration ne se fait qu\'une fois');
+  L[0].name = 'Rowing'; ok(!C.migrateCourse(c, C.BASE_FOLDERS) && L[0].name === 'Rowing', 'après la migration, un nom écrit plus tard n\'est plus touché');
+  const combat = { id: 'y', name: 'Combat 1', style: 'combat', folder: 'combat', version: 3, morceaux: [{ id: 'm', name: '01', lines: [{ id: 'a', name: 'Rowing', reps: 8, tempo: '2/2' }] }] };
+  C.migrateCourse(combat, C.BASE_FOLDERS); ok(combat.morceaux[0].lines[0].name === 'Rowing' && combat.morceaux[0].lines[0].tempo === '2-2', 'autre style : noms gardés, tempos convertis');
+  // listes personnelles
+  const k = { vocab: { pump: { 'Rowing': 'Tirage buste', 'Soulevé de terre': 'Soulevé de terre' } }, prints: [{ id: 'p', style: 'pump', name: 'Soulevé de terre' }, { id: 'q', style: 'combat', name: 'Rowing' }], customMoves: { pump: ['Rowing', 'Mon move', 'Descente tirage'] }, favs: { pump: { 2: ['Rowing', 'Squat'] } } };
+  ok(C.migrateMoveLists(k), 'listes personnelles migrées');
+  ok(!('Rowing' in k.vocab.pump) && !('Soulevé de terre' in k.vocab.pump), 'plus d\'anciennes clés dans le vocabulaire');
+  ok(k.prints[0].name === 'Descente lever' && k.prints[1].name === 'Rowing', 'mouvements appris : renommés (style Pump seulement)');
+  ok(k.customMoves.pump.join('|') === 'Descente tirage|Mon move|Tirage buste', 'mes mouvements : renommés sans doublon, son nom perso gardé (' + k.customMoves.pump.join(', ') + ')');
+  ok(k.favs.pump[2].join('|') === 'Descente tirage|Squat', 'favoris renommés');
+  ok(!C.migrateMoveLists(k), '2e passage : rien ne change');
+}
+
+/* ---------- 17. Favoris par numéro de morceau ---------- */
+section('17. Favoris par style et numéro de morceau (partagés entre éditions)');
+{
+  const e99 = { name: 'Pump 99', style: 'pump', morceaux: [{ id: 'a', name: '01 Echauffement' }, { id: 'b', name: '02 Squats' }, { id: 'c', name: '03 Pecs' }] };
+  const e100 = { name: 'Pump 100', style: 'pump', morceaux: [{ id: 'x', name: 'Échauffement' }, { id: 'l', name: 'perdu', lost: true }, { id: 'y', name: 'Squats' }] };
+  const e101 = { name: 'Pump 101', style: 'pump', morceaux: [{ id: 'u', name: 'Intro' }, { id: 'v', name: '2 - Squats (Remix)' }] };
+  const n99 = C.morceauNumber(e99.morceaux[1], e99.morceaux), n100 = C.morceauNumber(e100.morceaux[2], e100.morceaux), n101 = C.morceauNumber(e101.morceaux[1], e101.morceaux);
+  ok(n99 === 2 && n100 === 2 && n101 === 2 && C.numLabel(n99) === '02', 'numéro du morceau : en tête du titre, sinon sa place (morceaux perdus ignorés) → 02, 02, 02');
+  ok(C.morceauNumber(e99.morceaux[2], e99.morceaux) === 3 && C.morceauNumber(e100.morceaux[0], e100.morceaux) === 1, 'autres numéros (03, 01)');
+  const favs = {};
+  C.setFavs(favs, 'pump', n99, ['Squat', 'Fentes', 'Curl biceps', 'Descente lever']);
+  ok(C.getFavs(favs, 'pump', n100).length === 4 && C.getFavs(favs, 'pump', n101).length === 4, 'favoris choisis sur le 02 de Pump 99 → aussi sur le 02 de Pump 100 et Pump 101');
+  ok(C.getFavs(favs, 'pump', 3).length === 0 && C.getFavs(favs, 'combat', 2).length === 0, 'pas sur un autre numéro ni un autre style');
+  const all = C.MOVES.pump.filter((n) => n !== 'Pause').concat(['Mon move']);
+  const mb = C.moveButtons({ all, quick: C.QUICK.pump, favs: C.getFavs(favs, 'pump', n100) });
+  ok(mb.fav && mb.main.join('|') === 'Curl biceps|Squat|Descente lever|Fentes', 'en gros : seulement les favoris, dans l\'ordre de la liste (' + mb.main.join(', ') + ')');
+  ok(mb.rest.length === all.length - 4 && mb.total === all.length && mb.rest.includes('Mon move') && mb.rest.includes('Gainage'), 'les autres restent dans « ▼ Tous (' + mb.total + ') »');
+  const d = C.moveButtons({ all, quick: C.QUICK.pump, favs: C.getFavs(favs, 'pump', 5) });
+  ok(!d.fav && d.main.join('|') === C.QUICK.pump.join('|'), 'sans favoris : les 15 boutons rapides par défaut');
+  C.setFavs(favs, 'pump', 2, ['Mon move', 'Gainage']);
+  const m2 = C.moveButtons({ all, quick: C.QUICK.pump, favs: C.getFavs(favs, 'pump', 2) });
+  ok(m2.main.join('|') === 'Gainage|Mon move', 'favoris pris dans « Tous » et mes mouvements');
+  C.setFavs(favs, 'pump', 2, []); ok(!('2' in favs.pump), 'tout décocher : retour à l\'affichage par défaut');
+  const st = C.moveButtons({ all: ['A', 'B', 'C'], quick: null, favs: [], first: 2 }); ok(st.main.join() === 'A,B' && st.rest.join() === 'C', 'autre style sans liste rapide : comme avant (les premiers, puis « Tous »)');
+  ok(JSON.parse(JSON.stringify({ favs: C.setFavs({}, 'pump', 2, ['Squat']) })).favs.pump['2'][0] === 'Squat', 'favoris enregistrables dans la sauvegarde (JSON)');
+}
 
 console.log(`\n${passes} réussis, ${fails} échoués`);
 process.exit(fails ? 1 : 0);

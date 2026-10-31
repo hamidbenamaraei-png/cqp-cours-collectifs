@@ -51,7 +51,14 @@
     S.vocab = (await dget('kv', 'vocab')) || {};
     S.prints = (await dget('kv', 'prints')) || [];
     S.customMoves = (await dget('kv', 'customMoves')) || {};
+    S.favs = (await dget('kv', 'favs')) || {};
     S.folders = (await dget('kv', 'folders')) || [];
+    // 31/10 : nouveaux noms de mouvements dans les listes personnelles (une seule fois)
+    if (!(await dget('kv', 'movesV4'))) {
+      const k = { vocab: S.vocab, prints: S.prints, customMoves: S.customMoves, favs: S.favs };
+      if (C.migrateMoveLists(k)) { S.customMoves = k.customMoves; await saveKV('vocab'); await saveKV('prints'); await saveKV('customMoves'); await saveKV('favs'); }
+      await dput('kv', true, 'movesV4');
+    }
     let ch = false;
     for (const f of C.BASE_FOLDERS) if (!S.folders.some((x) => x.id === f.id)) { S.folders.push(Object.assign({ builtin: true }, f)); ch = true; }
     if (ch) await saveKV('folders');
@@ -136,10 +143,14 @@
     const learned = S.prints.filter((p) => p.style === style).map((p) => p.name);
     return Array.from(new Set(base.concat(learned, S.customMoves && S.customMoves[style] || [])));
   }
-  /** Ses mouvements les plus utilisés en premier, puis la liste du style */
-  async function quickMoves(style) {
+  /** Boutons de « ✍️ Mon script » : favoris du morceau (n°), sinon boutons rapides du style, sinon ses plus utilisés */
+  async function quickMoves(style, num) {
     const top = C.topMoves(await dall('courses'), style).map((x) => x.name);
-    return { top: top.slice(0, 8), all: Array.from(new Set(top.concat(movesFor(style)))) };
+    const v = S.vocab[style] || {};
+    const quick = C.QUICK[style] ? C.QUICK[style].map((n) => v[n] || n) : null;
+    const all = quick ? Array.from(new Set(movesFor(style).concat(top))) : Array.from(new Set(top.concat(movesFor(style))));
+    const favs = num != null ? C.getFavs(S.favs, style, num) : [];
+    return Object.assign({ top: top.slice(0, 8), all }, C.moveButtons({ all, quick, favs, first: Math.max(12, Math.min(15, top.length)) }));
   }
 
   /* ======================= Code d'accès ======================= */
@@ -926,8 +937,8 @@
   }
 
   /* ======================= ✍️ Mon script ======================= */
-  const TEMPO_BTNS = ['single', '2/2', '3/1', '1/3', '4/4', 'pulses', '—'];
-  const lineLabel = (l) => (l.kind === 'pause' ? '⏸️ ' + (l.name || 'Pause') : l.kind === 'trans' ? '🔀 ' + (l.name || 'Transition') : esc(l.name)) + (l.reps ? ' × ' + l.reps : '') + (l.tempo && l.tempo !== '—' ? ' <span class="badge">' + esc(l.tempo) + '</span>' : '');
+  const TEMPO_BTNS = C.TEMPOS.concat(['—']);
+  const lineLabel = (l) => (l.kind === 'pause' ? '⏸️ ' + (l.name || 'Pause') : l.kind === 'trans' ? '🔀 ' + (l.name || 'Transition') : esc(l.name)) + (l.reps ? ' × ' + l.reps : '') + (C.normTempo(l.tempo) ? ' <span class="badge">' + esc(C.normTempo(l.tempo)) + '</span>' : '');
   async function scrWrite(cid, mid) {
     S.wantAwake = false; keepAwake(false);
     const c = await dget('courses', cid); if (!c) return scrHome();
@@ -936,8 +947,10 @@
     const mu = m.musicId ? await dget('musics', m.musicId) : null;
     const bpm = (mu && mu.bpm) || m.bpm || null;
     const url = await videoURL(c);
-    let qm = await quickMoves(c.style);
-    let cur = m.lines.length ? m.lines[m.lines.length - 1].id : null, showAll = false, selMode = false; const sel = new Set();
+    // favoris : par style et par numéro de morceau (le même numéro dans toutes les éditions du style)
+    const num = C.morceauNumber(m, c.morceaux), numTxt = C.numLabel(num);
+    let qm = await quickMoves(c.style, num);
+    let cur = m.lines.length ? m.lines[m.lines.length - 1].id : null, showAll = false, selMode = false, favMode = false; const sel = new Set(), favSel = new Set();
     const undo = [];
     const nPh = (await photosOf(m.id)).length;
     const rel = (t) => fmt(Math.max(0, t - m.start));
@@ -951,10 +964,17 @@
     const leave = async () => { left = true; clearTimeout(saveT); const x = v(); if (x) { x.pause(); if (x.readyState >= 1) m.lastT = Math.round(x.currentTime * 10) / 10; } await save(); };
 
     const movesHtml = () => {
-      const list = showAll ? qm.all : qm.all.slice(0, Math.max(12, Math.min(15, qm.top.length))); // les plus utilisés d'abord, complétés par la liste du style
-      return '<div class="mvchips">' + list.map((n) => '<button data-act="add" data-n="' + esc(n) + '">' + esc(n) + '</button>').join('') + '</div>' +
-        '<div class="mvchips small4"><button data-act="addp">⏸️ Pause</button><button data-act="addt">🔀 Transi&shy;tion</button><button data-act="other">➕ Autre</button>' +
-        (qm.all.length > list.length || showAll ? '<button data-act="all">' + (showAll ? '▲ Moins' : '▼ Tous (' + qm.all.length + ')') + '</button>' : '') + '</div>';
+      if (favMode) {
+        const list = qm.main.concat(qm.rest);
+        return '<div class="card o small favhelp">⭐ Choisis les favoris du morceau ' + numTxt + ' (toutes les éditions ' + esc(styleName(c.style)) + ')</div>' +
+          '<div class="mvchips favpick">' + list.map((n) => '<button data-act="favt" data-n="' + esc(n) + '" class="' + (favSel.has(n) ? 'fav' : '') + '" aria-pressed="' + favSel.has(n) + '"><span class="st">' + (favSel.has(n) ? '⭐' : '☆') + '</span>&nbsp;' + esc(n) + '</button>').join('') + '</div>' +
+          '<div class="row tight"><button class="btn small" data-act="favok">✅ Valider (' + favSel.size + ')</button><button class="btn sec small" data-act="favno">Annuler</button></div>';
+      }
+      const list = showAll ? qm.main.concat(qm.rest) : qm.main;
+      return '<p class="favline">' + (qm.fav ? '⭐ Tes favoris du morceau ' + numTxt + ' (toutes les éditions ' + esc(styleName(c.style)) + ')' : '☆ Morceau ' + numTxt + ' : pas encore de favoris') + '</p>' +
+        '<div class="mvchips">' + list.map((n) => '<button data-act="add" data-n="' + esc(n) + '">' + esc(n) + '</button>').join('') + '</div>' +
+        '<div class="mvchips small4"><button data-act="addp">⏸️ Pause</button><button data-act="addt">🔀 Transi&shy;tion</button><button data-act="other">➕ Autre</button><button data-act="fav">⭐ Favoris</button>' +
+        (qm.rest.length || showAll ? '<button data-act="all" class="wide">' + (showAll ? '▲ Moins' : '▼ Tous (' + qm.total + ')') + '</button>' : '') + '</div>';
     };
     const curHtml = () => {
       const l = curLine();
@@ -963,7 +983,7 @@
       return '<div class="card o wcur"><div class="whead"><b>Ligne ' + (i + 1) + ' · ' + lineLabel(l) + '</b><span class="mute">' + (l.t != null ? 'à ' + rel(l.t) : 'sans heure') + '</span></div><p class="klab">Répétitions</p>' +
         '<div class="kgrid k8">' + [4, 8, 16, 32].map((n) => '<button data-act="reps" data-n="' + n + '" class="' + (l.reps === n ? 'on' : '') + '">' + n + '</button>').join('') +
         '<button data-act="rm1" aria-label="Une répétition de moins">−</button><button data-act="rset" class="val" aria-label="Écrire le nombre de répétitions">' + (l.reps || '–') + '</button><button data-act="rp1" aria-label="Une répétition de plus">+</button><button data-act="rset" aria-label="Écrire le nombre de répétitions">✏️</button></div>' +
-        '<p class="klab">Tempo</p><div class="kgrid">' + TEMPO_BTNS.map((t) => '<button data-act="tempo" data-t="' + t + '" class="' + ((l.tempo || '—') === t ? 'on' : '') + '">' + t + '</button>').join('') + '<button data-act="note">📝 Note</button></div>' +
+        '<p class="klab">Tempo</p><div class="kgrid ktempo">' + TEMPO_BTNS.map((t) => '<button data-act="tempo" data-t="' + esc(t) + '" class="' + ((C.normTempo(l.tempo) || '—') === t ? 'on' : '') + (t.length > 9 ? ' wide' : '') + '">' + esc(t) + '</button>').join('') + '<button data-act="note" class="note">📝 Note</button></div>' +
         (l.note ? '<p class="small soft" style="margin:4px 0 0">📝 ' + esc(l.note) + ' <button class="lx" data-act="noteno" aria-label="Effacer la note">✖</button></p>' : '') + '</div>';
     };
     const listHtml = () => {
@@ -1005,15 +1025,26 @@
         const t = now();
         const n = await askText('Nom du mouvement', '', 'ex. Descente tirage'); if (!n) return;
         S.customMoves[c.style] = S.customMoves[c.style] || []; if (!S.customMoves[c.style].includes(n)) { S.customMoves[c.style].push(n); await saveKV('customMoves'); }
-        qm = await quickMoves(c.style);
+        qm = await quickMoves(c.style, num);
         addLine({ name: n, t });
       },
       all: () => { showAll = !showAll; paint(); },
+      fav: () => { favMode = true; favSel.clear(); for (const n of C.getFavs(S.favs, c.style, num)) favSel.add(n); paint(); },
+      favt: (b) => { const n = b.dataset.n; if (favSel.has(n)) favSel.delete(n); else favSel.add(n); paint(); },
+      favno: () => { favMode = false; favSel.clear(); paint(); },
+      favok: async () => {
+        const order = qm.main.concat(qm.rest);
+        C.setFavs(S.favs, c.style, num, order.filter((n) => favSel.has(n)));
+        await saveKV('favs');
+        favMode = false; favSel.clear(); showAll = false;
+        qm = await quickMoves(c.style, num); paint();
+        toast(qm.fav ? '⭐ Favoris du morceau ' + numTxt + ' enregistrés' : 'Plus de favoris pour le morceau ' + numTxt);
+      },
       reps: (b) => change(() => { const l = curLine(); if (l) l.reps = +b.dataset.n; }),
       rm1: () => change(() => { const l = curLine(); if (l) l.reps = Math.max(0, (l.reps || 0) - 1); }),
       rp1: () => change(() => { const l = curLine(); if (l) l.reps = (l.reps || 0) + 1; }),
       rset: async () => { const l = curLine(); if (!l) return; const n = await askText('Combien de répétitions ?', l.reps ? String(l.reps) : '', 'ex. 24'); if (n == null) return; const k = parseInt(n, 10); if (!(k >= 0)) { toast('Écris un nombre.'); return; } change(() => { l.reps = k; }); },
-      tempo: (b) => change(() => { const l = curLine(); if (l) l.tempo = b.dataset.t === '—' ? '' : b.dataset.t; }),
+      tempo: (b) => change(() => { const l = curLine(); if (l) l.tempo = C.normTempo(b.dataset.t); }),
       note: async () => { const l = curLine(); if (!l) return; const n = await askText('Note (facultatif)', l.note || '', 'ex. jambe droite devant'); if (n === null) return; change(() => { l.note = n; }); },
       noteno: () => change(() => { const l = curLine(); if (l) l.note = ''; }),
       sel: (b) => { const id = b.dataset.id; if (selMode) { if (sel.has(id)) sel.delete(id); else sel.add(id); } else cur = id; paint(); },
@@ -1092,6 +1123,7 @@
     await saveKV('vocab');
     S.prints.forEach((p) => { if (p.style === style && p.name === oldName) p.name = newName; }); await saveKV('prints');
     if (S.customMoves[style]) { S.customMoves[style] = Array.from(new Set(S.customMoves[style].map((n) => (n === oldName ? newName : n)))); await saveKV('customMoves'); }
+    if (S.favs[style]) { for (const k in S.favs[style]) S.favs[style][k] = Array.from(new Set(S.favs[style][k].map((n) => (n === oldName ? newName : n)))); await saveKV('favs'); }
     const all = await dall('courses');
     for (const c of all) {
       if (c.style !== style) continue; let ch = false;
@@ -1320,7 +1352,7 @@
     opts.push({ label: 'Annuler', value: null, cls: 'ghost' });
     const r = await ask('Sauvegarder', 'Un fichier est enregistré dans ton téléphone (dossier Téléchargements). Garde-le précieusement, par exemple sur ton Drive.<br><span class="mute">Les vidéos ne sont pas dans la sauvegarde (trop grosses).</span>', opts);
     if (!r) return;
-    const data = { app: 'ScriptMove', version: 2, date: new Date().toISOString(), courses, folders: S.folders, vocab: S.vocab, prints: S.prints, customMoves: S.customMoves || {} };
+    const data = { app: 'ScriptMove', version: 3, date: new Date().toISOString(), courses, folders: S.folders, vocab: S.vocab, prints: S.prints, customMoves: S.customMoves || {}, favs: S.favs || {} };
     data.musicsInfo = musics.map((m) => ({ id: m.id, name: m.name, type: m.type, duration: m.duration, bpm: m.bpm }));
     if (r === 'full') {
       toast('Préparation…');
@@ -1351,10 +1383,13 @@
     for (const m of d.musics || []) { const blob = await (await fetch(m.data)).blob(); await dput('musics', { id: m.id, name: m.name, type: m.type, duration: m.duration, bpm: m.bpm, attack: m.attack, len: m.len, blob }); }
     for (const p of d.photos || []) { const blob = await (await fetch(p.data)).blob(); await dput('photos', { id: p.id, cid: p.cid, mid: p.mid, w: p.w, h: p.h, created: p.created, blob }); }
     for (const k in d.thumbs || {}) await dput('data', d.thumbs[k], 'th:' + k);
+    // ancienne sauvegarde : anciens noms de mouvements → nouveaux
+    if (!(d.version >= 3)) { const k = { vocab: d.vocab || {}, prints: d.prints || [], customMoves: d.customMoves || {}, favs: d.favs || {} }; C.migrateMoveLists(k); Object.assign(d, k); }
+    for (const st in d.favs || {}) S.favs[st] = Object.assign({}, S.favs[st] || {}, d.favs[st]);
     const ids = new Set(S.prints.map((p) => p.id)); for (const p of d.prints || []) if (!ids.has(p.id)) S.prints.push(p);
     for (const st in d.vocab || {}) S.vocab[st] = Object.assign({}, S.vocab[st] || {}, d.vocab[st]);
     for (const st in d.customMoves || {}) S.customMoves[st] = Array.from(new Set((S.customMoves[st] || []).concat(d.customMoves[st])));
-    await saveKV('prints'); await saveKV('vocab'); await saveKV('customMoves');
+    await saveKV('prints'); await saveKV('vocab'); await saveKV('customMoves'); await saveKV('favs');
     toast('Restauré ✅', 3000); scrHome();
   }
 

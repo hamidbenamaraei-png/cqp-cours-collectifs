@@ -30,9 +30,13 @@
 
   /* ======================= 2. Mouvements par style ======================= */
   const MOVES = {
-    pump: ['Squat', 'Soulevé de terre', 'Rowing', 'Épaulé', 'Développé couché', 'Pompes', 'Développé militaire',
-      'Curl biceps', 'Extension triceps', 'Dips', 'Fentes', 'Élévations latérales', 'Élévations frontales',
-      'Gainage', 'Crunch', 'Pont fessier', 'Pause'],
+    // 31/10 : ordre des boutons rapides (par 3), puis les autres (dans « ▼ Tous »)
+    pump: ['Curl biceps', 'Développé militaire', 'Squat',
+      'Descente lever', 'Descente tirage', 'Triple descente tirage',
+      'Épaulé', 'Épaulé jeté', 'Triple épaulé jeté',
+      'Développé couché', 'Pompes', 'Extension triceps',
+      'Dips', 'Fentes', 'Élévations latérales',
+      'Élévations frontales', 'Gainage', 'Crunch', 'Pont fessier', 'Pause'],
     combat: ['Jab', 'Cross', 'Jab cross', 'Crochet', 'Uppercut', 'Coup de pied avant', 'Coup de pied latéral',
       'Coup de pied arrière', 'Coup de pied circulaire', 'Genou', 'Squat', 'Gainage', 'Pompes', 'Crunch', 'Pause'],
     attack: ['Jumping jack', 'Montées de genoux', 'Burpees', 'Squat sauté', 'Mountain climbers', 'Fentes sautées',
@@ -40,6 +44,10 @@
     step: ['Pas de base', 'Montée genou', 'Pas en V', 'Repeater', 'Over the top', 'Tap', 'Pause']
   };
   const STYLES = { pump: 'Pump', combat: 'Combat', attack: 'Attack', step: 'Step' };
+  /** Boutons rapides par défaut (dans cet ordre) quand le morceau n'a pas de favoris */
+  const QUICK = { pump: MOVES.pump.slice(0, 15) };
+  /** Anciens noms de mouvements → nouveaux (31/10) */
+  const RENAMES = { pump: { 'Soulevé de terre': 'Descente lever', 'Rowing': 'Descente tirage' } };
 
   /* ======================= 7. Audio : FFT, caractéristiques, alignement ======================= */
   function fft(re, im, inv) {
@@ -652,9 +660,21 @@
 
   /* ======================= 10. Mon script (écrit à la main) ======================= */
   /** Temps par répétition selon le tempo (en temps de musique) */
-  const TEMPOS = ['single', '2/2', '3/1', '1/3', '4/4', 'pulses'];
-  const TEMPO_BEATS = { single: 2, '2/2': 4, '3/1': 4, '1/3': 4, '4/4': 8, pulses: 1 };
-  function beatsPerRep(tempo) { const k = String(tempo || '').trim().toLowerCase(); return TEMPO_BEATS[k] || null; }
+  const TEMPOS = ['1-1', '2-2', '3-1', '1-3', '4-4', 'BB 2-2', 'Pause', '3 pulses', '8 pulses', 'Enroule les épaules'];
+  const TEMPO_BEATS = { '1-1': 2, '2-2': 4, '3-1': 4, '1-3': 4, '4-4': 8, 'BB 2-2': 4, 'Pause': 4, '3 pulses': 4, '8 pulses': 8, 'Enroule les épaules': 4 };
+  /** Anciens tempos → nouveaux (31/10) */
+  const OLD_TEMPOS = { single: '1-1', '2/2': '2-2', '3/1': '3-1', '1/3': '1-3', '4/4': '4-4', pulses: '8 pulses' };
+  /** Tempo écrit à la nouvelle façon (les anciens sont convertis, '—' = aucun) */
+  function normTempo(tempo) {
+    const t = String(tempo == null ? '' : tempo).trim();
+    if (!t || t === '—' || t === '-') return '';
+    const k = t.toLowerCase();
+    if (OLD_TEMPOS[k]) return OLD_TEMPOS[k];
+    const hit = TEMPOS.find((x) => x.toLowerCase() === k);
+    return hit || t;
+  }
+  /** Temps par répétition ; sans tempo : null ; tempo inconnu : 4 */
+  function beatsPerRep(tempo) { const t = normTempo(tempo); if (!t) return null; return TEMPO_BEATS[t] || 4; }
 
   /** Ajoute une ligne à sa place (ordre chronologique ; sans heure = à la fin). Renvoie la nouvelle liste. */
   function insertLine(lines, line) {
@@ -753,7 +773,7 @@
       if (l.reps > 0) repDur = bpr && beat ? bpr * beat : (end - start) / l.reps;
       const repTimes = [];
       if (repDur) for (let k = 0; k < l.reps && start + k * repDur < end + 0.01; k++) repTimes.push(Math.round((start + k * repDur) * 1000) / 1000);
-      items.push({ id: l.id, kind: l.kind || 'move', name: l.name || (l.kind === 'pause' ? 'Pause' : 'Transition'), reps: l.reps || 0, tempo: l.tempo || '', note: l.note || '', start: Math.round(start * 1000) / 1000, end: Math.round(end * 1000) / 1000, repDur, repTimes, counted: !!repDur });
+      items.push({ id: l.id, kind: l.kind || 'move', name: l.name || (l.kind === 'pause' ? 'Pause' : 'Transition'), reps: l.reps || 0, tempo: normTempo(l.tempo), note: l.note || '', start: Math.round(start * 1000) / 1000, end: Math.round(end * 1000) / 1000, repDur, repTimes, counted: !!repDur });
     }
     return { mode, items };
   }
@@ -787,13 +807,83 @@
     for (const m of c.morceaux || []) {
       if (!Array.isArray(m.lines)) {
         m.lines = (m.segments || []).filter((s) => !(s.base === 'Pause' && !s.reps) && s.name).map((s) => ({
-          id: mkId ? mkId() : 'l' + Math.random().toString(36).slice(2, 9), kind: s.name === 'Pause' ? 'pause' : 'move', name: s.name, reps: s.reps || 0, tempo: TEMPOS.includes(s.tempo) ? s.tempo : (s.tempo || ''), note: '', t: s.start != null ? Math.round(s.start * 10) / 10 : null
+          id: mkId ? mkId() : 'l' + Math.random().toString(36).slice(2, 9), kind: s.name === 'Pause' ? 'pause' : 'move', name: s.name, reps: s.reps || 0, tempo: normTempo(s.tempo), note: '', t: s.start != null ? Math.round(s.start * 10) / 10 : null
         }));
         ch = true;
       }
     }
-    if (c.version !== 3) { c.version = 3; ch = true; }
+    if (!(c.version >= COURSE_VERSION)) {
+      // 31/10 (version 4) : nouveaux noms de mouvements et nouveaux tempos, une seule fois
+      const ren = RENAMES[c.style] || {};
+      for (const m of c.morceaux || []) {
+        for (const l of (m.lines || []).concat(m.segments || [])) {
+          if (l.name && ren[l.name]) { l.name = ren[l.name]; ch = true; }
+          if (l.base && ren[l.base]) { l.base = ren[l.base]; ch = true; }
+          if (l.tempo) { const t = normTempo(l.tempo); if (t !== l.tempo) { l.tempo = t; ch = true; } }
+        }
+      }
+      c.version = COURSE_VERSION; ch = true;
+    }
     return ch;
+  }
+  const COURSE_VERSION = 4;
+  /** Listes personnelles (vocabulaire, mouvements appris, mes mouvements, favoris) : anciens noms → nouveaux.
+      k = { vocab, prints, customMoves, favs } (modifiés sur place). Renvoie true si quelque chose a changé. */
+  function migrateMoveLists(k) {
+    let ch = false;
+    for (const style in RENAMES) {
+      const ren = RENAMES[style], to = (n) => (ren[n] || n);
+      const voc = k.vocab && k.vocab[style];
+      if (voc) {
+        for (const old in ren) if (Object.prototype.hasOwnProperty.call(voc, old)) {
+          const val = voc[old]; delete voc[old]; ch = true;
+          // il l'avait renommé lui-même : ce nom reste dans sa liste (rien n'est perdu)
+          if (val && val !== old && val !== ren[old]) { k.customMoves = k.customMoves || {}; const cm = k.customMoves[style] = k.customMoves[style] || []; if (!cm.includes(val)) cm.push(val); }
+        }
+        for (const key in voc) if (ren[voc[key]]) { voc[key] = ren[voc[key]]; ch = true; }
+      }
+      for (const p of k.prints || []) if (p && p.style === style && ren[p.name]) { p.name = ren[p.name]; ch = true; }
+      if (k.customMoves && Array.isArray(k.customMoves[style])) {
+        const a = k.customMoves[style], b = Array.from(new Set(a.map(to)));
+        if (b.join('\n') !== a.join('\n')) { k.customMoves[style] = b; ch = true; }
+      }
+      const fv = k.favs && k.favs[style];
+      if (fv) for (const n in fv) { const a = fv[n] || [], b = Array.from(new Set(a.map(to))); if (b.join('\n') !== a.join('\n')) { fv[n] = b; ch = true; } }
+    }
+    return ch;
+  }
+
+  /* ======================= 11. Favoris par numéro de morceau ======================= */
+  /** Numéro du morceau : celui en tête du titre (« 02 Squats ») sinon sa place dans l'édition */
+  function morceauNumber(m, morceaux) {
+    const lead = String((m && m.name) || '').match(/^\s*(\d{1,2})(?!\d)/);
+    if (lead && +lead[1] > 0) return +lead[1];
+    const vis = (morceaux || []).filter((x) => !x.lost);
+    const i = vis.indexOf(m);
+    return i >= 0 ? i + 1 : null;
+  }
+  const numLabel = (n) => (n == null ? '?' : String(n).padStart(2, '0'));
+  function getFavs(favs, style, n) { const a = favs && favs[style] && favs[style][n]; return Array.isArray(a) ? a.slice() : []; }
+  function setFavs(favs, style, n, list) {
+    favs[style] = favs[style] || {};
+    const a = Array.from(new Set((list || []).filter(Boolean)));
+    if (a.length) favs[style][n] = a; else delete favs[style][n];
+    return favs;
+  }
+  /** Boutons de mouvements : main = en gros (favoris, ou les boutons rapides du style, ou les premiers), rest = dans « ▼ Tous ».
+      o = { all (tous les noms), quick (ordre par défaut ou null), favs (favoris du morceau), first (nombre si pas de liste rapide) } */
+  function moveButtons(o) {
+    const all = o.all || [], quick = o.quick || null, fav = o.favs || [];
+    const order = Array.from(new Set((quick || []).concat(all)));
+    let main;
+    if (fav.length) {
+      const f = new Set(fav);
+      main = order.filter((n) => f.has(n)).concat(fav.filter((n) => !order.includes(n)));
+    } else if (quick && quick.length) main = quick.slice();
+    else main = all.slice(0, o.first || 12);
+    const ms = new Set(main);
+    const rest = order.filter((n) => !ms.has(n));
+    return { main, rest, total: main.length + rest.length, fav: fav.length > 0 };
   }
   /** Mouvements les plus utilisés d'un style (dans toutes les éditions), du plus au moins utilisé */
   function topMoves(courses, style) {
@@ -801,16 +891,17 @@
     for (const c of courses) if (c.style === style) for (const m of c.morceaux || []) for (const l of m.lines || []) if (l.kind !== 'pause' && l.kind !== 'trans' && l.name) n[l.name] = (n[l.name] || 0) + 1;
     return Object.keys(n).sort((a, b) => n[b] - n[a] || a.localeCompare(b)).map((k) => ({ name: k, n: n[k] }));
   }
-  /** Ligne lisible : « 1. Squat × 16 (2/2) » */
+  /** Ligne lisible : « 1. Squat × 16 (2-2) » */
   function lineText(l, i) {
     const nm = l.kind === 'pause' ? (l.name || 'Pause') : l.kind === 'trans' ? (l.name || 'Transition') : l.name;
-    return segLine({ name: nm, reps: l.reps, tempo: l.tempo && l.tempo !== '—' ? l.tempo : '', note: l.note }, i);
+    return segLine({ name: nm, reps: l.reps, tempo: normTempo(l.tempo), note: l.note }, i);
   }
   /** Recherche simple (sans accents ni majuscules) */
   function norm(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
 
   return {
-    smooth, quantile, MOVES, STYLES, fft, AudioFeatureStream, audioFeaturesFromPCM, prepareVideo, alignMusic, silenceCuts,
+    smooth, quantile, MOVES, STYLES, QUICK, RENAMES, TEMPO_BEATS, OLD_TEMPOS, normTempo, COURSE_VERSION, migrateMoveLists,
+    morceauNumber, numLabel, getFavs, setFavs, moveButtons, fft, AudioFeatureStream, audioFeaturesFromPCM, prepareVideo, alignMusic, silenceCuts,
     prepareVideo2, findMusic, placeMusics, verifyChunks, sliceFeat, cutSongs, trackNumber, proposeMusics,
     firstBeat, makeSync, musicToVideo, videoToMusic, trimSilence, estimateBPM, segLine, fmtTime, playState, ASR, AHOP,
     TEMPOS, beatsPerRep, insertLine, sortLines, moveLine, dupLine, pasteBlock, lineDur, buildTimeline,

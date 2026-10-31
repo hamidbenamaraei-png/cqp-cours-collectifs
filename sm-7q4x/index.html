@@ -128,6 +128,13 @@ select{max-width:100%;text-overflow:ellipsis}
 .mvchips button{min-height:52px;border-radius:16px;border:2px solid var(--or);background:#3a2a22;color:#fff;font:inherit;font-weight:800;font-size:15px;cursor:pointer;padding:4px 6px;line-height:1.15;overflow-wrap:normal;word-break:normal;hyphens:manual}
 .mvchips.small4 button{border-color:var(--line);background:var(--card2);font-size:14px;min-height:46px}
 .mvchips button:active{background:var(--or);color:#1b1206}
+.mvchips.small4 button.wide{grid-column:span 4}
+.favline{margin:0 0 6px;font-size:13px;font-weight:700;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.favhelp{margin:0 0 8px;padding:8px 10px}
+.mvchips.favpick button{border-color:var(--line);background:var(--card2);color:var(--soft,#cfd3e6)}
+.mvchips.favpick button.fav{border-color:var(--ja);background:#3b3216;color:#fff}
+.mvchips.favpick button:active{background:#3b3216;color:#fff}
+.mvchips.favpick .st{font-size:17px}
 .whead{display:flex;align-items:center;gap:10px;justify-content:space-between;flex-wrap:wrap;margin:0 0 8px}
 .whead b{flex:1 1 180px;min-width:0}
 .wbtn{width:auto!important;flex:0 0 auto;margin:0!important}
@@ -138,6 +145,9 @@ select{max-width:100%;text-overflow:ellipsis}
 .kgrid button{min-height:48px;border-radius:12px;border:2px solid var(--line);background:#11162c;color:#fff;font:inherit;font-weight:800;font-size:17px;cursor:pointer;padding:2px;white-space:nowrap}
 .kgrid button.on{border-color:var(--or);background:#3a2a22;color:var(--or2)}
 .kgrid button.val{color:var(--or);font-size:20px}
+.kgrid.ktempo button{font-size:15px;white-space:normal;line-height:1.1;padding:2px 4px}
+.kgrid.ktempo button.wide{grid-column:span 2}
+.kgrid.ktempo button.note{grid-column:span 4;min-height:42px}
 .lx{border:0;background:transparent;color:var(--mute);font-size:16px;cursor:pointer;padding:0 6px}
 .lrow{background:var(--card2);border:2px solid var(--line);border-radius:14px;padding:8px 10px;margin:0 0 8px;cursor:pointer}
 .lrow.on{border-color:var(--or)}.lrow.pick{border-color:var(--ja);background:#3b3216}.lrow.pz{opacity:.8}
@@ -174,8 +184,8 @@ select{max-width:100%;text-overflow:ellipsis}
 <body>
 <div id="app"><p class="soft" style="margin-top:40px;text-align:center">Chargement…</p></div>
 <div id="print"></div>
-<script src="core.js?v=7"></script>
-<script src="mp4.js?v=7"></script>
-<script src="app.js?v=7"></script>
+<script src="core.js?v=8"></script>
+<script src="mp4.js?v=8"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>
