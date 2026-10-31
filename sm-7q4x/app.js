@@ -53,8 +53,13 @@
 
   /* ======================= Petits outils d'écran ======================= */
   let acts = {};
+  // 31/10 : on reste à la même place quand on revalide un écran (même titre) ; on remonte en haut seulement en changeant d'écran
+  let lastScreen = null;
   function render(html, actions) {
-    app.innerHTML = html; acts = actions || {}; window.scrollTo(0, 0);
+    const key = ((html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/) || [])[1] || '').replace(/<[^>]+>/g, '').trim();
+    const y = window.scrollY, same = key && key === lastScreen;
+    app.innerHTML = html; acts = actions || {}; lastScreen = key;
+    if (same) { window.scrollTo(0, y); requestAnimationFrame(() => window.scrollTo(0, y)); } else window.scrollTo(0, 0);
   }
   app.addEventListener('click', (e) => {
     const b = e.target.closest('[data-act]'); if (!b || !app.contains(b)) return;
