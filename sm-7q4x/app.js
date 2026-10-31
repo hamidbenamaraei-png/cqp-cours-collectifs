@@ -16,7 +16,8 @@
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   const fmt = C.fmtTime;
   const fmtDur = (s) => { s = Math.max(0, Math.round(s)); if (s < 60) return s + ' s'; const m = Math.round(s / 60); if (m < 60) return m + ' min'; return Math.floor(m / 60) + ' h ' + String(m % 60).padStart(2, '0'); };
-  const S = { videoFile: null, videoURL: null, settings: { fps: 8, model: 'lite', numPoses: 5 }, vocab: {}, prints: [] };
+  const DEF_SET = { quality: 'precis', numPoses: 6 };
+  const S = { videoFile: null, videoURL: null, settings: Object.assign({}, DEF_SET), vocab: {}, prints: [] };
   window.SM = S; // pour les tests
 
   /* ======================= Base de données (IndexedDB) ======================= */
@@ -42,7 +43,9 @@
   const dall = (st) => tx(st, 'readonly', (s) => s.getAll());
   const saveCourse = (c) => dput('courses', c);
   async function loadKV() {
-    S.settings = Object.assign({ fps: 8, model: 'lite', numPoses: 5 }, (await dget('kv', 'settings')) || {});
+    S.settings = Object.assign({}, DEF_SET, (await dget('kv', 'settings')) || {});
+    if (!(S.settings.numPoses >= 6)) S.settings.numPoses = 6; // petites personnes : on en cherche au moins 6
+    if (!S.settings.quality) S.settings.quality = 'precis';
     S.vocab = (await dget('kv', 'vocab')) || {};
     S.prints = (await dget('kv', 'prints')) || [];
   }
@@ -189,7 +192,7 @@
     };
     render('<div class="logo"><img src="icon-192.png" alt=""><div><b>ScriptMove</b><span>Tes chorés en script</span></div></div>' +
       '<button class="btn" data-act="new">➕ Nouveau cours</button>' +
-      (courses.length ? '<h2 style="margin-top:18px">Mes cours</h2>' + courses.map(card).join('') : '<div class="card o"><h3>Bienvenue Hamid 👋</h3><p class="soft">Choisis une vidéo de cours : l\'appli regarde le prof et écrit le script (mouvements + répétitions). Tout reste dans ton téléphone.</p><p class="soft small">Conseil pour le 1er essai : un seul morceau.</p></div>') +
+      (courses.length ? '<h2 style="margin-top:18px">Mes cours</h2>' + courses.map(card).join('') : '<div class="card o"><h3>Bienvenue Hamid 👋</h3><p class="soft">Choisis une vidéo de cours : l\'appli regarde le groupe (ou une seule personne) et écrit le script (mouvements + répétitions). Tout reste dans ton téléphone.</p><p class="soft small">Conseil pour le 1er essai : un seul morceau.</p></div>') +
       '<div style="height:10px"></div><div class="row"><button class="btn sec" data-act="moves">📚 Mes mouvements</button><button class="btn sec" data-act="set">⚙️ Réglages</button></div>' +
       '<div class="row"><button class="btn sec" data-act="save">💾 Sauvegarder mes scripts</button><button class="btn sec" data-act="restore">📂 Restaurer</button></div>',
     { new: () => scrNew(), open: (b) => scrCourse(b.dataset.id), moves: () => scrMoves('pump'), set: () => scrSettings(), save: () => doBackup(), restore: () => doRestore() });
@@ -312,7 +315,88 @@
   async function musicFeatures(m) {
     const buf = await decodeSmall(await m.blob.arrayBuffer());
     const feat = C.audioFeaturesFromPCM(buf.data, buf.rate);
-    return { feat, duration: buf.duration };
+    const tr = C.trimSilence(feat);
+    const bpm = C.estimateBPM(C.sliceFeat(feat, tr.start + 15, Math.min(tr.end, tr.start + 150))) || C.estimateBPM(feat);
+    return { feat, duration: buf.duration, bpm, attack: C.firstBeat(feat, tr.start, tr.start + 30, bpm), trim: tr };
+  }
+  /** Tempo de la vidéo sur un morceau (musique de la salle) */
+  function videoBpm(feat, a, b) { const s = a + Math.min(20, (b - a) * 0.15), e = Math.min(b - 5, s + 120); return e - s > 20 ? C.estimateBPM(C.sliceFeat(feat, s, e)) : null; }
+  /** Calage « au rythme » d'une musique qui n'est pas exactement celle de la vidéo */
+  function tempoSync(feat, mo, mu) {
+    const vb = mo.bpm || (feat ? videoBpm(feat, mo.start, mo.end) : null);
+    const va = feat ? C.firstBeat(feat, mo.start, Math.min(mo.end, mo.start + 30), vb) : mo.start;
+    const sy = C.makeSync({ vAttack: va, vBpm: vb, mAttack: mu.attack || 0, mBpm: mu.bpm });
+    sy.musicId = mu.id; return sy;
+  }
+  /** Lien musique ↔ vidéo d'un morceau (null s'il n'y a pas de musique) */
+  function syncOf(m) {
+    if (!m.musicId) return null;
+    if (m.sync && (!m.sync.musicId || m.sync.musicId === m.musicId)) return m.sync;
+    if (m.offset != null && !m.alignMode) return { mode: 'sure', v0: m.offset, a0: 0, ratio: 1, vTop: m.offset }; // ancien cours
+    return null;
+  }
+
+  /** Découpage automatique : musiques retrouvées sûrement + blancs entre morceaux + proposition des musiques.
+      Renvoie la liste des morceaux. ui = {title(t), bar(f), msg(t)} */
+  async function autoCut(c, feat, mids, ui) {
+    const dur = c.video.duration;
+    const infos = [];
+    for (const id of mids) {
+      const mu = await dget('musics', id); if (!mu) continue;
+      ui.msg('Je lis ta musique : ' + mu.name); await sleep(10);
+      try {
+        const r = await musicFeatures(mu);
+        mu.duration = r.duration; mu.bpm = r.bpm; mu.attack = r.attack; mu.len = r.trim.end - r.trim.start; await dput('musics', mu);
+        infos.push({ mu, feat: r.feat });
+      } catch (e) { infos.push({ mu, err: true }); }
+    }
+    const items = [];
+    if (feat && infos.some((x) => !x.err)) {
+      ui.title('Je cherche tes musiques dans la vidéo…'); ui.bar(0);
+      const maxM = Math.max(10, ...infos.filter((x) => !x.err).map((x) => x.feat.n));
+      const vp = C.prepareVideo2(feat, maxM);
+      let k = 0;
+      for (const x of infos) {
+        k++; ui.bar(k / infos.length); ui.msg('Musique ' + k + ' / ' + infos.length + ' : ' + x.mu.name); await sleep(20);
+        if (x.err) continue;
+        const res = C.findMusic(vp, x.feat);
+        items.push({ id: x.mu.id, res });
+      }
+    }
+    const placed = C.placeMusics(items);
+    const segs = placed.map((p) => ({ start: Math.max(0, p.res.start), end: Math.min(dur, p.res.end), musicId: p.id, res: p.res }));
+    if (feat) {
+      ui.title('Je découpe la vidéo en morceaux…'); ui.msg('Je cherche les blancs entre les musiques.'); await sleep(20);
+      const cs = C.cutSongs(feat, { expected: infos.length || 0, minSong: 100 });
+      for (const pc of cs.pieces) {
+        // on garde la plus grande partie libre (pas déjà prise par une musique retrouvée)
+        let parts = [[pc.start, pc.end]];
+        for (const g of segs.filter((x) => x.musicId)) parts = parts.flatMap(([a, b]) => (g.end <= a || g.start >= b ? [[a, b]] : [[a, Math.min(b, g.start)], [Math.max(a, g.end), b]].filter(([x, y]) => y - x > 1)));
+        parts.sort((p, q) => (q[1] - q[0]) - (p[1] - p[0]));
+        if (parts[0] && parts[0][1] - parts[0][0] >= 60) segs.push({ start: parts[0][0], end: parts[0][1] });
+      }
+    } else if (!segs.length) segs.push({ start: 0, end: dur });
+    segs.sort((a, b) => a.start - b.start);
+    if (feat) segs.forEach((g) => { g.bpm = g.res ? null : videoBpm(feat, g.start, g.end); });
+    const mlist = infos.filter((x) => !x.err).map((x) => ({ id: x.mu.id, name: x.mu.name, duration: x.mu.len || x.mu.duration, bpm: x.mu.bpm }));
+    const prop = C.proposeMusics(segs, mlist);
+    const byId = {}; for (const x of infos) byId[x.mu.id] = x.mu;
+    const morceaux = segs.map((g, i) => {
+      if (g.res) {
+        const mu = byId[g.musicId];
+        const mo = newMorceau(mu.name, g.start, g.end, g.musicId, g.res.offset, g.res.conf, false);
+        mo.alignMode = 'sure'; mo.sync = { mode: 'sure', v0: g.res.offset, a0: 0, ratio: g.res.ratio, vTop: g.res.offset + (mu.attack || 0) * g.res.ratio, musicId: mu.id };
+        return mo;
+      }
+      const p = prop[i], mu = p && p.musicId ? byId[p.musicId] : null;
+      const mo = newMorceau(mu ? mu.name : 'Morceau ' + (i + 1), g.start, g.end, mu ? mu.id : null, null, 0, false);
+      mo.bpm = g.bpm || null; mo.autoName = true;
+      if (mu) { mo.alignMode = 'proposed'; mo.proposedSure = !!p.sure; mo.sync = tempoSync(feat, mo, mu); }
+      return mo;
+    });
+    const used = new Set(morceaux.map((x) => x.musicId).filter(Boolean));
+    for (const x of infos) if (!used.has(x.mu.id)) { const lo = newMorceau(x.mu.name, 0, 0, x.mu.id, null, 0, true); lo.why = x.err ? 'illisible' : 'absente'; morceaux.push(lo); }
+    return morceaux;
   }
 
   /** Étape « préparation » : lecture du son, recherche des musiques, découpage */
@@ -321,49 +405,65 @@
     render('<div class="top"><h1>Préparation</h1></div><div class="card o"><h2 id="pt">J\'écoute le son de la vidéo…</h2><div class="bar"><i id="pb"></i></div><p class="soft" id="pm" style="margin-top:10px">Ça prend environ 1 à 3 minutes pour 1 h de vidéo.</p></div><button class="btn sec" data-act="stop">Passer (je découperai à la main)</button>',
       { stop: () => { cancelled = true; } });
     S.wantAwake = true; keepAwake(true);
-    const bar = (f) => { const b = $('#pb'); if (b) b.style.width = Math.round(f * 100) + '%'; };
+    const ui = { bar: (f) => { const b = $('#pb'); if (b) b.style.width = Math.round(f * 100) + '%'; }, title: (t) => { const e = $('#pt'); if (e) e.textContent = t; }, msg: (t) => { const e = $('#pm'); if (e) e.textContent = t; } };
     let feat = null;
-    try { feat = await readVideoAudio(S.videoFile, bar, () => cancelled); } catch (e) { feat = null; }
-    const dur = c.video.duration;
+    try { feat = await readVideoAudio(S.videoFile, ui.bar, () => cancelled); } catch (e) { feat = null; }
     if (feat) { await dput('data', feat, 'af:' + c.id); c.audio = 'ok'; } else c.audio = 'none';
     const mids = c.pendingMusics || []; delete c.pendingMusics;
-    const morceaux = [];
-    if (feat && mids.length) {
-      $('#pt').textContent = 'Je cherche tes musiques dans la vidéo…'; bar(0);
-      const infos = [];
-      for (const id of mids) { const m = await dget('musics', id); try { const r = await musicFeatures(m); infos.push({ m, ...r }); } catch (e) { infos.push({ m, err: true }); } }
-      const maxM = Math.max(10, ...infos.filter((x) => !x.err).map((x) => x.feat.n));
-      const prep = C.prepareVideo(feat, maxM + 10);
-      let k = 0;
-      for (const x of infos) {
-        k++; bar(k / infos.length); $('#pm').textContent = 'Musique ' + k + ' / ' + infos.length + ' : ' + x.m.name; await sleep(20);
-        if (x.err) { morceaux.push(newMorceau(x.m.name, 0, 0, x.m.id, null, 0, true)); continue; }
-        const al = C.alignMusic(prep, x.feat);
-        const tr = C.trimSilence(x.feat);
-        x.m.duration = x.duration; x.m.bpm = C.estimateBPM(x.feat); await dput('musics', x.m);
-        if (!al) { morceaux.push(newMorceau(x.m.name, 0, 0, x.m.id, null, 0, true)); continue; }
-        const mo = newMorceau(x.m.name, Math.max(0, al.offset + tr.start), Math.min(dur, al.offset + tr.end), x.m.id, al.offset, al.conf, false);
-        if (mo.end - mo.start < 10) mo.lost = true; // la musique n'est pas (ou presque pas) dans la vidéo
-        mo.bpm = x.m.bpm; morceaux.push(mo);
-      }
-      morceaux.sort((a, b) => (a.lost ? 1e9 : a.start) - (b.lost ? 1e9 : b.start));
-    } else if (feat) {
-      const cuts = C.silenceCuts(feat, { minSong: 90 }).map((x) => x.t);
-      const pts = [0].concat(cuts, [dur]);
-      for (let i = 0; i + 1 < pts.length; i++) morceaux.push(newMorceau('Morceau ' + (i + 1), pts[i], pts[i + 1]));
-      if (mids.length === 0 && morceaux.length) { /* rien */ }
-    } else {
-      morceaux.push(newMorceau('Morceau 1', 0, dur));
-      for (const id of mids) { const m = await dget('musics', id); morceaux.push(newMorceau(m.name, 0, 0, id, null, 0, true)); }
-    }
-    c.morceaux = morceaux.map((m, i) => { if (!m.lost && /^Morceau \d+$/.test(m.name)) m.name = 'Morceau ' + (i + 1); return m; });
+    c.musicIds = mids;
+    let morceaux;
+    try { morceaux = await autoCut(c, cancelled ? null : feat, mids, ui); } catch (e) { console.error(e); morceaux = [newMorceau('Morceau 1', 0, c.video.duration)]; }
+    c.morceaux = morceaux; c.cutVersion = 2;
     await saveCourse(c);
     S.wantAwake = false; keepAwake(false);
     if (!feat) toast(cancelled ? 'D\'accord, découpe à la main.' : 'Je n\'arrive pas à lire le son : découpe à la main.', 4000);
     scrCut(c.id);
   }
   function newMorceau(name, start, end, musicId, offset, conf, lost) {
-    return { id: uid(), name, start: Math.round(start * 10) / 10, end: Math.round(end * 10) / 10, musicId: musicId || null, offset: offset == null ? null : offset, alignConf: conf || 0, shift: 0, bpm: null, status: 'todo', progressT: null, segments: [], lost: !!lost };
+    return { id: uid(), name, start: Math.round(start * 10) / 10, end: Math.round(end * 10) / 10, musicId: musicId || null, offset: offset == null ? null : offset, alignConf: conf || 0, shift: 0, bpm: null, status: 'todo', progressT: null, segments: [], lost: !!lost, sync: null, alignMode: null };
+  }
+  /** Musiques du cours (dans l'ordre où elles ont été ajoutées) */
+  function courseMusicIds(c) {
+    const ids = (c.musicIds || []).slice();
+    for (const m of c.morceaux) if (m.musicId && !ids.includes(m.musicId)) ids.push(m.musicId);
+    return ids;
+  }
+  /** Ancien découpage (musiques placées par l'ancienne méthode) ? */
+  const oldCut = (c) => !c.cutVersion && c.morceaux.some((m) => m.musicId);
+
+  /** Refaire le découpage d'un cours existant, sans tout recommencer (vidéo, musiques et nom gardés) */
+  async function redoCut(c) {
+    const done = c.morceaux.filter((m) => !m.lost && (m.status === 'done' || m.status === 'partial')).length;
+    const r = await ask('Refaire le découpage ?', 'Je retrouve les morceaux avec la nouvelle méthode (les musiques ne sont plus jamais placées au hasard). Tes musiques, ta vidéo et le nom du cours sont gardés.' + (done ? '<br><b>' + done + ' morceau(x) déjà analysé(s)</b> : ceux dont les limites ne changent pas sont gardés, les autres seront à analyser à nouveau.' : ''), [{ label: '🔁 Oui, refaire', value: 1 }, { label: 'Non', value: 0, cls: 'sec' }]);
+    if (!r) return;
+    let feat = await dget('data', 'af:' + c.id);
+    if (!feat) {
+      if (!S.videoFile || S.videoFile.size !== c.video.size) {
+        const q = await ask('Choisis la vidéo', 'Pour écouter le son, choisis à nouveau la vidéo du cours <b>' + esc(c.video.name) + '</b>.', [{ label: '🎬 Choisir la vidéo', value: 1 }, { label: 'Annuler', value: 0, cls: 'sec' }]);
+        if (!q || !(await chooseVideoAgain(c))) return;
+      }
+    }
+    render('<div class="top"><h1>Nouveau découpage</h1></div><div class="card o"><h2 id="pt">Un instant…</h2><div class="bar"><i id="pb"></i></div><p class="soft" id="pm" style="margin-top:10px"></p></div>');
+    S.wantAwake = true; keepAwake(true);
+    const ui = { bar: (f) => { const b = $('#pb'); if (b) b.style.width = Math.round(f * 100) + '%'; }, title: (t) => { const e = $('#pt'); if (e) e.textContent = t; }, msg: (t) => { const e = $('#pm'); if (e) e.textContent = t; } };
+    if (!feat) { ui.title('J\'écoute le son de la vidéo…'); try { feat = await readVideoAudio(S.videoFile, ui.bar, () => false); } catch (e) { feat = null; } if (feat) { await dput('data', feat, 'af:' + c.id); c.audio = 'ok'; } }
+    let ms;
+    try { ms = await autoCut(c, feat, courseMusicIds(c), ui); } catch (e) { console.error(e); S.wantAwake = false; keepAwake(false); toast('Le découpage n\'a pas marché. Ton cours n\'a pas été modifié.', 4000); return scrCourse(c.id); }
+    // garder les analyses des morceaux qui n'ont pas bougé
+    const old = c.morceaux.filter((m) => !m.lost); const kept = new Set();
+    ms = ms.map((n) => {
+      if (n.lost) return n;
+      const o = old.find((x) => !kept.has(x.id) && (x.status === 'done' || x.status === 'partial') && Math.abs(x.start - n.start) < 3 && Math.abs(x.end - n.end) < 3);
+      if (!o) return n;
+      kept.add(o.id);
+      return Object.assign({}, n, { id: o.id, start: o.start, end: o.end, status: o.status, segments: o.segments, track: o.track, progressT: o.progressT, group: o.group, shift: o.shift || 0 });
+    });
+    for (const o of c.morceaux) if (!kept.has(o.id)) { await ddel('data', 'po:' + o.id); await ddel('data', 'th:' + o.id); }
+    c.musicIds = courseMusicIds(c); c.morceaux = ms; c.cutVersion = 2;
+    await saveCourse(c);
+    S.wantAwake = false; keepAwake(false);
+    toast('Nouveau découpage ✅ Vérifie les morceaux.', 3000);
+    scrCut(c.id);
   }
 
   /* ======================= Découpage ======================= */
@@ -372,23 +472,37 @@
     const musics = {}; for (const m of await dall('musics')) musics[m.id] = m;
     const hasVid = !!(S.videoFile && S.videoFile.size === c.video.size);
     const vtime = () => { const v = $('#cutvid'); return v ? v.currentTime : 0; };
+    const mids = courseMusicIds(c);
     const draw = () => {
       const lost = c.morceaux.filter((m) => m.lost);
       const ms = c.morceaux.filter((m) => !m.lost);
+      const nSure = ms.filter((m) => m.alignMode === 'sure').length;
+      const nProp = ms.filter((m) => m.alignMode === 'proposed').length;
+      const usedIds = new Set(ms.map((m) => m.musicId).filter(Boolean));
+      const musicLine = (m) => {
+        if (!mids.length) return '';
+        const mu = m.musicId && musics[m.musicId];
+        if (m.alignMode === 'sure') return '<p class="small soft">🎵 ' + esc(mu ? mu.name : '?') + ' <span class="badge ok">✅ retrouvée</span></p>';
+        const opts = '<option value="">— aucune musique —</option>' + mids.filter((id) => musics[id]).map((id) => '<option value="' + id + '"' + (id === m.musicId ? ' selected' : '') + '>' + esc(musics[id].name) + (usedIds.has(id) && id !== m.musicId ? ' (déjà prise)' : '') + '</option>').join('');
+        const badge = !m.alignMode && m.musicId ? '<span class="badge q wrap">placée par l\'ancienne méthode : pas sûr</span>' : m.alignMode === 'proposed' ? '<span class="badge wait wrap">❓ musique pas retrouvée dans la vidéo : proposée' + (m.proposedSure ? ' (probable)' : ', vérifie') + '</span>' : m.alignMode === 'manual' ? '<span class="badge ok wrap">choisie par toi</span>' : '';
+        return '<label class="lab small" style="margin-top:4px">🎵 Ta musique pour ce morceau</label>' + (badge ? '<p style="margin:0 0 6px">' + badge + '</p>' : '') + '<select data-mus="' + m.id + '">' + opts + '</select>';
+      };
       render('<div class="top"><button class="back" data-act="back">‹</button><h1>Les morceaux</h1></div>' +
+        (oldCut(c) ? '<div class="card r"><h3>⚠️ Ancien découpage</h3><p class="soft small">Ce cours a été découpé avec l\'ancienne méthode : des musiques ont pu être placées n\'importe où. Refais le découpage (vidéo, musiques et nom gardés).</p><button class="btn" data-act="redo">🔁 Refaire le découpage</button></div>' :
+        mids.length ? '<div class="card ' + (nSure === ms.length ? 'g' : 'j') + ' small">' + (nSure ? '✅ <b>' + nSure + ' musique(s) retrouvée(s)</b> dans la vidéo.<br>' : '') +
+          (nSure < mids.length ? '❓ <b>' + (mids.length - nSure) + ' musique(s) pas retrouvée(s) dans la vidéo</b> (souvent : une autre version, un autre mix). Je n\'en place jamais une au hasard : ' + (nProp ? 'pour chaque morceau, je te propose la plus probable (numéro, durée, tempo). <b>Vérifie avec la liste</b>.' : 'choisis-la dans la liste de chaque morceau.') : '') + '</div>' : '') +
         (hasVid ? '<div class="vidbox"><video id="cutvid" src="' + S.videoURL + '" controls playsinline preload="metadata"></video></div><p class="mute">Regarde la vidéo pour vérifier. « ✂️ Couper ici » coupe à l\'endroit où est la vidéo.</p><button class="btn sec" data-act="cut">✂️ Couper ici (' + '<span id="vt">0:00</span>)</button>' : '<div class="card j small">Pour voir la vidéo ici, choisis-la à nouveau (la même). <button class="btn sec small" data-act="revid" style="margin-top:8px">🎬 Choisir la vidéo</button></div>') +
         ms.map((m, i) => {
-          const mu = m.musicId && musics[m.musicId];
-          return '<div class="card mrc ' + (m.alignConf && m.alignConf < 0.25 ? 'j' : 'o') + '"><div class="head"><h2>Morceau ' + (i + 1) + '</h2><button class="btn sec small" style="width:auto;flex:0 0 auto;margin:0" data-act="ren" data-id="' + m.id + '">✏️ Nom</button></div>' +
-            '<p style="margin:0 0 6px"><b>' + esc(m.name) + '</b></p>' +
-            (mu ? '<p class="small soft">🎵 ' + esc(mu.name) + (m.alignConf < 0.25 ? ' <span class="badge wait">pas sûr, vérifie</span>' : ' <span class="badge ok">retrouvée</span>') + '</p>' : '') +
+          return '<div class="card mrc ' + (m.alignMode === 'proposed' && !m.proposedSure ? 'j' : 'o') + '"><div class="head"><h2>Morceau ' + (i + 1) + '</h2><button class="btn sec small" style="width:auto;flex:0 0 auto;margin:0" data-act="ren" data-id="' + m.id + '">✏️ Nom</button></div>' +
+            '<p style="margin:0 0 6px"><b>' + esc(m.name) + '</b> <span class="mute">(' + fmtDur(m.end - m.start) + ')</span></p>' +
+            musicLine(m) +
             '<p class="tline"><span class="mute">Début</span> <b>' + fmt(m.start) + '</b></p><div class="times"><button data-act="mv" data-id="' + m.id + '" data-w="start" data-d="-5">−5</button><button data-act="mv" data-id="' + m.id + '" data-w="start" data-d="-1">−1</button><button data-act="mv" data-id="' + m.id + '" data-w="start" data-d="1">+1</button><button data-act="mv" data-id="' + m.id + '" data-w="start" data-d="5">+5</button>' + (hasVid ? '<button data-act="see" data-t="' + m.start + '">▶️</button>' : '') + '</div>' +
             '<p class="tline"><span class="mute">Fin</span> <b>' + fmt(m.end) + '</b></p><div class="times"><button data-act="mv" data-id="' + m.id + '" data-w="end" data-d="-5">−5</button><button data-act="mv" data-id="' + m.id + '" data-w="end" data-d="-1">−1</button><button data-act="mv" data-id="' + m.id + '" data-w="end" data-d="1">+1</button><button data-act="mv" data-id="' + m.id + '" data-w="end" data-d="5">+5</button>' + (hasVid ? '<button data-act="see" data-t="' + Math.max(0, m.end - 5) + '">▶️</button>' : '') + '</div>' +
             '<div class="row tight" style="margin-top:8px">' + (i + 1 < ms.length ? '<button class="btn sec small" data-act="fuse" data-id="' + m.id + '">🔗 Fusionner avec le suivant</button>' : '') + '<button class="btn sec small" data-act="del" data-id="' + m.id + '">🗑️ Retirer</button></div></div>';
         }).join('') +
-        (lost.length ? '<div class="card r"><h3>Musiques pas retrouvées</h3><p class="soft small">Elles ne semblent pas être dans la vidéo. Tu peux les lier à un morceau plus tard (bouton 🎵 dans le cours).</p>' + lost.map((m) => '<p>🎵 ' + esc(m.name) + '</p>').join('') + '</div>' : '') +
-        (hasVid ? '' : '') +
-        '<button class="btn" data-act="ok">✅ C\'est bon</button>',
+        (lost.length ? '<div class="card r"><h3>❓ Musiques pas retrouvées dans la vidéo</h3><p class="soft small">Elles ne sont liées à aucun morceau. Tu peux en choisir une dans la liste d\'un morceau ci-dessus.</p>' + lost.map((m) => '<p>🎵 ' + esc(m.name) + '</p>').join('') + '</div>' : '') +
+        '<button class="btn" data-act="ok">✅ C\'est bon</button>' +
+        (mids.length || c.audio === 'ok' ? '<button class="btn ghost small" data-act="redo">🔁 Refaire le découpage automatique</button>' : ''),
       {
         back: () => scrCourse(c.id),
         revid: async () => { await chooseVideoAgain(c); scrCut(cid); },
@@ -410,16 +524,32 @@
         },
         fuse: async (b) => {
           const ms2 = c.morceaux.filter((x) => !x.lost); const i = ms2.findIndex((x) => x.id === b.dataset.id); const A = ms2[i], B = ms2[i + 1]; if (!B) return;
-          A.end = B.end; A.status = 'todo'; A.segments = []; if (!A.musicId && B.musicId) { A.musicId = B.musicId; A.offset = B.offset; }
+          A.end = B.end; A.status = 'todo'; A.segments = []; if (!A.musicId && B.musicId) { A.musicId = B.musicId; A.offset = B.offset; A.sync = B.sync; A.alignMode = B.alignMode; }
           c.morceaux.splice(c.morceaux.indexOf(B), 1); await saveCourse(c); draw();
         },
         del: async (b) => {
           const r = await ask('Retirer ce morceau ?', 'Il ne sera pas analysé (la vidéo n\'est pas touchée).', [{ label: 'Oui, retirer', value: 1, cls: 'red' }, { label: 'Non', value: 0, cls: 'sec' }]);
           if (!r) return; c.morceaux = c.morceaux.filter((x) => x.id !== b.dataset.id); await saveCourse(c); draw();
         },
-        ok: () => scrCourse(c.id)
+        ok: () => scrCourse(c.id),
+        redo: () => redoCut(c)
       });
       const v = $('#cutvid'); if (v) v.addEventListener('timeupdate', () => { const e = $('#vt'); if (e) e.textContent = fmt(v.currentTime); });
+      app.querySelectorAll('select[data-mus]').forEach((sel) => sel.addEventListener('change', async () => {
+        const m = c.morceaux.find((x) => x.id === sel.dataset.mus); if (!m) return;
+        const id = sel.value || null;
+        // la musique était liée ailleurs (ou « pas retrouvée ») : on la retire de là
+        c.morceaux = c.morceaux.filter((x) => !(x.lost && x.musicId === id));
+        if (id) for (const x of c.morceaux) if (x !== m && !x.lost && x.musicId === id && x.alignMode !== 'sure') { x.musicId = null; x.sync = null; x.alignMode = null; }
+        const prevId = m.musicId;
+        m.musicId = id; m.alignMode = id ? 'manual' : null; m.offset = null; m.shift = 0;
+        if (m.autoName || (prevId && musics[prevId] && m.name === musics[prevId].name)) { m.name = id ? musics[id].name : 'Morceau'; m.autoName = true; }
+        const feat = await dget('data', 'af:' + c.id);
+        m.sync = id ? tempoSync(feat, m, musics[id]) : null;
+        if (prevId && prevId !== id && !c.morceaux.some((x) => x.musicId === prevId)) { const lo = newMorceau(musics[prevId].name, 0, 0, prevId, null, 0, true); lo.why = 'absente'; c.morceaux.push(lo); }
+        await saveCourse(c); const y = window.scrollY; draw(); window.scrollTo(0, y);
+        toast(id ? 'Musique choisie ✅' : 'Plus de musique pour ce morceau.');
+      }));
     };
     draw();
   }
@@ -442,10 +572,11 @@
     const left = ms.filter((m) => m.status !== 'done');
     render('<div class="top"><button class="back" data-act="back">‹</button><h1>' + esc(c.name) + '</h1></div>' +
       '<p class="mute">' + styleName(c.style) + (STYLE_INFO[c.style] && STYLE_INFO[c.style].test ? ' (en test)' : '') + ' · ' + fmt(c.video.duration) + ' · ' + esc(c.video.name) + '</p>' +
+      (oldCut(c) ? '<div class="card r"><h3>⚠️ Découpage à refaire</h3><p class="soft small">Ce cours a été découpé avec l\'ancienne méthode : des musiques ont pu être placées n\'importe où. La nouvelle méthode ne place une musique que si elle est sûre, et sinon découpe par les blancs entre les morceaux. Ta vidéo, tes musiques et le nom sont gardés.</p><button class="btn" data-act="redo">🔁 Refaire le découpage</button></div>' : '') +
       (left.length ? '<button class="btn" data-act="all">🔍 Analyser ' + (left.length === ms.length ? 'tout le cours' : 'les ' + left.length + ' morceaux restants') + '</button>' : '') +
       '<div class="row"><button class="btn sec" data-act="script">📝 Script du cours</button><button class="btn sec" data-act="pdf">🖨️ PDF</button></div>' +
       ms.map((m, i) => '<div class="card mrc ' + (m.status === 'done' ? 'g' : 'o') + '"><div class="head"><h2>' + (i + 1) + '. ' + esc(m.name) + '</h2>' + st(m) + '</div>' +
-        '<p class="mute">' + fmt(m.start) + ' → ' + fmt(m.end) + (m.musicId && musics[m.musicId] ? ' · 🎵 ' + esc(musics[m.musicId].name) : ' · pas de musique liée') + '</p>' +
+        '<p class="mute">' + fmt(m.start) + ' → ' + fmt(m.end) + (m.musicId && musics[m.musicId] ? ' · 🎵 ' + esc(musics[m.musicId].name) + (m.alignMode === 'sure' ? ' ✅' : m.alignMode === 'proposed' ? ' ❓' : '') : ' · pas de musique liée') + (m.status === 'done' ? ' · ' + (modeOf(m) === 'group' ? '👥 groupe' : '🙋 1 personne') : '') + '</p>' +
         '<div class="row tight">' +
         (m.status === 'done' ? '<button class="btn small" data-act="play" data-id="' + m.id + '">🎮 Jouer</button><button class="btn sec small" data-act="see" data-id="' + m.id + '">📝 Script</button>' : '<button class="btn small" data-act="one" data-id="' + m.id + '">🔍 ' + (m.status === 'partial' ? 'Reprendre' : 'Analyser') + '</button>') +
         '<button class="btn sec small" data-act="link" data-id="' + m.id + '">🎵 ' + (m.musicId ? 'Musique' : 'Lier une musique') + '</button></div></div>').join('') +
@@ -461,6 +592,7 @@
       pdf: () => printCourse(c),
       link: (b) => linkMusic(c, b.dataset.id),
       cut: () => scrCut(c.id),
+      redo: () => redoCut(c),
       ren: async () => { const n = await askText('Nom du cours', c.name); if (n) { c.name = n; await saveCourse(c); scrCourse(c.id); } },
       del: async () => {
         const r = await ask('Supprimer ce cours ?', 'Le script de ce cours sera effacé (ce que l\'appli a appris est gardé).', [{ label: '🗑️ Oui, supprimer', value: 1, cls: 'red' }, { label: 'Non', value: 0, cls: 'sec' }]);
@@ -471,49 +603,126 @@
     });
   }
 
-  /** Lier une musique à un morceau (et la caler sur la vidéo si possible) */
+  /** Lier une musique à un morceau (et la caler sur la vidéo si elle y est vraiment) */
   async function linkMusic(c, mid) {
     const m = c.morceaux.find((x) => x.id === mid);
     const all = await dall('musics');
     const cur = m.musicId && all.find((x) => x.id === m.musicId);
     const choice = await ask('Musique du morceau', (cur ? 'Liée : <b>' + esc(cur.name) + '</b>' : 'Pas de musique liée.') + '<br>Choisis le fichier propre de cette musique.', [{ label: '🎵 Choisir un fichier', value: 'file' }].concat(cur ? [{ label: 'Enlever la musique', value: 'rm', cls: 'sec' }] : [], [{ label: 'Annuler', value: null, cls: 'sec' }]));
     if (!choice) return;
-    if (choice === 'rm') { m.musicId = null; m.offset = null; await saveCourse(c); return scrCourse(c.id); }
+    if (choice === 'rm') { m.musicId = null; m.offset = null; m.sync = null; m.alignMode = null; await saveCourse(c); return scrCourse(c.id); }
     const f = (await pickFile('audio/*'))[0]; if (!f) return;
     const mu = { id: uid(), name: f.name.replace(/\.[^.]+$/, ''), type: f.type, blob: f };
     render('<div class="card o"><h2>Je cale la musique…</h2><p class="soft">Quelques secondes.</p></div>');
     let r;
     try { r = await musicFeatures(mu); } catch (e) { toast('Je n\'arrive pas à lire ce fichier audio.'); return scrCourse(c.id); }
-    mu.duration = r.duration; mu.bpm = C.estimateBPM(r.feat); await dput('musics', mu);
-    m.musicId = mu.id; m.bpm = mu.bpm; m.offset = m.start; m.alignConf = 0;
+    mu.duration = r.duration; mu.bpm = r.bpm; mu.attack = r.attack; mu.len = r.trim.end - r.trim.start; await dput('musics', mu);
+    c.musicIds = courseMusicIds(c).concat([mu.id]);
+    m.musicId = mu.id; m.offset = null; m.shift = 0;
     const af = await dget('data', 'af:' + c.id);
+    let res = null;
     if (af) {
-      const prep = C.prepareVideo(af, r.feat.n + 10);
-      const al = C.alignMusic(prep, r.feat, { minT: m.start - Math.max(60, r.duration), maxT: m.end + 30 });
-      if (al && al.conf >= 0.15) { m.offset = al.offset; m.alignConf = al.conf; toast('Musique calée ✅'); }
-      else toast('Je n\'ai pas trouvé où elle commence : utilise « Top départ » et les boutons un peu avant / après.', 4500);
-    } else toast('Musique liée. Le calage se fera avec « un peu avant / après ».', 4000);
+      const vp = C.prepareVideo2(af, r.feat.n + 10);
+      res = C.findMusic(vp, r.feat, { minT: m.start - 90, maxT: m.start + 60 });
+    }
+    if (res && res.ok) {
+      m.alignMode = 'sure'; m.offset = res.offset; m.alignConf = res.conf;
+      m.sync = { mode: 'sure', v0: res.offset, a0: 0, ratio: res.ratio, vTop: res.offset + (mu.attack || 0) * res.ratio, musicId: mu.id };
+      toast('Musique retrouvée dans la vidéo et calée ✅', 3500);
+    } else {
+      m.alignMode = 'manual'; m.sync = tempoSync(af, m, mu);
+      toast('Elle n\'est pas exactement dans la vidéo : j\'ai calé son rythme sur le morceau. Ajuste avec « un peu avant / après ».', 5000);
+    }
     await saveCourse(c); scrCourse(c.id);
   }
 
   /* ======================= Détecteur de mouvements ======================= */
+  const fpsFor = () => (S.settings.quality === 'rapide' ? 6 : 8);
   let engine = null;
   async function getEngine(msg) {
     if (window.SM_TEST && window.SM_TEST.engine) return window.SM_TEST.engine;
-    if (engine && engine.model === S.settings.model && engine.np === S.settings.numPoses) return engine;
+    if (engine && engine.np === S.settings.numPoses) return engine;
     msg && msg('Chargement du détecteur de mouvements… (la 1re fois : environ 10 Mo, ensuite il est gardé dans le téléphone)');
     const mod = await import(MP_BASE + '/vision_bundle.mjs');
     const files = await mod.FilesetResolver.forVisionTasks(MP_BASE + '/wasm');
-    const opts = (delegate) => ({ baseOptions: { modelAssetPath: MODELS[S.settings.model] || MODELS.lite, delegate }, runningMode: 'VIDEO', numPoses: S.settings.numPoses, minPoseDetectionConfidence: 0.4, minPosePresenceConfidence: 0.4, minTrackingConfidence: 0.4 });
-    let lm;
-    try { lm = await mod.PoseLandmarker.createFromOptions(files, opts('GPU')); } catch (e) { lm = await mod.PoseLandmarker.createFromOptions(files, opts('CPU')); }
-    let ts = 0;
+    const buf = new Uint8Array(await (await fetch(MODELS.full)).arrayBuffer());
+    const np = S.settings.numPoses;
+    let delegate = 'GPU';
+    const make = async (mode) => {
+      const o = (d) => ({ baseOptions: { modelAssetBuffer: buf, delegate: d }, runningMode: mode, numPoses: np, minPoseDetectionConfidence: 0.3, minPosePresenceConfidence: 0.3, minTrackingConfidence: 0.3 });
+      try { return await mod.PoseLandmarker.createFromOptions(files, o(delegate)); } catch (e) { delegate = 'CPU'; return mod.PoseLandmarker.createFromOptions(files, o('CPU')); }
+    };
+    const img = await make('IMAGE');
+    const vids = {}, ts = {};
+    const out = (r) => ({ landmarks: r.landmarks || [], world: r.worldLandmarks || [] });
     engine = {
-      model: S.settings.model, np: S.settings.numPoses,
-      detect(src) { ts = Math.max(ts + 1, Math.floor(performance.now())); const r = lm.detectForVideo(src, ts); return { landmarks: r.landmarks || [], world: r.worldLandmarks || [] }; }
+      np,
+      /** image seule (pas de suivi d'une image à l'autre) */
+      image(src) { return out(img.detect(src)); },
+      /** vidéo : un détecteur par zone, qui suit les personnes d'une image à l'autre */
+      async video(src, key) {
+        if (!vids[key]) { try { vids[key] = await make('VIDEO'); } catch (e) { vids[key] = 'img'; } }
+        if (vids[key] === 'img') return out(img.detect(src));
+        ts[key] = Math.max((ts[key] || 0) + 1, Math.floor(performance.now()));
+        return out(vids[key].detectForVideo(src, ts[key]));
+      },
+      reset() { for (const k in vids) { try { if (vids[k] !== 'img') vids[k].close(); } catch (e) { /* rien */ } delete vids[k]; delete ts[k]; } }
     };
     return engine;
   }
+  /* ---- zones de l'image (les petites personnes sont mieux vues dans une zone agrandie) ---- */
+  const FULL = { key: 'full', x: 0, y: 0, w: 1, h: 1 };
+  function tiles(n, band) {
+    band = band || { y: 0, h: 1 };
+    const w = n === 2 ? 0.56 : 0.42, st = n === 2 ? 0.44 : 0.29;
+    return Array.from({ length: n }, (_, i) => ({ key: 't' + n + i, x: Math.min(1 - w, i * st), y: band.y, w, h: band.h }));
+  }
+  /** Zone autour d'un cadre (ou d'un point) : la personne y apparaît en grand */
+  function focusRect(cx, cy, h, aspect, key) {
+    h = Math.max(0.22, Math.min(1, h)); const w = Math.min(1, h * 0.85 / aspect);
+    return { key: key || 'focus', x: Math.max(0, Math.min(1 - w, cx - w / 2)), y: Math.max(0, Math.min(1 - h, cy - h / 2)), w, h };
+  }
+  /** Zones à regarder pour chaque image */
+  function viewsFor(mode, scene, target, aspect, lost) {
+    const q = S.settings.quality, big = scene && scene.big, band = scene && scene.band;
+    if (mode === 'group') { if (big) return [FULL]; return q === 'rapide' ? tiles(2, band) : [FULL].concat(tiles(3, band)); }
+    const v = [];
+    if (target) v.push(focusRect(target.cx, target.cy, target.h * 2.2, aspect));
+    if (q !== 'rapide' || !target || lost) v.push(FULL);
+    if ((lost || !target) && !big) v.push(...tiles(q === 'rapide' ? 2 : 3, band));
+    return v;
+  }
+  const cropCv = {};
+  /** Découpe une zone de la vidéo dans un petit canevas (côté max 640 px) */
+  function crop(v, r) {
+    const vw = v.videoWidth || 640, vh = v.videoHeight || 360;
+    const sw = r.w * vw, sh = r.h * vh, sc = Math.min(1.6, 640 / Math.max(sw, sh));
+    const c = cropCv[r.key] || (cropCv[r.key] = document.createElement('canvas'));
+    const cw = Math.max(16, Math.round(sw * sc)), ch = Math.max(16, Math.round(sh * sc));
+    if (c.width !== cw || c.height !== ch) { c.width = cw; c.height = ch; }
+    c.getContext('2d').drawImage(v, r.x * vw, r.y * vh, sw, sh, 0, 0, cw, ch);
+    return c;
+  }
+  /** Cherche les personnes dans toutes les zones et les réunit. how = 'image' ou 'video' */
+  async function detectViews(eng, v, views, t, how) {
+    const dets = [];
+    for (const r of views) {
+      const cv = crop(v, r);
+      const res = how === 'video' ? await eng.video(cv, r.key, { rect: r, t }) : eng.image(cv, { rect: r, t });
+      res.landmarks.forEach((lm, i) => dets.push({ lm: C.mapFromRect(lm, r), world: res.world && res.world[i], rect: r }));
+    }
+    return C.mergeDetections(dets);
+  }
+  /** Où sont les gens dans l'image (bande de la scène) et sont-ils grands ? */
+  function sceneOf(boxes) {
+    if (!boxes.length) return null;
+    const hs = boxes.map((b) => b.h).sort((a, b) => a - b), mh = hs[Math.floor(hs.length / 2)];
+    const y0 = Math.min(...boxes.map((b) => b.y)), y1 = Math.max(...boxes.map((b) => b.y + b.h)), mg = 0.35 * mh;
+    let band = { y: Math.max(0, y0 - mg), h: 0 }; band.h = Math.min(1, y1 + mg) - band.y;
+    if (band.h > 0.85) band = { y: 0, h: 1 };
+    return { band, big: mh > 0.5, mh };
+  }
+
   function getVid() {
     if (S.vid && S.vid.dataset.src === S.videoURL) return S.vid;
     const v = document.createElement('video'); v.muted = true; v.playsInline = true; v.setAttribute('playsinline', ''); v.preload = 'auto';
@@ -558,16 +767,23 @@
         { back: () => scrCourse(c.id), again: () => startAnalysis(c, ids) });
       return;
     }
-    const queue = ids.slice();
+    const queue = ids.slice(); let same = null;
     const runNext = async () => {
       const cc = await dget('courses', c.id);
       const id = queue.shift(); if (!id) return scrCourse(c.id);
       const m = cc.morceaux.find((x) => x.id === id); if (!m) return runNext();
-      if (!m.track || !m.track.box) {
-        const prev = cc.morceaux.find((x) => x.track && x.track.box && x.track.chosen);
-        const box = await scrPick(cc, m, eng, prev ? prev.track.box : null, queue.length > 0);
-        if (!box) return scrCourse(c.id);
-        m.track = { box, lastT: null, chosen: true };
+      if (m.track && !m.track.mode && m.track.box) m.track.mode = 'one'; // ancien cours
+      if (!m.track || !m.track.mode) {
+        let res = same;
+        if (!res) {
+          const prev = cc.morceaux.find((x) => x.track && x.track.mode === 'one' && x.track.box);
+          const rest = queue.map((q) => cc.morceaux.find((x) => x.id === q)).filter(Boolean);
+          res = await scrWho(cc, m, eng, prev ? prev.track.box : null, rest);
+          if (!res) return scrCourse(c.id);
+          if (res.same) same = res;
+        }
+        m.track = res.mode === 'group' ? { mode: 'group' } : { mode: 'one', box: res.box, lastT: null, chosen: true };
+        if (res.scene) cc.scene = res.scene;
         await saveCourse(cc);
       }
       const ok = await scrAnalyze(cc, m, eng, queue.length);
@@ -577,69 +793,123 @@
     runNext();
   }
 
-  /** Choix de la personne à suivre : renvoie le cadre choisi */
-  function scrPick(c, m, eng, prevBox, more) {
+  /** « Qui suivre ? » : tout le groupe (conseillé) ou une seule personne. Renvoie {mode, box, same, scene} */
+  function scrWho(c, m, eng, prevBox, rest) {
     return new Promise(async (resolve) => {
       const v = getVid();
       let t = Math.min(m.end - 1, (m.progressT || m.start) + 4);
-      let boxes = [], poses = [], sel = -1;
-      render('<div class="top"><button class="back" data-act="back">‹</button><h1>Qui est le prof ?</h1></div>' +
-        '<p class="soft">Touche la personne à suivre (le prof). ' + (more ? 'Je la suivrai dans tous les morceaux.' : '') + '</p>' +
-        '<canvas class="pickcv" id="pcv" width="640" height="360"></canvas><p class="mute" id="pinfo" style="margin-top:8px">Recherche des personnes…</p>' +
-        '<div class="row tight"><button class="btn sec small" data-act="prev">◀️ 10 s avant</button><button class="btn sec small" data-act="next">10 s après ▶️</button></div>' +
-        '<button class="btn" data-act="ok" id="pok" disabled>✅ C\'est elle</button>',
-      {
-        back: () => resolve(null),
-        prev: () => { t = Math.max(m.start, t - 10); show(); },
-        next: () => { t = Math.min(m.end - 0.5, t + 10); show(); },
-        ok: () => { if (sel >= 0) resolve(boxes[sel]); }
-      });
-      const cv = $('#pcv'), g = cv.getContext('2d');
-      const paint = () => {
+      let boxes = [], poses = [], sel = -1, mode = 'group', scene = c.scene || null, msView = null, busy = false;
+      const more = rest.length > 0;
+      const draw = () => {
+        render('<div class="top"><button class="back" data-act="back">‹</button><h1>Qui suivre ?</h1></div>' +
+          '<p class="mute">' + esc(m.name) + ' · ' + fmt(t) + '</p>' +
+          '<canvas class="pickcv" id="pcv" width="640" height="360"></canvas><p class="mute" id="pinfo" style="margin-top:8px">Recherche des personnes…</p>' +
+          '<div class="row tight"><button class="btn sec small" data-act="prev">◀️ 10 s avant</button><button class="btn sec small" data-act="next">10 s après ▶️</button></div>' +
+          '<div class="chips"><button class="chip ' + (mode === 'group' ? 'on' : '') + '" data-act="mg">👥 Tout le groupe<small style="color:var(--ok)">conseillé</small></button><button class="chip ' + (mode === 'one' ? 'on' : '') + '" data-act="mo">🙋 Une seule personne</button></div>' +
+          '<p class="soft small" id="phelp">' + (mode === 'group' ? 'Je regarde <b>toutes les personnes</b> et je garde ce que fait la majorité (une personne en retard ou qui fait une variante est écartée). Idéal quand le prof qui mène change d\'un morceau à l\'autre.' : '<b>Touche la personne à suivre</b> sur l\'image, même si elle n\'a pas de cadre : je zoome pour la trouver.') + '</p>' +
+          (more ? '<label style="display:flex;gap:10px;align-items:center;margin:4px 0 12px"><input type="checkbox" id="psame" style="width:26px;height:26px" ' + (mode === 'group' ? 'checked' : '') + '> <span class="small">Même choix pour les ' + rest.length + ' morceau(x) suivant(s)</span></label>' : '') +
+          '<p class="mute" id="pest"></p>' +
+          '<button class="btn" data-act="ok" id="pok">✅ Lancer l\'analyse</button>',
+        {
+          back: () => resolve(null),
+          prev: () => { t = Math.max(m.start, t - 10); show(); },
+          next: () => { t = Math.min(m.end - 0.5, t + 10); show(); },
+          mg: () => { mode = 'group'; draw(); paintOnly(); },
+          mo: () => { mode = 'one'; if (sel < 0 && boxes.length) { const st = prevBox ? { box: prevBox, lastT: 0 } : null; sel = st ? C.trackStep(st, boxes, 1, aspect()) : 0; } draw(); paintOnly(); },
+          ok: () => {
+            if (mode === 'one' && sel < 0) { toast('Touche d\'abord la personne à suivre sur l\'image.'); return; }
+            const sm = $('#psame'); const sameAll = !!(sm && sm.checked);
+            resolve({ mode, box: mode === 'one' ? boxes[sel] : null, same: sameAll && mode === 'group' ? { mode: 'group', scene } : (sameAll ? { mode: 'one', box: boxes[sel], scene } : null), scene });
+          }
+        });
+        const cv = $('#pcv');
+        cv.addEventListener('click', onTap);
+        estimate();
+      };
+      const aspect = () => (v.videoWidth || 16) / (v.videoHeight || 9);
+      const paintOnly = () => {
+        const cv = $('#pcv'); if (!cv || !v.videoWidth) return; const g = cv.getContext('2d');
+        const vw = v.videoWidth, vh = v.videoHeight, sc = Math.min(1, 640 / vw);
+        if (cv.width !== Math.round(vw * sc)) { cv.width = Math.round(vw * sc); cv.height = Math.round(vh * sc); }
         g.drawImage(v, 0, 0, cv.width, cv.height);
-        poses.forEach((p, i) => drawSkel(g, p, cv.width, cv.height, i === sel ? '#ff8a3d' : 'rgba(255,255,255,.55)', i === sel ? 5 : 3));
-        drawBoxes(g, boxes, cv.width, cv.height, sel);
+        const hl = mode === 'group' ? -2 : sel;
+        poses.forEach((p, i) => drawSkel(g, p, cv.width, cv.height, hl === -2 || i === sel ? '#ff8a3d' : 'rgba(255,255,255,.55)', i === sel || hl === -2 ? 4 : 3));
+        drawBoxes(g, boxes, cv.width, cv.height, hl);
+        const inf = $('#pinfo');
+        if (inf) inf.textContent = boxes.length ? boxes.length + ' personne(s) trouvée(s) à ' + fmt(t) + '.' + (mode === 'one' ? (sel >= 0 ? ' Le cadre orange est suivi.' : '') : '') : 'Personne trouvé ici : essaie « 10 s après ».';
+      };
+      const estimate = () => {
+        const e = $('#pest'); if (!e) return;
+        const ms = msView || S.settings.msView; if (!ms) { e.textContent = ''; return; }
+        const dur = [m].concat(rest).reduce((a, x) => a + (x.end - x.start), 0);
+        const views = viewsFor(mode, scene, mode === 'one' ? { cx: 0.5, cy: 0.5, h: 0.3 } : null, aspect(), false).length;
+        const per = ms * views;
+        const sec = Math.max(dur / 4, dur * fpsFor() * per / 1000) * 1.15;
+        e.innerHTML = '⏱️ Temps estimé : <b>environ ' + fmtDur(sec) + '</b>' + (more ? ' pour ' + (rest.length + 1) + ' morceaux' : '') + ' (réglage « ' + (S.settings.quality === 'rapide' ? 'Plus rapide' : 'Plus précis') + ' », à changer dans ⚙️ Réglages).';
       };
       async function show() {
-        $('#pinfo').textContent = 'Recherche des personnes… (' + fmt(t) + ')';
+        if (busy) return; busy = true;
+        const inf = $('#pinfo'); if (inf) inf.textContent = 'Recherche des personnes… (' + fmt(t) + ')';
         await seek(v, t);
-        const vw = v.videoWidth || 640, vh = v.videoHeight || 360, sc = Math.min(1, 640 / vw);
-        cv.width = Math.round(vw * sc); cv.height = Math.round(vh * sc);
-        g.drawImage(v, 0, 0, cv.width, cv.height);
-        const r = eng.detect(cv, t);
-        poses = r.landmarks; boxes = poses.map(C.poseBox);
+        // 1re recherche : image entière + zones, pour trouver aussi les petites personnes
+        const vs = [FULL].concat(tiles(3, scene && !scene.big ? scene.band : null));
+        const a = performance.now();
+        const found = await detectViews(eng, v, vs, t, 'image');
+        msView = (performance.now() - a) / vs.length; S.settings.msView = msView; saveKV('settings');
+        poses = found.map((d) => d.lm); boxes = found.map((d) => d.box);
+        scene = sceneOf(boxes) || scene;
         sel = -1;
-        if (prevBox && boxes.length) { const st = { box: prevBox, lastT: 0 }; sel = C.trackStep(st, boxes, 1, cv.width / cv.height); }
-        else if (boxes.length) { let bi = 0; boxes.forEach((b, i) => { if (b.h > boxes[bi].h) bi = i; }); sel = bi; }
-        paint();
-        $('#pinfo').textContent = boxes.length ? boxes.length + ' personne(s) trouvée(s) à ' + fmt(t) + '. ' + (sel >= 0 ? 'Le cadre orange est sélectionné : touche une autre personne si ce n\'est pas le prof.' : '') : 'Personne trouvé ici : essaie « 10 s après ».';
-        $('#pok').disabled = sel < 0;
+        if (boxes.length && mode === 'one') {
+          if (prevBox) { const st = { box: prevBox, lastT: 0 }; sel = C.trackStep(st, boxes, 1, aspect()); }
+          if (sel < 0) { let bi = 0; boxes.forEach((b, i) => { if (b.h > boxes[bi].h) bi = i; }); sel = bi; }
+        }
+        busy = false; paintOnly(); estimate();
       }
-      cv.addEventListener('click', (e) => {
-        const r = cv.getBoundingClientRect(); const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
-        let best = -1, bd = 1e9;
-        boxes.forEach((b, i) => { const inside = x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h; const d = Math.hypot(x - b.cx, y - b.cy) - (inside ? 1 : 0); if (d < bd) { bd = d; best = i; } });
-        if (best >= 0) { sel = best; paint(); $('#pok').disabled = false; }
-      });
-      v.addEventListener('loadeddata', () => {}, { once: true });
+      /** toucher n'importe où : on prend la personne sous le doigt, sinon on zoome autour du doigt */
+      async function onTap(e) {
+        const cv = $('#pcv'); const r = cv.getBoundingClientRect(); const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+        if (mode !== 'one') { mode = 'one'; draw(); }
+        const inside = boxes.findIndex((b) => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h);
+        if (inside >= 0) { sel = inside; paintOnly(); return; }
+        const inf = $('#pinfo'); if (inf) inf.textContent = 'Je zoome pour trouver la personne…';
+        const mh = scene && scene.mh ? scene.mh : 0.3;
+        let got = null;
+        for (const h of [Math.max(0.3, mh * 2.4), 0.6, 0.95]) {
+          const rect = focusRect(x, y, h, aspect(), 'zoom');
+          const found = await detectViews(eng, v, [rect], t, 'image');
+          let bd = 1e9; for (const d of found) { const b = d.box; const dd = Math.hypot((b.cx - x) * aspect(), b.cy - y) / Math.max(0.05, b.h); if (dd < bd && dd < 0.9) { bd = dd; got = d; } }
+          if (got) break;
+        }
+        if (!got) { paintOnly(); toast('Je ne trouve personne à cet endroit. Touche le milieu du corps, ou essaie « 10 s après ».', 3500); return; }
+        const dup = boxes.findIndex((b) => C.boxIoU(b, got.box) > 0.3);
+        if (dup >= 0) sel = dup; else { boxes.push(got.box); poses.push(got.lm); sel = boxes.length - 1; }
+        paintOnly(); toast('Personne trouvée ✅');
+      }
+      draw();
+      if (v.readyState < 1) await new Promise((r) => v.addEventListener('loadedmetadata', r, { once: true }));
       show();
     });
   }
 
-  /** Analyse d'un morceau. Renvoie 'done' ou 'stop' */
+  /** Analyse d'un morceau : on enregistre toutes les personnes (et la personne choisie en mode « une seule »).
+      Renvoie 'done' ou 'stop' */
   function scrAnalyze(c, m, eng, remainingMorceaux) {
     return new Promise(async (resolve) => {
       const v = getVid();
-      const fps = S.settings.fps || 8;
-      const stored = (await dget('data', 'po:' + m.id)) || null;
-      const times = stored && m.status === 'partial' ? Array.from(stored.times) : [];
-      const feats = stored && m.status === 'partial' ? Array.from(stored.feats) : [];
+      const mode = m.track.mode || 'one';
+      const stored = m.status === 'partial' ? ((await dget('data', 'po:' + m.id)) || null) : null;
+      const fps = stored && stored.fps ? stored.fps : fpsFor();
+      const times = stored ? Array.from(stored.times) : [];
+      const feats = stored ? Array.from(stored.feats) : [];
+      const per = new Map(); // numéro de personne → caractéristiques (NaN si absente)
+      if (stored && stored.tracks) for (const tr of stored.tracks) per.set(tr.id, Array.from(tr.feats));
       const thumbs = m.status === 'partial' ? ((await dget('data', 'th:' + m.id)) || []) : [];
       let t0 = m.status === 'partial' && m.progressT ? m.progressT : m.start;
       const track = { box: m.track.box, lastT: m.track.lastT };
       let stopped = false, finished = false, waitingPick = false;
       S.wantAwake = true; keepAwake(true);
-      render('<div class="top"><h1>Analyse</h1></div><p class="soft"><b>' + esc(m.name) + '</b></p>' +
+      if (eng.reset) eng.reset();
+      render('<div class="top"><h1>Analyse</h1></div><p class="soft"><b>' + esc(m.name) + '</b> · ' + (mode === 'group' ? '👥 tout le groupe' : '🙋 une seule personne') + '</p>' +
         '<div class="vidbox" id="vb"></div>' +
         '<div class="bar"><i id="ab"></i></div><p style="margin:8px 0 2px"><b id="ap">0 %</b> · <span id="ar" class="soft">calcul du temps restant…</span></p>' +
         '<p class="mute" id="ainfo"></p>' +
@@ -654,22 +924,33 @@
       const work = document.createElement('canvas'); const wg = work.getContext('2d', { willReadFrequently: false });
       const thc = document.createElement('canvas'); const tg = thc.getContext('2d');
       await seek(v, t0);
-      const vw = v.videoWidth || 640, vh = v.videoHeight || 360, sc = Math.min(1, 640 / Math.max(vw, vh) * (vw > vh ? 1 : 1));
+      const vw = v.videoWidth || 640, vh = v.videoHeight || 360, sc = Math.min(1, 640 / Math.max(vw, vh));
       work.width = Math.round(vw * sc); work.height = Math.round(vh * sc);
       ov.width = work.width; ov.height = work.height;
       thc.width = 160; thc.height = Math.round(160 * vh / vw);
       const aspect = vw / vh;
+      const multi = new C.MultiTracker(aspect, m.status === 'partial' && m.track.multi ? m.track.multi : null);
       let lastT = -1e9, lastThumb = thumbs.length ? thumbs[thumbs.length - 1].t : -1e9, lastSave = performance.now();
-      let rate = S.settings.rate || 1.5, procMs = 40, nProc = 0;
+      let rate = S.settings.rate || 1.5, procMs = 40, nProc = 0, nSeen = 0, nViews = 1;
       const wall0 = performance.now(); let speedEMA = null, lastWall = performance.now(), lastVT = t0;
       let rateCheckWall = performance.now(), rateCheckVT = t0, rateCheckN = 0;
       const aEnd = Math.min(c.video.duration, m.end + 1.5); // petite marge : la dernière répétition finit souvent sur la fin de la musique
       const total = aEnd - m.start;
-      const savePartial = async (t) => {
-        await dput('data', { fps, times: Float64Array.from(times), feats: Float32Array.from(feats) }, 'po:' + m.id);
+      const packTracks = (final) => {
+        const out = []; const n = times.length;
+        for (const [id, f] of per) {
+          let v2 = 0; for (let i = 0; i < f.length; i += C.NF) if (isFinite(f[i])) v2++;
+          if (final && v2 < Math.max(fps * 4, 0.08 * n)) continue; // apparitions trop courtes
+          out.push({ id, n: v2, feats: Float32Array.from(f) });
+        }
+        out.sort((a, b) => b.n - a.n);
+        return (final ? out.slice(0, 10) : out.slice(0, 24)).map((x) => ({ id: x.id, feats: x.feats }));
+      };
+      const savePartial = async (t, final) => {
+        await dput('data', { fps, times: Float64Array.from(times), feats: Float32Array.from(feats), tracks: packTracks(final) }, 'po:' + m.id);
         await dput('data', thumbs, 'th:' + m.id);
         const cc = await dget('courses', c.id); const mm = cc.morceaux.find((x) => x.id === m.id);
-        if (mm) { mm.status = 'partial'; mm.progressT = t; mm.track = { box: track.box, lastT: null, chosen: true }; await saveCourse(cc); }
+        if (mm) { mm.status = 'partial'; mm.progressT = t; mm.track = Object.assign({}, m.track, { box: track.box || m.track.box, lastT: null, multi: multi.state() }); await saveCourse(cc); }
       };
       const ui = (t) => {
         const f = Math.max(0, Math.min(1, (t - m.start) / total));
@@ -679,47 +960,68 @@
           const rest = (aEnd - t) / speedEMA;
           $('#ar').textContent = 'encore environ ' + fmtDur(rest) + (remainingMorceaux ? ' pour ce morceau (+ ' + remainingMorceaux + ' autre(s))' : '');
         }
-        $('#ainfo').textContent = 'Vidéo à ' + fmt(t) + ' · vitesse ×' + rate.toFixed(1) + ' · ' + nProc + ' images regardées';
+        $('#ainfo').textContent = 'Vidéo à ' + fmt(t) + ' · vitesse ×' + rate.toFixed(1) + ' · ' + nProc + ' images · ' + (mode === 'group' ? nSeen + ' personne(s) vue(s)' : '');
       };
-      const lostAsk = (t) => new Promise((res) => {
+      const lostAsk = (t, found) => new Promise((res) => {
         waitingPick = true; v.pause();
-        const r = eng.detect(work, t); const boxes = r.landmarks.map(C.poseBox);
+        const boxes = found.map((d) => d.box);
         const lb = $('#lostbox'); if (!lb) return res(null);
-        lb.innerHTML = '<div class="card r"><h3>Je ne trouve plus le prof 🤔</h3><p class="soft small">Touche-le sur l\'image ci-dessous. S\'il n\'est pas là, touche « Continuer ».</p><canvas class="pickcv" id="lcv"></canvas><button class="btn sec small" id="lskip" style="margin-top:8px">Continuer sans lui</button></div>';
+        lb.innerHTML = '<div class="card r"><h3>Je ne trouve plus la personne 🤔</h3><p class="soft small">Touche-la sur l\'image ci-dessous (même sans cadre). Si elle n\'est pas là, touche « Continuer ».</p><canvas class="pickcv" id="lcv"></canvas><button class="btn sec small" id="lskip" style="margin-top:8px">Continuer sans elle</button></div>';
         const lc = $('#lcv'); lc.width = work.width; lc.height = work.height; const lg = lc.getContext('2d');
         lg.drawImage(work, 0, 0); drawBoxes(lg, boxes, lc.width, lc.height, -1);
         lb.scrollIntoView({ behavior: 'smooth' });
         const end = (b) => { lb.innerHTML = ''; waitingPick = false; res(b); };
-        lc.addEventListener('click', (e) => {
+        lc.addEventListener('click', async (e) => {
           const rr = lc.getBoundingClientRect(); const x = (e.clientX - rr.left) / rr.width, y = (e.clientY - rr.top) / rr.height;
-          let best = -1, bd = 1e9; boxes.forEach((b, i) => { const d = Math.hypot(x - b.cx, y - b.cy); if (d < bd) { bd = d; best = i; } });
-          if (best >= 0) end(boxes[best]);
+          const inside = boxes.find((b) => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h);
+          if (inside) return end(inside);
+          const z = await detectViews(eng, v, [focusRect(x, y, Math.max(0.3, (track.box ? track.box.h : 0.25) * 2.4), aspect, 'zoom')], t, 'image');
+          let got = null, bd = 1e9; for (const d of z) { const dd = Math.hypot((d.box.cx - x) * aspect, d.box.cy - y) / Math.max(0.05, d.box.h); if (dd < bd && dd < 0.9) { bd = dd; got = d.box; } }
+          if (got) end(got); else toast('Je ne trouve personne à cet endroit.');
         });
         $('#lskip').onclick = () => end(null);
       });
       const process = async (t) => {
         const a = performance.now();
         wg.drawImage(v, 0, 0, work.width, work.height);
-        const r = eng.detect(work, t);
-        const boxes = r.landmarks.map(C.poseBox);
-        let k = C.trackStep(track, boxes, t, aspect);
+        const lost = mode === 'one' && track.lostSince != null && t - track.lostSince > 2;
+        const views = viewsFor(mode, c.scene, mode === 'one' ? track.box : null, aspect, lost); nViews = views.length;
+        const found = await detectViews(eng, v, views, t, 'video');
+        const boxes = found.map((d) => d.box);
+        const ids = multi.step(boxes, t);
+        let k = mode === 'one' ? C.trackStep(track, boxes, t, aspect) : -1;
         procMs = 0.8 * procMs + 0.2 * (performance.now() - a); nProc++;
-        if (k < 0 && track.lostSince != null && t - track.lostSince > 12 && boxes.length) {
-          const b = await lostAsk(t);
-          if (b) { track.box = b; track.lastT = t; track.lostSince = null; k = C.trackStep(track, boxes, t, aspect); }
-          else { track.lostSince = t; }
-          if (!stopped) { v.playbackRate = rate; await v.play().catch(() => {}); }
+        if (mode === 'one' && k < 0 && track.lostSince != null && t - track.lostSince > 12) {
+          const all = await detectViews(eng, v, [FULL].concat(tiles(3, c.scene && c.scene.band)), t, 'image');
+          if (all.length) {
+            const b = await lostAsk(t, all);
+            if (b) { track.box = b; track.lastT = t; track.lostSince = null; k = C.trackStep(track, boxes, t, aspect); }
+            else { track.lostSince = t; }
+            if (!stopped) { v.playbackRate = rate; await v.play().catch(() => {}); }
+          }
         }
+        const fi = times.length;
         times.push(Math.round(t * 1000) / 1000);
-        if (k >= 0) feats.push(...C.poseFeatures(r.landmarks[k], r.world && r.world[k], aspect));
+        if (k >= 0) feats.push(...C.poseFeatures(found[k].lm, found[k].world, aspect));
         else for (let i = 0; i < C.NF; i++) feats.push(NaN);
+        // toutes les personnes
+        const seenNow = new Set();
+        ids.forEach((id, i) => {
+          let f = per.get(id);
+          if (!f) { f = new Array(fi * C.NF).fill(NaN); per.set(id, f); }
+          if (f.length > fi * C.NF) return; // même numéro deux fois (ne devrait pas arriver)
+          f.push(...C.poseFeatures(found[i].lm, found[i].world, aspect)); seenNow.add(id);
+        });
+        for (const [id, f] of per) if (!seenNow.has(id)) { while (f.length < (fi + 1) * C.NF) f.push(NaN); }
+        nSeen = Math.max(nSeen, seenNow.size);
         // dessin
         og.clearRect(0, 0, ov.width, ov.height);
-        r.landmarks.forEach((p, i) => { if (i !== k) drawSkel(og, p, ov.width, ov.height, 'rgba(255,255,255,.35)', 2); });
-        if (k >= 0) drawSkel(og, r.landmarks[k], ov.width, ov.height, '#ff8a3d', 5);
+        found.forEach((d, i) => { if (mode === 'group') drawSkel(og, d.lm, ov.width, ov.height, '#ff8a3d', 3); else if (i !== k) drawSkel(og, d.lm, ov.width, ov.height, 'rgba(255,255,255,.35)', 2); });
+        if (k >= 0) drawSkel(og, found[k].lm, ov.width, ov.height, '#ff8a3d', 5);
         if (t - lastThumb >= 2) {
           tg.drawImage(work, 0, 0, thc.width, thc.height);
-          if (k >= 0) drawSkel(tg, r.landmarks[k], thc.width, thc.height, '#ff8a3d', 2.5);
+          if (mode === 'group') found.forEach((d) => drawSkel(tg, d.lm, thc.width, thc.height, '#ff8a3d', 1.6));
+          else if (k >= 0) drawSkel(tg, found[k].lm, thc.width, thc.height, '#ff8a3d', 2.5);
           thumbs.push({ t: Math.round(t * 10) / 10, u: thc.toDataURL('image/jpeg', 0.55) }); lastThumb = t;
         }
       };
@@ -729,7 +1031,7 @@
         if (dw > 0.5 && dv > 0) { const sp = dv / dw; speedEMA = speedEMA == null ? sp : 0.85 * speedEMA + 0.15 * sp; lastWall = now; lastVT = t; }
         if (now - rateCheckWall > 2500) {
           const dvv = t - rateCheckVT; const got = dvv > 0 ? (nProc - rateCheckN) / dvv : fps;
-          if (got < fps * 0.85 && rate > 0.3) rate = Math.max(0.25, rate * 0.8);
+          if (got < fps * 0.85 && rate > 0.15) rate = Math.max(0.1, rate * 0.8);
           else if (got >= fps * 0.95 && procMs * fps * rate < 550 && rate < 4) rate = Math.min(4, rate * 1.2);
           try { v.playbackRate = rate; } catch (e) { /* rien */ }
           rateCheckWall = now; rateCheckVT = t; rateCheckN = nProc;
@@ -738,9 +1040,9 @@
       const finish = async (how) => {
         if (finished) return; finished = true;
         try { v.pause(); } catch (e) { /* rien */ }
-        S.settings.rate = Math.max(0.5, Math.min(3, rate)); saveKV('settings');
+        S.settings.rate = Math.max(0.25, Math.min(3, rate)); if (nProc > 20) S.settings.msView = procMs / Math.max(1, nViews); saveKV('settings');
         const t = times.length ? times[times.length - 1] : t0;
-        await savePartial(how === 'done' ? m.end : t);
+        await savePartial(how === 'done' ? m.end : t, how === 'done');
         S.wantAwake = false; keepAwake(false);
         resolve(how);
       };
@@ -777,18 +1079,25 @@
     });
   }
 
-  /** Construit le script d'un morceau à partir des poses enregistrées */
-  async function loadSeq(mid) {
+  /** Séquence de mouvements d'un morceau : tout le groupe (fusion) ou la personne choisie */
+  const modeOf = (m) => (m.track && m.track.mode) || (m.track && m.track.box ? 'one' : 'group');
+  async function loadSeq(mid, mode) {
     const po = await dget('data', 'po:' + mid); if (!po || !po.times || !po.times.length) return null;
+    if (mode === 'group' && po.tracks && po.tracks.length) {
+      const g = C.fuseGroup({ fps: po.fps || 8, times: po.times, tracks: po.tracks });
+      if (g) return g;
+    }
+    let any = false; if (po.feats) for (let i = 0; i < po.feats.length; i += C.NF) if (isFinite(po.feats[i])) { any = true; break; }
+    if (!any) return null;
     return C.resample(po.times, po.feats, po.fps || 8);
   }
   async function finishMorceau(cid, mid) {
     const c = await dget('courses', cid); const m = c.morceaux.find((x) => x.id === mid);
-    const seq = await loadSeq(mid);
+    const seq = await loadSeq(mid, modeOf(m));
     if (seq) {
-      const musics = m.musicId ? await dget('musics', m.musicId) : null;
-      m.segments = C.buildScript(seq, { style: c.style, fingerprints: S.prints, vocab: S.vocab[c.style] || {}, bpm: m.bpm || (musics && musics.bpm) || null });
-    }
+      m.segments = C.buildScript(seq, { style: c.style, fingerprints: S.prints, vocab: S.vocab[c.style] || {}, bpm: m.bpm || null });
+      m.group = seq.group ? { persons: seq.group.persons, used: seq.group.used } : null;
+    } else m.segments = [];
     m.status = 'done'; m.progressT = m.end;
     await saveCourse(c);
   }
@@ -805,12 +1114,19 @@
       const th = s.check ? near((s.start + s.end) / 2) : null;
       return '<button class="seg ' + (s.check ? 'q ' : '') + (s.base === 'Pause' && !s.reps ? 'pause' : '') + '" data-act="edit" data-i="' + i + '"><span class="n">' + (i + 1) + '</span><span class="t"><b>' + esc(s.name) + (s.reps ? ' × ' + s.reps : '') + '</b><span class="mute">' + (s.tempo ? esc(s.tempo) + ' · ' : '') + fmt(s.start - m.start) + ' → ' + fmt(s.end - m.start) + '</span>' + (s.check ? '<br><span class="badge q">❓ à vérifier</span>' : '') + '</span>' + (th ? '<img src="' + th.u + '" alt="">' : '') + '</button>';
     };
+    const md = modeOf(m);
+    const po = await dget('data', 'po:' + mid);
+    const hasTracks = !!(po && po.tracks && po.tracks.length >= 3); // assez de monde enregistré pour « tout le groupe »
+    const who = md === 'group' ? '👥 Tout le groupe' + (m.group ? ' (' + m.group.persons + ' personne(s) suivie(s), ' + String(m.group.used).replace('.', ',') + ' utilisée(s) en moyenne)' : '') : '🙋 Une seule personne';
     render('<div class="top"><button class="back" data-act="back">‹</button><h1>' + esc(m.name) + '</h1></div>' +
       '<button class="btn" data-act="play">🎮 Jouer ce morceau</button>' +
+      '<p class="mute">' + who + '</p>' +
       (nQ ? '<div class="card j small">❓ <b>' + nQ + ' passage(s) à vérifier.</b> Touche une ligne pour voir l\'image et corriger. Chaque correction apprend à l\'appli.</div>' : '<p class="mute">Touche une ligne pour la corriger. Chaque correction apprend à l\'appli.</p>') +
-      (segs.length ? segs.map(line).join('') : '<div class="card r">Aucun mouvement trouvé. Vérifie que le bon prof a été choisi (bouton « Refaire l\'analyse »).</div>') +
+      (segs.length ? segs.map(line).join('') : '<div class="card r">Aucun mouvement trouvé. Vérifie qui est suivi (bouton « Refaire l\'analyse »).</div>') +
       '<div class="row"><button class="btn sec" data-act="copy">📋 Copier le texte</button><button class="btn sec" data-act="pdf">🖨️ PDF</button></div>' +
-      '<div class="row"><button class="btn sec small" data-act="redo">🔁 Refaire le script (avec ce que l\'appli a appris)</button><button class="btn sec small" data-act="reanalyse">🎯 Refaire l\'analyse (autre personne)</button></div>',
+      '<div class="row"><button class="btn sec small" data-act="redo">🔁 Refaire le script (avec ce que l\'appli a appris)</button>' +
+      (md === 'one' && hasTracks ? '<button class="btn sec small" data-act="togroup">👥 Utiliser tout le groupe</button>' : '') +
+      '<button class="btn sec small" data-act="reanalyse">🎯 Refaire l\'analyse (' + (md === 'group' ? 'une seule personne' : 'autre personne') + ')</button></div>',
     {
       back: () => scrCourse(cid),
       play: () => scrPlay(cid, mid),
@@ -819,11 +1135,15 @@
       pdf: () => printCourse(c, [m]),
       redo: async () => {
         const r = await ask('Refaire le script ?', 'Le script sera recalculé avec tout ce que l\'appli a appris. <b>Tes corrections faites à la main sur ce morceau seront remplacées.</b>', [{ label: 'Oui, refaire', value: 1 }, { label: 'Non', value: 0, cls: 'sec' }]);
-        if (!r) return; const seq = await loadSeq(mid); if (!seq) { toast('Les données de l\'analyse ne sont plus là : refais l\'analyse.'); return; }
+        if (!r) return; const seq = await loadSeq(mid, modeOf(m)); if (!seq) { toast('Les données de l\'analyse ne sont plus là : refais l\'analyse.'); return; }
         await finishMorceau(cid, mid); scrScript(cid, mid);
       },
+      togroup: async () => {
+        const r = await ask('Tout le groupe ?', 'Le script de ce morceau sera recalculé avec <b>toutes les personnes</b> (déjà enregistrées, pas besoin de refaire l\'analyse). Tes corrections faites à la main sur ce morceau seront remplacées.', [{ label: '👥 Oui, tout le groupe', value: 1 }, { label: 'Non', value: 0, cls: 'sec' }]);
+        if (!r) return; m.track = Object.assign({}, m.track, { mode: 'group' }); await saveCourse(c); await finishMorceau(cid, mid); scrScript(cid, mid);
+      },
       reanalyse: async () => {
-        const r = await ask('Refaire l\'analyse ?', 'Tu choisiras à nouveau la personne à suivre. Le script de ce morceau sera remplacé.', [{ label: 'Oui', value: 1 }, { label: 'Non', value: 0, cls: 'sec' }]);
+        const r = await ask('Refaire l\'analyse ?', 'Tu choisiras à nouveau qui suivre (tout le groupe ou une seule personne). Le script de ce morceau sera remplacé.', [{ label: 'Oui', value: 1 }, { label: 'Non', value: 0, cls: 'sec' }]);
         if (!r) return; m.status = 'todo'; m.track = null; m.progressT = null; m.segments = []; await ddel('data', 'po:' + mid); await ddel('data', 'th:' + mid); await saveCourse(c); startAnalysis(c, [mid]);
       }
     });
@@ -876,7 +1196,7 @@
         if (n >= 2) { k = Math.floor(n / 2); cut = s.repTimes[k]; } else { cut = (s.start + s.end) / 2; k = 0; }
         const A = Object.assign({}, s, { id: uid(), end: cut, reps: n ? k : Math.floor(s.reps / 2), repTimes: (s.repTimes || []).slice(0, k), check: true });
         const B = Object.assign({}, s, { id: uid(), start: cut, reps: n ? n - k : s.reps - Math.floor(s.reps / 2), repTimes: (s.repTimes || []).slice(k), check: true });
-        const seq = await loadSeq(m.id);
+        const seq = await loadSeq(m.id, modeOf(m));
         if (seq) {
           const o = { style: c.style, fingerprints: S.prints, vocab: S.vocab[c.style] || {}, bpm: m.bpm };
           const a2 = C.analyseRange(seq, A.start, A.end, o), b2 = C.analyseRange(seq, B.start, B.end, o);
@@ -887,7 +1207,7 @@
       fuse: async (b, e, close) => {
         const B = m.segments[i + 1]; if (!B) return;
         s.end = B.end; s.reps = (s.reps || 0) + (B.reps || 0); s.repTimes = (s.repTimes || []).concat(B.repTimes || []);
-        const seq = await loadSeq(m.id);
+        const seq = await loadSeq(m.id, modeOf(m));
         if (seq) { const r = C.analyseRange(seq, s.start, s.end, { style: c.style, fingerprints: [], vocab: {}, bpm: m.bpm }); if (r) s.vec = r.vec; }
         m.segments.splice(i + 1, 1); await saveCourse(c); close(); scrScript(c.id, m.id);
       },
@@ -991,8 +1311,14 @@
       .concat([{ label: '🎬 Top départ (la musique joue ailleurs)', value: 'top', cls: 'sec' }, { label: 'Retour', value: null, cls: 'ghost' }]));
     if (!choice) return scrScript(cid, mid);
     if (choice === 'link') return linkMusic(c, m.id);
-    const base = mu && m.offset != null ? m.offset : m.start;
+    // lien temps de la musique → temps de la vidéo (avec adaptation au tempo si la musique n'est pas la même version)
+    let sy = mu ? syncOf(m) : null;
+    if (mu && !sy) { const af = await dget('data', 'af:' + cid); sy = tempoSync(af, m, mu); m.sync = sy; await saveCourse(c); }
+    const toV = (mt) => (P.mode === 'music' && sy ? C.musicToVideo(sy, mt) : (sy ? sy.vTop : m.start) + mt * (sy ? sy.ratio || 1 : 1));
+    const fromV = (vt) => (P.mode === 'music' && sy ? C.videoToMusic(sy, vt) : (vt - (sy ? sy.vTop : m.start)) / (sy ? sy.ratio || 1 : 1));
+    const adapted = sy && sy.mode === 'tempo' && sy.ratio !== 1 && sy.vBpm && sy.mBpm;
     const P = { mode: choice, started: false, paused: true, ref: 0, pausedAt: 0, audio: null, raf: 0 };
+    const base = toV(0);
     if (choice === 'music') { P.url = URL.createObjectURL(mu.blob); P.audio = new Audio(P.url); P.audio.preload = 'auto'; }
     S.wantAwake = true; keepAwake(true);
     const el = document.createElement('div'); el.className = 'play';
@@ -1001,6 +1327,7 @@
       '<div class="nx" id="pnx" style="text-align:center"></div><div class="bar"><i id="pbar"></i></div>' +
       '<div class="ctl"><button data-p="prev" aria-label="Mouvement précédent">⏮️</button><button class="main" data-p="pp" id="ppp">▶️</button><button data-p="next" aria-label="Mouvement suivant">⏭️</button></div>' +
       '<div class="adj"><button data-p="early">⏪ un peu avant</button><span id="pshift"></span><button data-p="late">un peu après ⏩</button></div>' +
+      (adapted ? '<p class="mute" id="psync" style="text-align:center;margin:8px 0 0">🎵 Rythme adapté à ta musique (' + sy.vBpm + ' → ' + sy.mBpm + ' BPM)</p>' : '') +
       (nextM ? '<button class="btn sec small" style="margin:10px 0 0" data-p="nextm">Morceau suivant ➡️</button>' : '');
     document.body.appendChild(el);
     const musicT = () => {
@@ -1016,7 +1343,7 @@
     shiftTxt();
     let lastKey = '';
     const tick = () => {
-      const vt = base + musicT() + (m.shift || 0);
+      const vt = toV(musicT()) + (m.shift || 0);
       const ps = C.playState(segs, vt);
       let mv = '', cnt = '', tp = '', nx = '', bef = '', frac = 0;
       if (!P.started) { mv = P.mode === 'top' ? 'Touche ▶️ au début de la musique' : 'Touche ▶️ pour commencer'; nx = 'Premier : ' + segs[0].name + (segs[0].reps ? ' × ' + segs[0].reps : ''); }
@@ -1041,15 +1368,15 @@
     const pause = () => { if (P.mode === 'music') P.audio.pause(); else P.pausedAt = musicT(); P.paused = true; $('#ppp', el).textContent = '▶️'; };
     if (P.mode === 'music') {
       // commencer un peu avant le premier mouvement (pas au tout début de la musique s'il y a une intro silencieuse)
-      P.audio.addEventListener('loadedmetadata', () => { const t0 = Math.max(0, segs[0].start - base - 4); if (t0 > 0) setMusicT(t0); }, { once: true });
+      P.audio.addEventListener('loadedmetadata', () => { const t0 = Math.max(0, fromV(segs[0].start) - 4); if (t0 > 0) setMusicT(t0); }, { once: true });
     }
     const jump = (dir) => {
-      const vt = base + musicT() + (m.shift || 0);
+      const vt = toV(musicT()) + (m.shift || 0);
       let i = segs.findIndex((s) => vt >= s.start && vt < s.end);
       if (i < 0) i = dir > 0 ? segs.findIndex((s) => s.start > vt) - 1 : segs.findIndex((s) => s.start > vt);
       let j = dir > 0 ? i + 1 : (i >= 0 && vt - segs[i].start > 2 ? i : i - 1);
       j = Math.max(0, Math.min(segs.length - 1, j));
-      setMusicT(segs[j].start - base - (m.shift || 0) + 0.02); P.started = true;
+      setMusicT(fromV(segs[j].start - (m.shift || 0)) + 0.02); P.started = true;
     };
     let saveT = null;
     const adj = (d) => { m.shift = Math.round(((m.shift || 0) + d) * 100) / 100; shiftTxt(); clearTimeout(saveT); saveT = setTimeout(() => saveCourse(c), 600); };
@@ -1063,7 +1390,7 @@
       else if (a === 'early') adj(0.25); else if (a === 'late') adj(-0.25);
       else if (a === 'nextm') { close(); saveCourse(c); scrPlay(cid, nextM.id); }
     });
-    window.SM_PLAY = { P, el, musicT, setMusicT, base, segs }; // pour les tests
+    window.SM_PLAY = { P, el, musicT, setMusicT, base, segs, toV, fromV, sync: sy }; // pour les tests
     tick();
   }
 
@@ -1096,16 +1423,15 @@
     try { if (navigator.storage && navigator.storage.estimate) { const e = await navigator.storage.estimate(); est = Math.round((e.usage || 0) / 1e6) + ' Mo utilisés'; } } catch (e) { /* rien */ }
     const persisted = navigator.storage && navigator.storage.persisted ? await navigator.storage.persisted().catch(() => false) : false;
     render('<div class="top"><button class="back" data-act="back">‹</button><h1>Réglages</h1></div>' +
-      '<div class="card"><h2>Images regardées par seconde</h2><p class="soft small">Plus = plus précis mais plus long. 8 est un bon choix.</p><div class="chips">' + [6, 8, 10].map((n) => '<button class="chip ' + (s.fps === n ? 'on' : '') + '" data-act="fps" data-v="' + n + '">' + n + '</button>').join('') + '</div></div>' +
-      '<div class="card"><h2>Précision du détecteur</h2><div class="chips"><button class="chip ' + (s.model === 'lite' ? 'on' : '') + '" data-act="model" data-v="lite">Rapide<small style="color:var(--soft)">conseillé</small></button><button class="chip ' + (s.model === 'full' ? 'on' : '') + '" data-act="model" data-v="full">Précis<small style="color:var(--soft)">2× plus long</small></button></div></div>' +
-      '<div class="card"><h2>Personnes cherchées sur l\'image</h2><div class="chips">' + [3, 5, 6].map((n) => '<button class="chip ' + (s.numPoses === n ? 'on' : '') + '" data-act="np" data-v="' + n + '">' + n + '</button>').join('') + '</div></div>' +
+      '<div class="card"><h2>Analyse des vidéos</h2><p class="soft small">« Plus précis » regarde 8 images par seconde et découpe l\'image en zones agrandies pour bien voir les personnes petites ou loin. « Plus rapide » : 6 images par seconde et 2 zones.</p><div class="chips"><button class="chip ' + (s.quality === 'rapide' ? 'on' : '') + '" data-act="q" data-v="rapide">Plus rapide</button><button class="chip ' + (s.quality !== 'rapide' ? 'on' : '') + '" data-act="q" data-v="precis">Plus précis<small style="color:var(--soft)">conseillé</small></button></div>' +
+        (s.msView ? '<p class="mute">Sur ce téléphone, pour 1 h de vidéo de groupe : environ ' + fmtDur(Math.max(900, 3600 * 6 * 2 * s.msView / 1000)) + ' en « Plus rapide », ' + fmtDur(Math.max(900, 3600 * 8 * 4 * s.msView / 1000)) + ' en « Plus précis » (estimation).</p>' : '') + '</div>' +
+      '<div class="card"><h2>Personnes cherchées par zone</h2><div class="chips">' + [6, 8].map((n) => '<button class="chip ' + (s.numPoses === n ? 'on' : '') + '" data-act="np" data-v="' + n + '">' + n + '</button>').join('') + '</div></div>' +
       '<div class="card"><h2>Stockage</h2><p class="soft small">' + esc(est) + (persisted ? ' · protégé ✅' : ' · non protégé (le téléphone pourrait effacer si la mémoire est pleine : fais des sauvegardes 💾)') + '</p></div>' +
       '<button class="btn ghost" data-act="reset">🗑️ Tout effacer et recommencer</button>' +
       '<p class="mute" style="text-align:center">ScriptMove · tout est calculé dans ton téléphone</p>',
     {
       back: () => scrHome(),
-      fps: async (b) => { s.fps = +b.dataset.v; await saveKV('settings'); scrSettings(); },
-      model: async (b) => { s.model = b.dataset.v; await saveKV('settings'); scrSettings(); },
+      q: async (b) => { s.quality = b.dataset.v; await saveKV('settings'); scrSettings(); },
       np: async (b) => { s.numPoses = +b.dataset.v; await saveKV('settings'); scrSettings(); },
       reset: () => resetAll()
     });
