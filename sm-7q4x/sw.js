@@ -1,8 +1,8 @@
 /* ScriptMove – fonctionne sans Internet après la 1re visite.
    Ne met en cache que les fichiers de l'appli et les bibliothèques publiques (jamais tes vidéos ni tes musiques). */
-const V = 'sm-app-v5', LIB = 'sm-lib-v1';
+const V = 'sm-app-v6', LIB = 'sm-lib-v1';
 const CORE = ['./', './index.html', './core.js', './mp4.js', './app.js', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png'];
-self.addEventListener('install', (e) => { e.waitUntil(caches.open(V).then((c) => c.addAll(CORE)).then(() => self.skipWaiting())); });
+self.addEventListener('install', (e) => { e.waitUntil(caches.open(V).then((c) => c.addAll(CORE.map((x) => new Request(x, { cache: 'reload' })))).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k.startsWith('sm-') && k !== V && k !== LIB).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
 });
@@ -22,7 +22,7 @@ self.addEventListener('fetch', (e) => {
   }
   if (u.origin !== location.origin || !u.pathname.includes('/sm-7q4x/')) return;
   // fichiers de l'appli : réseau d'abord (pour les mises à jour), sinon le cache
-  e.respondWith(fetch(req).then((r) => {
+  e.respondWith(fetch(req, { cache: 'no-cache' }).then((r) => {
     if (r && r.ok) { const cl = r.clone(); caches.open(V).then((c) => c.put(req, cl)); }
     return r;
   }).catch(() => caches.match(req, { ignoreSearch: true }).then((h) => h || caches.match('./index.html'))));
