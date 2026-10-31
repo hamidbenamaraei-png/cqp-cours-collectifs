@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<meta name="theme-color" content="#151a33">
+<meta name="mobile-web-app-capable" content="yes">
+<title>ScriptMove</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{--bg:#151a33;--card:#1e2547;--card2:#252d56;--line:#323c6e;--txt:#fff;--soft:#c9cfea;--mute:#8f97bd;--or:#ff8a3d;--or2:#ffb27f;--ok:#4cc38a;--ko:#ff5d6c;--ja:#f5c451;--bl:#5b8cff}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--txt)}
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:18px;line-height:1.45;overflow-wrap:break-word;min-height:100vh}
+#app{max-width:640px;margin:0 auto;padding:16px 16px 90px}
+h1{font-size:26px;margin:4px 0 14px;line-height:1.2}
+h2{font-size:21px;margin:0 0 10px;line-height:1.25}
+h3{font-size:18px;margin:0 0 6px}
+p{margin:0 0 12px}
+.soft{color:var(--soft)}.mute{color:var(--mute);font-size:15px}.small{font-size:15px}
+.card{background:var(--card);border-radius:18px;padding:16px;margin:0 0 14px;border:1px solid var(--line)}
+.card.o{border-left:6px solid var(--or)}.card.g{border-left:6px solid var(--ok)}.card.r{border-left:6px solid var(--ko)}.card.j{border-left:6px solid var(--ja)}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:58px;padding:12px 16px;border:0;border-radius:16px;background:var(--or);color:#1b1206;font:inherit;font-weight:800;font-size:19px;cursor:pointer;text-align:center;margin:0 0 10px;text-decoration:none}
+.btn.sec{background:var(--card2);color:#fff;border:2px solid var(--line)}
+.btn.ghost{background:transparent;color:var(--soft);border:2px dashed var(--line)}
+.btn.red{background:var(--ko);color:#fff}.btn.green{background:var(--ok);color:#06210f}
+.btn.small{min-height:46px;font-size:16px;padding:8px 12px;border-radius:13px}
+.btn:disabled{opacity:.45}
+.row{display:flex;gap:10px;flex-wrap:wrap}.row>*{flex:1 1 140px;min-width:0}
+.row.tight>*{flex:1 1 90px}
+.top{display:flex;align-items:center;gap:12px;margin:0 0 14px}
+.top .back{flex:0 0 auto;width:52px;height:52px;border-radius:14px;background:var(--card2);border:2px solid var(--line);color:#fff;font-size:24px;cursor:pointer}
+.top h1{margin:0;flex:1;min-width:0}
+.logo{display:flex;align-items:center;gap:14px;margin:6px 0 18px}
+.logo img{width:64px;height:64px;border-radius:16px}
+.logo b{font-size:30px;letter-spacing:.5px}.logo span{display:block;color:var(--soft);font-size:15px;font-weight:400}
+input[type=text],input[type=search],input[type=number],select{width:100%;padding:14px;border-radius:14px;border:2px solid var(--line);background:#11162c;color:#fff;font:inherit;font-size:18px}
+input:focus,select:focus{outline:none;border-color:var(--or)}
+label.lab{display:block;font-weight:700;margin:10px 0 6px}
+.chips{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 10px}
+.chip{flex:1 1 130px;min-height:64px;border-radius:16px;border:3px solid var(--line);background:var(--card2);color:#fff;font:inherit;font-weight:800;font-size:19px;cursor:pointer;padding:8px}
+.chip small{display:block;font-weight:600;font-size:13px;color:var(--ja)}
+.chip.on{border-color:var(--or);background:#3a2a22}
+.bar{height:16px;background:#0f1328;border-radius:9px;overflow:hidden;border:1px solid var(--line)}
+.bar>i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--or),var(--or2));transition:width .3s}
+.big{font-size:44px;font-weight:900;line-height:1.1}
+.badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:14px;font-weight:800;background:var(--card2);border:1px solid var(--line);white-space:nowrap}
+.badge.ok{background:#173a2a;color:#8ff0bd;border-color:#2b6b4c}.badge.wait{background:#3b3216;color:#ffe29a;border-color:#6d5a24}.badge.q{background:#47202a;color:#ffb3bf;border-color:#7a3443}
+.list{list-style:none;padding:0;margin:0}
+.seg{display:flex;gap:12px;align-items:center;background:var(--card2);border:2px solid var(--line);border-radius:16px;padding:12px;margin:0 0 10px;cursor:pointer;width:100%;color:#fff;font:inherit;text-align:left}
+.seg .n{flex:0 0 auto;width:40px;height:40px;border-radius:12px;background:#11162c;display:flex;align-items:center;justify-content:center;font-weight:900;color:var(--or)}
+.seg .t{flex:1;min-width:0}
+.seg .t b{display:block;font-size:20px}
+.seg img{flex:0 0 auto;width:72px;height:auto;border-radius:8px}
+.seg.q{border-color:#7a3443}
+.seg.pause{opacity:.6}
+.mrc{display:block}
+.mrc .head{display:flex;gap:10px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
+.mrc .head h2{flex:1 1 200px;min-width:0}
+.tline{margin:10px 0 4px}.tline b{font-size:20px;margin-left:6px}
+.times{display:grid;grid-template-columns:repeat(auto-fit,minmax(48px,1fr));gap:6px;margin:0 0 6px}
+.times button{min-width:0;height:46px;border-radius:12px;border:2px solid var(--line);background:#11162c;color:#fff;font:inherit;font-weight:700;font-size:15px;cursor:pointer}
+.vidbox{position:relative;background:#000;border-radius:14px;overflow:hidden;margin:0 0 12px}
+.vidbox video,.vidbox canvas{display:block;width:100%;height:auto}
+.vidbox canvas.ov{position:absolute;inset:0;width:100%;height:100%}
+.pickcv{display:block;width:100%;height:auto;border-radius:14px;background:#000;touch-action:manipulation}
+.sheet-bg{position:fixed;inset:0;background:rgba(5,8,20,.7);z-index:50;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:var(--bg);border:1px solid var(--line);border-radius:22px 22px 0 0;width:100%;max-width:640px;max-height:92vh;overflow:auto;padding:18px 16px 26px}
+.thumbs{display:flex;gap:8px;margin:0 0 12px}
+.thumbs figure{flex:1;margin:0;min-width:0}
+.thumbs img{width:100%;border-radius:10px;display:block;background:#000}
+.thumbs figcaption{font-size:13px;color:var(--mute);text-align:center}
+.stepper{display:flex;align-items:center;gap:12px;justify-content:center;margin:6px 0 12px}
+.stepper button{width:64px;height:64px;border-radius:18px;border:2px solid var(--line);background:var(--card2);color:#fff;font-size:30px;font-weight:900;cursor:pointer}
+.stepper b{font-size:44px;min-width:90px;text-align:center}
+.namegrid{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 12px}
+.namegrid button{flex:1 1 150px;min-height:50px;border-radius:13px;border:2px solid var(--line);background:var(--card2);color:#fff;font:inherit;font-weight:700;font-size:16px;cursor:pointer;padding:6px 8px}
+.namegrid button.on{border-color:var(--or)}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);width:max-content;max-width:min(90vw,360px);text-align:center;background:#fff;color:#151a33;padding:12px 18px;border-radius:14px;font-weight:800;z-index:99;max-width:90vw;box-shadow:0 8px 30px rgba(0,0,0,.4)}
+/* clavier du code */
+.dots{display:flex;justify-content:center;gap:14px;margin:16px 0 22px;min-height:22px}
+.dots i{width:20px;height:20px;border-radius:50%;border:3px solid var(--or)}
+.dots i.f{background:var(--or)}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;max-width:340px;margin:0 auto}
+.pad button{height:70px;border-radius:18px;border:2px solid var(--line);background:var(--card2);color:#fff;font:inherit;font-size:30px;font-weight:800;cursor:pointer}
+.pad button.ok{background:var(--or);color:#1b1206;border-color:var(--or)}
+/* jeu de danse */
+.play{position:fixed;inset:0;background:#0d1124;z-index:40;display:flex;flex-direction:column;padding:14px 16px calc(14px + env(safe-area-inset-bottom))}
+.play .ph{display:flex;align-items:center;gap:10px}
+.play .ph h3{flex:1;min-width:0;margin:0;color:var(--soft);font-size:17px}
+.play .ph button{flex:0 0 auto;width:50px;height:50px;border-radius:14px;border:2px solid var(--line);background:var(--card2);color:#fff;font-size:22px;cursor:pointer}
+.play .main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:6px;min-height:0}
+.play .mv{font-size:clamp(38px,12vw,76px);font-weight:900;line-height:1.05;overflow-wrap:normal;word-break:normal;hyphens:none}
+.play .cnt{font-size:clamp(70px,26vw,150px);font-weight:900;color:var(--or);line-height:1;font-variant-numeric:tabular-nums}
+.play .cnt small{font-size:.42em;color:var(--soft)}
+.play .tempo{font-size:22px;color:var(--ja);font-weight:800;min-height:28px}
+.play .nx{font-size:20px;color:var(--soft);min-height:30px}
+.play .bar{height:20px;margin:6px 0 10px}
+.play .ctl{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.play .ctl button{min-height:62px;border-radius:16px;border:2px solid var(--line);background:var(--card2);color:#fff;font:inherit;font-size:24px;font-weight:800;cursor:pointer}
+.play .ctl button.main{background:var(--or);color:#1b1206;border-color:var(--or)}
+.play .adj{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;margin-top:10px}
+.play .adj button{min-height:50px;border-radius:14px;border:2px solid var(--line);background:#11162c;color:#fff;font:inherit;font-size:15px;font-weight:700;cursor:pointer;padding:4px 6px}
+.play .adj span{font-size:15px;color:var(--mute);text-align:center;white-space:nowrap}
+.hide{display:none!important}
+#print{display:none}
+@media print{
+  body{background:#fff;color:#000}
+  #app,.toast,.sheet-bg,.play{display:none!important}
+  #print{display:block;font-family:Georgia,serif;color:#000;padding:0 8mm}
+  #print h1{font-size:22pt;margin:0 0 4pt}#print .sub{color:#444;margin:0 0 14pt}
+  #print h2{font-size:15pt;margin:14pt 0 4pt;border-bottom:1.5pt solid #ff8a3d;padding-bottom:2pt;break-after:avoid}
+  #print ol{margin:0 0 6pt 0;padding-left:22pt;font-size:13pt;line-height:1.5}
+  #print .t{color:#666;font-size:10pt}
+  #print section{break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<div id="app"><p class="soft" style="margin-top:40px;text-align:center">Chargement…</p></div>
+<div id="print"></div>
+<script src="core.js"></script>
+<script src="mp4.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
