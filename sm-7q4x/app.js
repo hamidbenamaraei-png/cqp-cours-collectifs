@@ -604,7 +604,7 @@
       (oldCut(c) ? '<div class="card r"><h3>⚠️ Découpage à refaire</h3><p class="soft small">Ce cours a été découpé avec l\'ancienne méthode : des musiques ont pu être placées n\'importe où. La nouvelle méthode ne place une musique que si elle est sûre, et sinon découpe par les blancs entre les morceaux. Ta vidéo, tes musiques et le nom sont gardés.</p><button class="btn" data-act="redo">🔁 Refaire le découpage</button></div>' : '') +
       (left.length ? '<button class="btn" data-act="all">🔍 Analyser ' + (left.length === ms.length ? 'tout le cours' : 'les ' + left.length + ' morceaux restants') + '</button>' : '') +
       '<div class="row"><button class="btn sec" data-act="script">📝 Script du cours</button><button class="btn sec" data-act="pdf">🖨️ PDF</button></div>' +
-      ms.map((m, i) => '<div class="card mrc ' + (m.status === 'done' ? 'g' : 'o') + '"><div class="head"><h2>' + (i + 1) + '. ' + esc(m.name) + '</h2>' + st(m) + '</div>' +
+      ms.map((m, i) => '<div class="card mrc ' + (m.status === 'done' ? 'g' : 'o') + '"><div class="head"><button class="btn sec small" style="width:auto;flex:0 0 auto;margin:0 8px 0 0;padding:6px 10px" data-act="renm" data-id="' + m.id + '" aria-label="Renommer ce morceau">✏️</button><h2 style="flex:1 1 auto;min-width:0">' + (i + 1) + '. ' + esc(m.name) + '</h2>' + st(m) + '</div>' +
         '<p class="mute">' + fmt(m.start) + ' → ' + fmt(m.end) + (m.musicId && musics[m.musicId] ? ' · 🎵 ' + esc(musics[m.musicId].name) + (m.alignMode === 'sure' ? ' ✅' : m.alignMode === 'proposed' ? ' ❓' : '') : ' · pas de musique liée') + (m.status === 'done' ? ' · ' + (modeOf(m) === 'group' ? '👥 groupe' : '🙋 1 personne') : '') + '</p>' +
         '<div class="row tight">' +
         (m.status === 'done' ? '<button class="btn small" data-act="play" data-id="' + m.id + '">🎮 Jouer</button><button class="btn sec small" data-act="see" data-id="' + m.id + '">📝 Script</button>' : '<button class="btn small" data-act="one" data-id="' + m.id + '">🔍 ' + (m.status === 'partial' ? 'Reprendre' : 'Analyser') + '</button>') +
@@ -623,6 +623,7 @@
       cut: () => scrCut(c.id),
       redo: () => redoCut(c),
       ren: async () => { const n = await askText('Nom du cours', c.name); if (n) { c.name = n; await saveCourse(c); scrCourse(c.id); } },
+      renm: async (b) => { const m = c.morceaux.find((x) => x.id === b.dataset.id); if (!m) return; const n = await askText('Nom du morceau', m.name, 'ex. 04 dos / épaules'); if (n) { m.name = n; await saveCourse(c); scrCourse(c.id); } },
       del: async () => {
         const r = await ask('Supprimer ce cours ?', 'Le script de ce cours sera effacé (ce que l\'appli a appris est gardé).', [{ label: '🗑️ Oui, supprimer', value: 1, cls: 'red' }, { label: 'Non', value: 0, cls: 'sec' }]);
         if (!r) return;
