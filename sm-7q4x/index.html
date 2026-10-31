@@ -107,6 +107,55 @@ select{max-width:100%;text-overflow:ellipsis}
 .play .adj{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;margin-top:10px}
 .play .adj button{min-height:50px;border-radius:14px;border:2px solid var(--line);background:#11162c;color:#fff;font:inherit;font-size:15px;font-weight:700;cursor:pointer;padding:4px 6px}
 .play .adj span{font-size:15px;color:var(--mute);text-align:center;white-space:nowrap}
+/* bibliothèque */
+.fgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:0 0 12px}
+.fold{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-height:96px;padding:12px 14px;border-radius:18px;border:2px solid var(--line);background:var(--card2);color:#fff;font:inherit;text-align:left;cursor:pointer}
+.fold .fi{font-size:30px;line-height:1}.fold b{font-size:20px;overflow-wrap:anywhere}
+/* ✍️ mon script */
+.wstick{position:sticky;top:0;z-index:20;background:var(--bg);margin:0 -16px 10px;padding:6px 16px 8px;border-bottom:1px solid var(--line)}
+.wstick video{display:block;width:100%;max-height:26vh;background:#000;border-radius:12px;object-fit:contain}
+.vctl{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;margin-top:6px}
+.vctl button{min-height:46px;border-radius:12px;border:2px solid var(--line);background:var(--card2);color:#fff;font:inherit;font-weight:800;font-size:15px;cursor:pointer;padding:2px;white-space:nowrap}
+.vctl button.main{background:var(--or);border-color:var(--or);color:#1b1206;font-size:20px}
+.vctl button.on{border-color:var(--ja);color:var(--ja)}
+.vtime{display:flex;align-items:center;gap:10px;margin-top:6px}.vtime b{font-variant-numeric:tabular-nums;min-width:46px}
+.vtime input{flex:1;min-width:0;accent-color:var(--or);height:28px}
+.wflash{position:absolute;left:50%;top:10px;transform:translateX(-50%);background:var(--ok);color:#06210f;font-weight:900;padding:6px 14px;border-radius:999px;opacity:0;pointer-events:none;white-space:nowrap;max-width:90%;overflow:hidden;text-overflow:ellipsis}
+.wflash.go{animation:wfl 1.3s ease-out}
+@keyframes wfl{0%{opacity:1}70%{opacity:1}100%{opacity:0}}
+.mvchips{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:0 0 7px}
+.mvchips.small4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.mvchips button{min-height:52px;border-radius:16px;border:2px solid var(--or);background:#3a2a22;color:#fff;font:inherit;font-weight:800;font-size:15px;cursor:pointer;padding:4px 6px;line-height:1.15;overflow-wrap:normal;word-break:normal;hyphens:manual}
+.mvchips.small4 button{border-color:var(--line);background:var(--card2);font-size:14px;min-height:46px}
+.mvchips button:active{background:var(--or);color:#1b1206}
+.whead{display:flex;align-items:center;gap:10px;justify-content:space-between;flex-wrap:wrap;margin:0 0 8px}
+.whead b{flex:1 1 180px;min-width:0}
+.wbtn{width:auto!important;flex:0 0 auto;margin:0!important}
+.kgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:0 0 6px}
+.kgrid.k8{grid-template-columns:repeat(8,minmax(0,1fr));gap:4px}
+.klab{margin:0 0 3px;font-size:13px;color:var(--mute);font-weight:700}
+.wcur{padding:10px 12px}
+.kgrid button{min-height:48px;border-radius:12px;border:2px solid var(--line);background:#11162c;color:#fff;font:inherit;font-weight:800;font-size:17px;cursor:pointer;padding:2px;white-space:nowrap}
+.kgrid button.on{border-color:var(--or);background:#3a2a22;color:var(--or2)}
+.kgrid button.val{color:var(--or);font-size:20px}
+.lx{border:0;background:transparent;color:var(--mute);font-size:16px;cursor:pointer;padding:0 6px}
+.lrow{background:var(--card2);border:2px solid var(--line);border-radius:14px;padding:8px 10px;margin:0 0 8px;cursor:pointer}
+.lrow.on{border-color:var(--or)}.lrow.pick{border-color:var(--ja);background:#3b3216}.lrow.pz{opacity:.8}
+.lmain{display:flex;align-items:center;gap:10px}
+.lmain .ln{flex:0 0 auto;width:30px;color:var(--or);font-weight:900;text-align:center}
+.lmain .lt{flex:1;min-width:0;font-weight:700}
+.lmain .ck{flex:0 0 auto;font-size:20px}
+.ltime{flex:0 0 auto;min-height:40px;border-radius:10px;border:2px solid var(--line);background:#11162c;color:var(--soft);font:inherit;font-size:15px;font-weight:700;cursor:pointer;padding:2px 8px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.ltools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:8px}
+.ltools button{min-height:44px;border-radius:11px;border:2px solid var(--line);background:#11162c;color:#fff;font:inherit;font-size:15px;font-weight:700;cursor:pointer;padding:2px;white-space:nowrap}
+.rlist{margin:0;padding-left:28px}.rlist li{margin:4px 0}.rlist li span:first-child{margin-right:8px}
+/* photo plein écran */
+.pv{position:fixed;inset:0;background:#000;z-index:45;display:flex;flex-direction:column}
+.pvimg{flex:1;overflow:hidden;touch-action:none;display:flex;align-items:center;justify-content:center;min-height:0}
+.pvimg img{max-width:100%;max-height:100%;transform-origin:center center;user-select:none;-webkit-user-drag:none}
+.pvbar{display:flex;gap:8px;align-items:center;justify-content:center;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:#0d1124}
+.pvbar button{min-width:56px;height:52px;border-radius:14px;border:2px solid var(--line);background:var(--card2);color:#fff;font-size:22px;cursor:pointer}
+.pvbar span{color:var(--soft);min-width:56px;text-align:center}
 .hide{display:none!important}
 #print{display:none}
 @media print{
@@ -116,6 +165,7 @@ select{max-width:100%;text-overflow:ellipsis}
   #print h1{font-size:22pt;margin:0 0 4pt}#print .sub{color:#444;margin:0 0 14pt}
   #print h2{font-size:15pt;margin:14pt 0 4pt;border-bottom:1.5pt solid #ff8a3d;padding-bottom:2pt;break-after:avoid}
   #print ol{margin:0 0 6pt 0;padding-left:22pt;font-size:13pt;line-height:1.5}
+  #print li{break-inside:avoid}
   #print .t{color:#666;font-size:10pt}
   #print section{break-inside:avoid}
 }
@@ -124,8 +174,8 @@ select{max-width:100%;text-overflow:ellipsis}
 <body>
 <div id="app"><p class="soft" style="margin-top:40px;text-align:center">Chargement…</p></div>
 <div id="print"></div>
-<script src="core.js?v=6"></script>
-<script src="mp4.js"></script>
-<script src="app.js?v=6"></script>
+<script src="core.js?v=7"></script>
+<script src="mp4.js?v=7"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>

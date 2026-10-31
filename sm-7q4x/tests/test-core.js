@@ -6,86 +6,6 @@ let fails = 0, passes = 0;
 function ok(cond, msg) { if (cond) { passes++; console.log('  ✓ ' + msg); } else { fails++; console.log('  ✗ ' + msg); } }
 function section(t) { console.log('\n' + t); }
 
-/* ---------- 1. Comptage sur sinusoïdes ---------- */
-section('1. Comptage de répétitions (sinusoïdes bruitées)');
-const r = S.rng(3);
-for (const [period, amp, noise, reps] of [[2, 2, 0.15, 16], [1, 1.2, 0.15, 16], [3.7, 3, 0.3, 8], [0.9, 0.9, 0.12, 24], [2.5, 1.5, 0.35, 12]]) {
-  const fps = 8, n = Math.round((reps * period + 1) * fps), x = new Float64Array(n);
-  for (let i = 0; i < n; i++) { const t = i / fps - 0.5; x[i] = (t < 0 || t > reps * period ? 0 : amp * (0.5 - 0.5 * Math.cos(2 * Math.PI * t / period))) + noise * S.gauss(r) + 0.2 * Math.sin(i / 50); }
-  const c = C.countReps(x, fps);
-  ok(c.count === reps, `période ${period}s amplitude ${amp} bruit ${noise} : ${c.count} / ${reps}`);
-}
-// signal plat → 0
-{ const x = new Float64Array(200); for (let i = 0; i < 200; i++) x[i] = 0.08 * S.gauss(r); ok(C.countReps(x, 8).count === 0, 'signal immobile → 0 répétition'); }
-
-/* ---------- 2. Mouvement lent 3/1 ---------- */
-section('2. Tempo lent 3/1 et 2/2');
-for (const [tempo, label] of [[[3, 1], '3/1'], [[2, 2], '2/2'], [[1, 1], 'single']]) {
-  const bpm = 130, beat = 60 / bpm, period = (tempo[0] + tempo[1]) * beat, fps = 10, reps = 8;
-  const n = Math.round((reps * period + 1) * fps), x = new Float64Array(n);
-  for (let i = 0; i < n; i++) { const t = i / fps - 0.5; x[i] = (t < 0 || t >= reps * period ? 0 : -3 * S.cyc(t / period, tempo)) + 0.1 * S.gauss(r); }
-  const c = C.countReps(x, fps);
-  const st = c.rests.map((i) => i / fps), pk = c.peaks.map((i) => i / fps);
-  const tl = C.tempoLabel(st, pk, bpm);
-  ok(c.count === reps && tl === label, `${label} : ${c.count} rép., tempo trouvé « ${tl} »`);
-}
-
-/* ---------- 3. Enchaînement squat 16 → rowing 8 → curl 8 ---------- */
-function runSeq(plan, opt) {
-  opt = opt || {};
-  const prog = S.program(plan, { seed: opt.seed || 11, noise: opt.noise, second: false });
-  const fps = opt.fps || 8, times = [], feats = [];
-  for (let t = 0; t < prog.total; t += 1 / fps + (opt.jitter ? (S.gauss(r) * 0.01) : 0)) {
-    const p = prog.poses(t)[0]; times.push(t);
-    if (opt.drop && Math.floor(t * 3) % 41 === 7) { for (let k = 0; k < C.NF; k++) feats.push(NaN); continue; }
-    feats.push(...C.poseFeatures(p.img, p.world, 16 / 9));
-  }
-  const seq = C.resample(Float64Array.from(times), Float64Array.from(feats), fps);
-  return { seq, segs: C.buildScript(seq, { style: 'pump', fingerprints: opt.fps_ || [], bpm: 130 }), prog };
-}
-section('3. Enchaînement squat 16 → rowing 8 → curl 8');
-{
-  const plan = [{ move: 'squat', reps: 16, period: 2 }, { move: 'row', reps: 8, period: 2 }, { move: 'curl', reps: 8, period: 2 }];
-  for (const o of [{ seed: 11 }, { seed: 5, noise: 0.02, jitter: true }, { seed: 9, drop: true, fps: 6 }]) {
-    const { segs } = runSeq(plan, o);
-    const main = segs.filter((s) => s.reps > 0);
-    console.log('    → ' + segs.map((s, i) => C.segLine(s, i) + ` [${s.start}-${s.end}s, conf ${s.conf}]`).join(' | '));
-    ok(main.length === 3 && main[0].name === 'Squat' && main[0].reps === 16 && main[1].name === 'Rowing' && main[1].reps === 8 && main[2].name === 'Curl biceps' && main[2].reps === 8,
-      `réglages ${JSON.stringify(o)} : ${main.map((s) => s.name + ' ' + s.reps).join(', ')}`);
-    if (o.seed === 11) {
-      ok(Math.abs(main[0].start - 2) < 1.5 && Math.abs(main[1].start - 35.5) < 2 && Math.abs(main[2].start - 53) < 2, `débuts ≈ 2 s / 35,5 s / 53 s : ${main.map((s) => s.start).join(' / ')}`);
-      const rt = main[0].repTimes; ok(rt.length === 16 && Math.abs(rt[1] - rt[0] - 2) < 0.4, `temps de chaque répétition (écart ${(rt[1] - rt[0]).toFixed(2)} s)`);
-    }
-  }
-}
-section('3b. Squat 2/2 puis squat single (changement de tempo)');
-{
-  const beat = 60 / 130;
-  const { segs } = runSeq([{ move: 'squat', reps: 8, period: 4 * beat, tempo: [2, 2] }, { move: 'squat', reps: 16, period: 2 * beat }], { seed: 4 });
-  console.log('    → ' + segs.map((s, i) => C.segLine(s, i)).join(' | '));
-  const tot = segs.reduce((a, s) => a + (s.name === 'Squat' ? s.reps : 0), 0);
-  ok(tot === 24, `total squats = ${tot} / 24`);
-  const mv = segs.filter((s) => s.reps > 0);
-  ok(mv.length === 2 && mv[0].reps === 8 && mv[0].tempo === '2/2' && mv[1].reps === 16 && mv[1].tempo === 'single', `passages : ${mv.map((s) => s.reps + ' ' + s.tempo).join(', ')} (attendu 8 2/2, 16 single)`);
-}
-
-section('3c. Robustesse : 2 enchaînements × 10 tirages × 8 et 10 images/s');
-{
-  const plans = [[{ move: 'squat', reps: 16, period: 2 }, { move: 'row', reps: 8, period: 2.2 }, { move: 'curl', reps: 8, period: 1.8 }],
-    [{ move: 'curl', reps: 12, period: 2 }, { move: 'squat', reps: 8, period: 3 }, { move: 'row', reps: 16, period: 1.2 }]];
-  const want = ['Squat 16, Rowing 8, Curl biceps 8', 'Curl biceps 12, Squat 8, Rowing 16'];
-  let good = 0, tot = 0;
-  for (const k of [0, 1]) for (let seed = 1; seed <= 10; seed++) for (const fps of [8, 10]) {
-    tot++;
-    const prog = S.program(plans[k], { seed, noise: 0.012 + 0.01 * (seed % 3), lead: 1 + seed % 4, trans: 0.8 + 0.3 * (seed % 4) });
-    const times = [], feats = [];
-    for (let t = 0; t < prog.total; t += 1 / fps) { const p = prog.poses(t)[0]; times.push(t); feats.push(...C.poseFeatures(p.img, p.world, 16 / 9)); }
-    const segs = C.buildScript(C.resample(times, feats, fps), { style: 'pump' }).filter((s) => s.reps > 0);
-    if (segs.map((s) => s.name + ' ' + s.reps).join(', ') === want[k]) good++;
-  }
-  ok(good >= tot - 1, `${good} / ${tot} scripts parfaits`);
-}
-
 /* ---------- 4. Alignement audio ---------- */
 section('4. Alignement audio (musique décalée de 37,4 s + voix + bruit)');
 {
@@ -143,37 +63,6 @@ section('4. Alignement audio (musique décalée de 37,4 s + voix + bruit)');
   const cuts = C.silenceCuts(C.audioFeaturesFromPCM(d3, sr), { minSong: 90 });
   console.log('    → coupures proposées : ' + cuts.map((c) => c.t + ' s').join(', '));
   ok(cuts.length === 2 && Math.abs(cuts[0].t - 127.5) < 3 && Math.abs(cuts[1].t - 262.5) < 3, 'coupures aux silences (≈127 s et ≈262 s)');
-}
-
-/* ---------- 5. Empreintes (apprentissage) ---------- */
-section('5. Apprentissage par empreintes');
-{
-  const plan = [{ move: 'squat', reps: 12, period: 2 }, { move: 'curl', reps: 8, period: 2 }];
-  const a = runSeq(plan, { seed: 21 });
-  const curl = a.segs.find((s) => s.name === 'Curl biceps');
-  ok(!!curl, 'curl reconnu par les règles avant correction');
-  // Hamid corrige : ce passage s'appelle « Curl marteau »
-  const fps_ = [{ style: 'pump', name: 'Curl marteau', vec: curl.vec }];
-  const b = runSeq(plan, { seed: 77, noise: 0.018, fps_ });
-  console.log('    → après correction : ' + b.segs.map((s, i) => C.segLine(s, i) + ' (' + s.source + ')').join(' | '));
-  ok(b.segs.some((s) => s.name === 'Curl marteau' && s.source === 'appris' && s.reps === 8), 'nouvelle vidéo : « Curl marteau × 8 » reconnu grâce à l\'empreinte');
-  ok(b.segs.some((s) => s.name === 'Squat' && s.reps === 12), 'le squat n\'est pas touché');
-  const nn = C.nearest(curl.vec, fps_, 'combat'); ok(nn === null, 'les empreintes Pump ne servent pas pour Combat');
-}
-
-/* ---------- 6. Suivi de la personne ---------- */
-section('6. Suivi de la personne (2 personnes, ordre mélangé)');
-{
-  const prog = S.program([{ move: 'squat', reps: 6, period: 2 }], { second: true, seed: 3 });
-  const st = { box: null }; let good = 0, tot = 0;
-  const first = prog.poses(0).map((p) => C.poseBox(p.img)); st.box = first[0]; st.lastT = 0;
-  for (let t = 0.125; t < prog.total; t += 0.125) {
-    let ps = prog.poses(t); const swap = Math.floor(t * 5) % 3 === 0; if (swap) ps = ps.slice().reverse();
-    if (Math.floor(t) === 6) ps = []; // disparition 1 s
-    const k = C.trackStep(st, ps.map((p) => C.poseBox(p.img)), t, 16 / 9);
-    if (ps.length) { tot++; if (k === (swap ? 1 : 0)) good++; }
-  }
-  ok(good === tot, `prof suivi sur ${good} / ${tot} images (avec une disparition d'1 s)`);
 }
 
 /* ---------- 7. Lecture ---------- */
@@ -243,49 +132,6 @@ section('9. (c) Découpage par les blancs : 1 h, 10 morceaux, 2 s de quasi-silen
   const pr2 = C.proposeMusics(segs, shuffled); ok(pr2[2].musicId === 'm3' && pr2[3].musicId === 'm4', 'une musique déjà placée est respectée');
   ok(C.trackNumber('07 - Lunges (Radio Edit)') === 7 && C.trackNumber('Track 3 Studio-X Trap Remix 2024') === 3 && C.trackNumber('Squats') === null, 'numéros lus dans les noms');
 }
-
-/* ---------- 10. Fusion de groupe ---------- */
-section('10. (d) Tout le groupe : 5 personnes (1 en retard, 1 variante, 1 masquée par moments)');
-{
-  const plan = [{ move: 'squat', reps: 16, period: 2 }, { move: 'row', reps: 8, period: 2 }, { move: 'curl', reps: 8, period: 2 }];
-  const plan2 = [{ move: 'curl', reps: 16, period: 2 }, { move: 'press', reps: 8, period: 2 }, { move: 'squat', reps: 8, period: 2 }];
-  for (const seed of [30, 50]) {
-    const cams = [0.12, 0.31, 0.5, 0.69, 0.88];
-    const progs = cams.map((cx, k) => S.program(k === 3 ? plan2 : plan, { seed: seed + k, noise: 0.012, cam: { cx, cy: 0.75, s: 0.16 }, yaw: 10 + 8 * k }));
-    const fps = 8, rr = S.rng(seed), total = progs[0].total + 1;
-    const tracker = new C.MultiTracker(16 / 9), times = [], per = {}; let nF = 0, swaps = 0;
-    for (let t = 0; t < total; t += 1 / fps) {
-      const ps = [];
-      progs.forEach((pg, k) => {
-        if (k === 4 && (Math.floor(t / 3) % 3 === 1)) return; // masquée 1/3 du temps
-        ps.push({ k, p: pg.poses(Math.max(0, k === 2 ? t - 0.8 : t))[0] }); // n° 2 : 0,8 s en retard
-      });
-      for (let i = ps.length - 1; i > 0; i--) { const j = Math.floor(rr() * (i + 1)); [ps[i], ps[j]] = [ps[j], ps[i]]; }
-      const ids = tracker.step(ps.map((x) => C.poseBox(x.p.img)), t); times.push(t);
-      ids.forEach((id, i) => { if (!per[id]) per[id] = { k: ps[i].k, f: new Array(nF * C.NF).fill(NaN) }; });
-      for (const id in per) { const i = ids.indexOf(+id); if (i >= 0) { if (per[id].k !== ps[i].k) swaps++; per[id].f.push(...C.poseFeatures(ps[i].p.img, ps[i].p.world, 16 / 9)); } else for (let q = 0; q < C.NF; q++) per[id].f.push(NaN); }
-      nF++;
-    }
-    ok(Object.keys(per).length === 5 && swaps === 0, `suivi : ${Object.keys(per).length} personnes, ${swaps} échange(s)`);
-    const tracks = Object.keys(per).map((id) => ({ id: +id, feats: Float32Array.from(per[id].f) }));
-    const seq = C.fuseGroup({ fps, times, tracks });
-    const kOf = (id) => per[id].k, sh = {}; seq.group.ids.forEach((id, i) => { sh[kOf(id)] = seq.group.share[i]; });
-    const segs = C.buildScript(seq, { style: 'pump' }).filter((s) => s.reps > 0);
-    ok(segs.map((s) => s.name + ' ' + s.reps).join(', ') === 'Squat 16, Rowing 8, Curl biceps 8', `tirage ${seed} : ${segs.map((s) => s.name + ' ' + s.reps).join(', ')} (utilisées : ${JSON.stringify(sh)})`);
-    ok(sh[2] < 0.2 && sh[3] < 0.2 && sh[0] > 0.8 && sh[1] > 0.8, 'la personne en retard et celle qui fait une variante sont écartées');
-  }
-  // fusion des zones : une même personne vue dans 2 zones ne compte qu'une fois
-  const prog = S.program([{ move: 'squat', reps: 2, period: 2 }], { cam: { cx: 0.5, cy: 0.8, s: 0.2 } });
-  const p = prog.poses(1)[0].img;
-  const rA = { x: 0.3, y: 0, w: 0.42, h: 1 }, rB = { x: 0.29, y: 0.1, w: 0.42, h: 0.9 };
-  const toRect = (lm, r) => lm.map((q) => ({ x: (q.x - r.x) / r.w, y: (q.y - r.y) / r.h, z: q.z / r.w, visibility: 0.9 }));
-  const back = C.mapFromRect(toRect(p, rA), rA);
-  ok(Math.abs(back[11].x - p[11].x) < 1e-9 && Math.abs(back[11].y - p[11].y) < 1e-9, 'coordonnées d\'une zone agrandie ramenées dans l\'image');
-  const other = S.program([{ move: 'squat', reps: 2, period: 2 }], { cam: { cx: 0.2, cy: 0.8, s: 0.2 } }).poses(1)[0].img;
-  const mg = C.mergeDetections([{ lm: C.mapFromRect(toRect(p, rA), rA), rect: rA }, { lm: C.mapFromRect(toRect(p, rB), rB), rect: rB }, { lm: other, rect: { x: 0, y: 0, w: 1, h: 1 } }]);
-  ok(mg.length === 2, `doublons retirés : ${mg.length} personnes (attendu 2)`);
-}
-
 /* ---------- 11. Jeu de danse sur une musique au tempo différent ---------- */
 section('11. (e) Adaptation au tempo de la musique');
 {
@@ -306,6 +152,100 @@ section('11. (e) Adaptation au tempo de la musique');
   const f = C.audioFeaturesFromPCM(pad, sr), fb = C.firstBeat(f, 0, 30);
   ok(Math.abs(fb - 5) < 0.06, `premier temps fort trouvé à ${fb} s (attendu 5 s)`);
 }
+
+/* ---------- 12. Mon script : temps vidéo → temps de la musique ---------- */
+section('12. Conversion temps vidéo → temps musique (recalage sûr)');
+{
+  // « 02 Techno » retrouvée à 7:46 dans la vidéo (décalage 466 s), même vitesse
+  const sync = { mode: 'sure', v0: 466, a0: 0, ratio: 1, vTop: 466, musicId: 'm2' };
+  ok(Math.abs(C.videoToMusic(sync, 466 + 32.5) - 32.5) < 1e-9, 'ligne à 8:18,5 dans la vidéo → 0:32,5 dans la musique');
+  const lines = [{ id: 'a', name: 'Squat', reps: 16, tempo: '2/2', t: 480 }, { id: 'b', name: 'Fentes', reps: 8, tempo: 'single', t: 510 }, { id: 'c', kind: 'pause', name: 'Pause', t: 540 }];
+  const tl = C.buildTimeline(lines, { sync, sure: true, bpm: 128, endV: 560 });
+  ok(tl.mode === 'video', 'musique sûre + horaires : on suit la vidéo (' + tl.mode + ')');
+  ok(tl.items[0].start === 14 && tl.items[0].end === 44 && tl.items[1].start === 44 && tl.items[2].end === 94, `débuts dans la musique : ${tl.items.map((x) => x.start + '→' + x.end).join(', ')}`);
+  ok(Math.abs(tl.items[0].repDur - 4 * 60 / 128) < 1e-9 && tl.items[0].repTimes.length === 16, 'répétition 2/2 = 4 temps : compteur calculé');
+  ok(tl.items[2].repTimes.length === 0 && !tl.items[2].counted, 'pause sans répétitions : pas de compteur');
+  // musique 3 % plus rapide que dans la vidéo
+  const s2 = { mode: 'sure', v0: 100, a0: 0, ratio: 0.97, vTop: 100 };
+  const t2 = C.buildTimeline([{ id: 'x', name: 'Curl', reps: 8, t: 197 }], { sync: s2, sure: true, endV: 294 });
+  ok(Math.abs(t2.items[0].start - 100) < 1e-6 && Math.abs(t2.items[0].end - 200) < 1e-6, `rapport de vitesse respecté : ${t2.items[0].start} → ${t2.items[0].end}`);
+  ok(Math.abs(t2.items[0].repDur - 12.5) < 1e-6, 'sans tempo : répétitions réparties sur la durée');
+}
+
+/* ---------- 13. Durées calculées par le BPM et le tempo ---------- */
+section('13. Durées par BPM / tempo (musique pas retrouvée avec certitude, ou script sans horaires)');
+{
+  const B = C.beatsPerRep;
+  ok(B('single') === 2 && B('2/2') === 4 && B('3/1') === 4 && B('1/3') === 4 && B('4/4') === 8 && B('pulses') === 1 && B('—') === null && B('') === null, 'temps par répétition : single 2, 2/2 4, 3/1 4, 1/3 4, 4/4 8, pulses 1');
+  const lines = [{ id: 'a', name: 'Squat', reps: 16, tempo: 'single' }, { id: 'b', name: 'Squat', reps: 8, tempo: '3/1' }, { id: 'c', name: 'Squat', reps: 16, tempo: 'pulses' }, { id: 'd', name: 'Squat', reps: 4, tempo: '4/4' }];
+  const tl = C.buildTimeline(lines, { bpm: 120, attack: 2 });
+  const d = tl.items.map((x) => Math.round((x.end - x.start) * 1000) / 1000);
+  ok(tl.mode === 'bpm' && tl.items[0].start === 2, 'sans horaires : départ au 1er temps fort de la musique (2 s)');
+  ok(d.join() === '16,16,8,16', `à 120 BPM : 16 single = 16 s, 8 × 3/1 = 16 s, 16 pulses = 8 s, 4 × 4/4 = 16 s → ${d.join(' / ')}`);
+  ok(tl.items[3].start === 42, 'les lignes s\'enchaînent (4e ligne à 42 s)');
+  const ps = C.playState(tl.items, 2 + 5.1);
+  ok(ps.seg.id === 'a' && ps.rep === 6, `à 5,1 s du départ (single = 1 s à 120 BPM) : Squat répétition ${ps.rep} / 16`);
+  // musique proposée (pas sûre), horaires vidéo + recalage au rythme : on part de l'heure convertie, durées au BPM
+  const sync = { mode: 'tempo', v0: 300, a0: 1.5, ratio: 1, vTop: 300 };
+  const t2 = C.buildTimeline([{ id: 'a', name: 'Rowing', reps: 8, tempo: '2/2', t: 310 }, { id: 'b', name: 'Curl', reps: 8, tempo: 'single', t: 330 }], { sync, sure: false, bpm: 128 });
+  ok(t2.mode === 'bpm' && t2.items[0].start === 11.5 && Math.abs(t2.items[1].start - (11.5 + 32 * 60 / 128)) < 0.002, `musique pas sûre : début converti (11,5 s), puis durées au BPM (${t2.items[1].start})`);
+  const t3 = C.buildTimeline([{ id: 'a', name: 'Gainage', reps: 0, t: 310 }, { id: 'b', name: 'Crunch', reps: 16, t: 340 }], { sync, bpm: 128, endV: 372 });
+  ok(Math.abs((t3.items[0].end - t3.items[0].start) - 30) < 1e-6 && !t3.items[0].counted, 'ligne sans répétitions : durée prise sur les horaires de la vidéo');
+  ok(t3.items[1].counted && Math.abs(t3.items[1].repDur - 2) < 1e-6, 'sans tempo mais avec horaires : compteur réparti (2 s par répétition)');
+}
+
+/* ---------- 14. Bibliothèque : migration des anciens cours ---------- */
+section('14. Migration des anciens cours vers les dossiers');
+{
+  let n = 0; const mk = () => 'id' + (n++);
+  const old = { id: 'c1', name: 'Pump – 31/10/2026', style: 'pump', created: 1, video: { name: 'v.mp4', size: 10, duration: 3600 }, morceaux: [
+    { id: 'm1', name: '01 Strong Ones', start: 130, end: 429, status: 'done', segments: [{ name: 'Squat', reps: 16, tempo: '2/2', start: 140.2, end: 170 }, { name: 'Pause', base: 'Pause', reps: 0, start: 170, end: 175 }, { name: 'Squat', reps: 8, tempo: 'single', start: 175, end: 190 }] },
+    { id: 'm2', name: '02 Techno', start: 466, end: 789, status: 'todo', segments: [] }] };
+  const combat = { id: 'c2', name: 'Combat 87', style: 'combat', created: 2, morceaux: [] };
+  const custom = { id: 'c3', name: 'Zumba 1', style: 'zumba', created: 3, morceaux: [] };
+  const ch = C.migrateCourse(old, C.BASE_FOLDERS, mk);
+  ok(ch && old.folder === 'pump', 'cours Pump → dossier 📁 Pump');
+  ok(old.morceaux[0].lines.length === 2 && old.morceaux[0].lines[0].name === 'Squat' && old.morceaux[0].lines[0].reps === 16 && old.morceaux[0].lines[0].tempo === '2/2' && old.morceaux[0].lines[0].t === 140.2, 'ancien script repris dans « Mon script » (heures gardées, pauses vides retirées)');
+  ok(old.morceaux[0].segments.length === 3 && old.morceaux[1].lines.length === 0, 'rien n\'est perdu (ancien script gardé aussi)');
+  ok(!C.migrateCourse(old, C.BASE_FOLDERS, mk), 'une 2e migration ne change rien');
+  C.migrateCourse(combat, C.BASE_FOLDERS, mk); C.migrateCourse(custom, C.BASE_FOLDERS, mk);
+  ok(combat.folder === 'combat' && custom.folder === 'pump', 'Combat → 📁 Combat ; style inconnu → 📁 Pump');
+  const mine = C.BASE_FOLDERS.concat([{ id: 'f_z', name: 'Zumba', style: 'f_z' }]);
+  const z = { id: 'c4', name: 'Zumba 2', style: 'f_z', folder: 'f_z', morceaux: [] };
+  ok(!C.migrateCourse(Object.assign(z, { version: 3 }), mine, mk) && z.folder === 'f_z', 'une édition déjà dans son propre dossier y reste');
+  ok(C.editionNumber('Pump 99') === 99 && C.editionNumber('Pump – 31/10/2026') === null && C.editionNumber('BodyPump 101 (oct.)') === 101, 'numéro d\'édition lu dans le nom (dates ignorées)');
+  const ord = C.sortEditions([{ name: 'Pump 98', created: 5 }, { name: 'Pump – 31/10/2026', created: 9 }, { name: 'Pump 99', created: 1 }, { name: 'Pump 100', created: 2 }]).map((x) => x.name);
+  ok(ord.join(' | ') === 'Pump 100 | Pump 99 | Pump 98 | Pump – 31/10/2026', 'éditions triées par numéro décroissant : ' + ord.join(', '));
+  const top = C.topMoves([old, combat], 'pump');
+  ok(top[0].name === 'Squat' && top[0].n === 2, 'mouvements les plus utilisés du style en premier');
+}
+
+/* ---------- 15. Copier / coller un bloc, dupliquer, déplacer ---------- */
+section('15. Copier un bloc, coller à l\'heure de la vidéo, dupliquer, déplacer');
+{
+  let n = 0; const mk = () => 'n' + (n++);
+  let L = [];
+  L = C.insertLine(L, { id: 'a', name: 'Squat', reps: 16, tempo: '2/2', t: 10 });
+  L = C.insertLine(L, { id: 'c', name: 'Curl', reps: 8, t: 50 });
+  L = C.insertLine(L, { id: 'b', name: 'Rowing', reps: 8, tempo: 'single', t: 40 });
+  ok(L.map((l) => l.id).join('') === 'abc', 'une ligne ajoutée se range dans l\'ordre de la vidéo');
+  const P = C.pasteBlock(L, [L[0], L[1]], 100, mk, 128);
+  ok(P.length === 5 && P[3].name === 'Squat' && P[3].t === 100 && P[4].name === 'Rowing' && P[4].t === 130, `bloc Squat + Rowing collé à 1:40 (écart de 30 s gardé) : ${P.slice(3).map((l) => l.name + '@' + l.t).join(', ')}`);
+  ok(new Set(P.map((l) => l.id)).size === 5 && P[0].t === 10, 'les copies ont de nouveaux identifiants, les originaux ne bougent pas');
+  const P2 = C.pasteBlock(L, [L[1], L[2]], 45, mk, 128);
+  ok(P2.map((l) => l.name).join(',') === 'Squat,Rowing,Rowing,Curl,Curl' && P2[2].t === 45 && P2[4].t === 55, 'collé au milieu : remis dans l\'ordre chronologique');
+  const nt = C.pasteBlock(L, [{ id: 'x', name: 'Squat', reps: 16, tempo: 'single' }, { id: 'y', name: 'Fentes', reps: 8, tempo: 'single' }], 200, mk, 120);
+  ok(nt[3].t === 200 && nt[4].t === 216, 'bloc sans horaires : écarts calculés au tempo (16 single à 120 BPM = 16 s)');
+  const D = C.dupLine(L, 'a', 25, 128, 'd1');
+  ok(D.length === 4 && D[1].id === 'd1' && D[1].t === 25 && D[1].name === 'Squat', 'dupliquer : copie placée à l\'heure actuelle de la vidéo');
+  const D2 = C.dupLine(L, 'a', 10, 120, 'd2');
+  ok(D2.find((l) => l.id === 'd2').t === 42 && D2[2].id === 'd2', 'dupliquer sans avancer la vidéo : copie placée juste après (16 × 2/2 à 120 BPM = 32 s)');
+  const M = C.moveLine(L, 'b', -1);
+  ok(M.lines.map((l) => l.name).join(',') === 'Rowing,Squat,Curl' && M.lines[0].t === 10 && M.lines[1].t === 40 && M.lines[0].id === 'b', 'déplacer vers le haut : le contenu change de place, les heures restent dans l\'ordre');
+  ok(C.lineText({ name: 'Squat', reps: 16, tempo: '2/2' }, 0) === '1. Squat × 16 (2/2)' && C.lineText({ kind: 'pause', name: 'Pause', reps: 0 }, 1) === '2. Pause' && C.lineText({ name: 'Fentes', reps: 8, tempo: '—', note: 'jambe droite' }, 2) === '3. Fentes × 8 – jambe droite', 'texte du script : « 1. Squat × 16 (2/2) »');
+  ok(C.norm('Élévations') === 'elevations', 'recherche sans accents');
+}
+
 
 console.log(`\n${passes} réussis, ${fails} échoués`);
 process.exit(fails ? 1 : 0);

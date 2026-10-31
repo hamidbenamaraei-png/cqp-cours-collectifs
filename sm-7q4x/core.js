@@ -7,291 +7,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  /* ======================= 1. Caractéristiques de pose ======================= */
-  const FEATS = ['kneeL', 'kneeR', 'hipL', 'hipR', 'elbL', 'elbR', 'shL', 'shR', 'wrWL', 'wrWR',
-    'tilt', 'lean', 'hipY', 'ankHL', 'ankHR', 'kneeHL', 'kneeHR', 'wrFL', 'wrFR', 'wrSpread',
-    'feetSpread', 'feetZ', 'elbHL', 'elbHR', 'shY', 'cx', 'tl'];
-  const FI = {}; FEATS.forEach((f, i) => { FI[f] = i; });
-  const NF = FEATS.length;
-  // échelle « une unité de mouvement » pour chaque caractéristique
-  const SCALE = {
-    kneeL: 30, kneeR: 30, hipL: 30, hipR: 30, elbL: 30, elbR: 30, shL: 30, shR: 30,
-    wrWL: 0.3, wrWR: 0.3, tilt: 20, lean: 15, hipY: 0.15, ankHL: 0.15, ankHR: 0.15,
-    kneeHL: 0.3, kneeHR: 0.3, wrFL: 0.2, wrFR: 0.2, wrSpread: 0.5, feetSpread: 0.2, feetZ: 0.2,
-    elbHL: 0.3, elbHR: 0.3, shY: 0.15, cx: 0.3, tl: Infinity
-  };
-  const MSCALE = { // échelle pour les positions moyennes (empreintes)
-    kneeL: 50, kneeR: 50, hipL: 50, hipR: 50, elbL: 50, elbR: 50, shL: 50, shR: 50,
-    wrWL: 0.5, wrWR: 0.5, tilt: 30, lean: 25, hipY: 0.3, ankHL: 0.3, ankHR: 0.3,
-    kneeHL: 0.5, kneeHR: 0.5, wrFL: 0.3, wrFR: 0.3, wrSpread: 1, feetSpread: 0.4, feetZ: 0.4,
-    elbHL: 0.5, elbHR: 0.5, shY: Infinity, cx: Infinity, tl: Infinity
-  };
-  const PAIRS = [['kneeL', 'kneeR'], ['hipL', 'hipR'], ['elbL', 'elbR'], ['shL', 'shR'], ['wrWL', 'wrWR'],
-    ['ankHL', 'ankHR'], ['kneeHL', 'kneeHR'], ['wrFL', 'wrFR'], ['elbHL', 'elbHR']];
-  // position de repos connue : +1 = valeur haute au repos (ex. genou tendu), -1 = valeur basse
-  const REST = { knee: 1, hip: 1, elb: 1, sh: -1, wrW: -1, tilt: -1, hipY: 1, ankH: -1, kneeH: -1, wrF: -1, elbH: -1, shY: -1 };
-  function restFlip(name) { const b = name.replace(/[LR±]$/, ''); return REST[b] == null ? null : REST[b] === 1; }
-  const SINGLES = ['tilt', 'lean', 'hipY', 'wrSpread', 'feetSpread', 'feetZ', 'shY', 'cx'];
-
-  function sub(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
-  function len(v) { return Math.hypot(v[0], v[1], v[2]); }
-  function dist(a, b) { return len(sub(a, b)); }
-  function mid(a, b) { return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2]; }
-  function ang(a, b, c) {
-    const u = sub(a, b), v = sub(c, b);
-    const d = (u[0] * v[0] + u[1] * v[1] + u[2] * v[2]) / ((len(u) * len(v)) || 1e-9);
-    return Math.acos(Math.max(-1, Math.min(1, d))) * 180 / Math.PI;
-  }
-  function P(lm, i, aspect) { const p = lm[i]; return [p.x * (aspect || 1), p.y, (p.z || 0) * (aspect || 1)]; }
-
-  /** img : 33 points normalisés (x,y entre 0 et 1) ; world : 33 points en mètres (ou null) ; aspect = largeur/hauteur */
-  function poseFeatures(img, world, aspect) {
-    aspect = aspect || 1;
-    const W = world && world.length >= 29 ? (i) => [world[i].x, world[i].y, world[i].z || 0] : (i) => P(img, i, aspect);
-    const I = (i) => P(img, i, aspect);
-    const LS = W(11), RS = W(12), LE = W(13), RE = W(14), LW = W(15), RW = W(16);
-    const LH = W(23), RH = W(24), LK = W(25), RK = W(26), LA = W(27), RA = W(28);
-    const mS = mid(LS, RS), mH = mid(LH, RH), tor = sub(mS, mH), tlen = len(tor) || 1e-6;
-    const legL = dist(LH, LK) + dist(LK, LA), legR = dist(RH, RK) + dist(RK, RA), leg = (legL + legR) / 2 || 1e-6;
-    const thigh = (dist(LH, LK) + dist(RH, RK)) / 2 || 1e-6;
-    const armL = dist(LS, LE) + dist(LE, LW) || 1e-6, armR = dist(RS, RE) + dist(RE, RW) || 1e-6;
-    const uaL = dist(LS, LE) || 1e-6, uaR = dist(RS, RE) || 1e-6;
-    const shw = dist(LS, RS) || 1e-6;
-    const f = new Array(NF);
-    f[0] = ang(LH, LK, LA); f[1] = ang(RH, RK, RA);
-    f[2] = ang(LS, LH, LK); f[3] = ang(RS, RH, RK);
-    f[4] = ang(LS, LE, LW); f[5] = ang(RS, RE, RW);
-    f[6] = ang(LH, LS, LE); f[7] = ang(RH, RS, RE);
-    f[8] = (LS[1] - LW[1]) / armL; f[9] = (RS[1] - RW[1]) / armR;
-    f[10] = Math.acos(Math.max(-1, Math.min(1, -tor[1] / tlen))) * 180 / Math.PI;
-    f[11] = Math.atan2(tor[0], -tor[1]) * 180 / Math.PI;
-    f[12] = ((LA[1] + RA[1]) / 2 - mH[1]) / leg;
-    f[13] = 1 - (LA[1] - mH[1]) / leg; f[14] = 1 - (RA[1] - mH[1]) / leg;
-    f[15] = (mH[1] - LK[1]) / thigh; f[16] = (mH[1] - RK[1]) / thigh;
-    f[17] = dist(LW, LS) / armL; f[18] = dist(RW, RS) / armR;
-    f[19] = Math.abs(LW[0] - RW[0]) / shw;
-    f[20] = dist(LA, RA) / leg;
-    f[21] = Math.abs(LA[2] - RA[2]) / leg;
-    f[22] = (LS[1] - LE[1]) / uaL; f[23] = (RS[1] - RE[1]) / uaR;
-    const iS = mid(I(11), I(12)), iH = mid(I(23), I(24));
-    f[24] = iS[1]; f[25] = iH[0]; f[26] = Math.hypot(iS[0] - iH[0], iS[1] - iH[1]);
-    for (let i = 0; i < NF; i++) if (!isFinite(f[i])) f[i] = NaN;
-    return f;
-  }
-
-  /** Cadre (en coordonnées normalisées) d'une pose */
-  function poseBox(lm) {
-    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9, n = 0;
-    for (let i = 0; i < lm.length; i++) {
-      const p = lm[i]; if (p.visibility != null && p.visibility < 0.3) continue;
-      if (p.x < x0) x0 = p.x; if (p.x > x1) x1 = p.x; if (p.y < y0) y0 = p.y; if (p.y > y1) y1 = p.y; n++;
-    }
-    if (n < 5) { x0 = 1e9; y0 = 1e9; x1 = -1e9; y1 = -1e9; for (const p of lm) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y); } }
-    const pad = 0.06 * (y1 - y0);
-    return { x: x0 - pad, y: y0 - pad, w: x1 - x0 + 2 * pad, h: y1 - y0 + 2 * pad, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 };
-  }
-
-  /* ======================= 2. Suivi de la personne ======================= */
-  /** Suivi par proximité. state = {box, lastT, lostSince} ; renvoie l'indice choisi ou -1 */
-  function trackStep(state, boxes, t, aspect) {
-    aspect = aspect || 1;
-    if (!state.box) return -1;
-    const gap = Math.max(0, t - (state.lastT == null ? t : state.lastT));
-    const ref = state.box;
-    const h = Math.max(ref.h, 0.05);
-    let lim = 0.45 + 0.6 * Math.min(gap, 3); // tolérance qui augmente si on l'a perdue
-    if (gap > 3) lim = 1.8; // ré-accrochage
-    let best = -1, bs = 1e9;
-    boxes.forEach((b, i) => {
-      const d = Math.hypot((b.cx - ref.cx) * aspect, b.cy - ref.cy) / h;
-      const s = d + 0.8 * Math.abs(Math.log(Math.max(b.h, 0.02) / h));
-      if (s < bs) { bs = s; best = i; }
-    });
-    if (best >= 0 && bs <= lim) {
-      const b = boxes[best];
-      state.box = { cx: b.cx, cy: b.cy, h: 0.7 * b.h + 0.3 * ref.h, w: b.w, x: b.x, y: b.y };
-      state.lastT = t; state.lostSince = null; return best;
-    }
-    if (state.lostSince == null) state.lostSince = t;
-    return -1;
-  }
-
-  /* ---------- 2b. Plusieurs personnes : zones agrandies, fusion des détections, suivi de chacun ---------- */
-  /** Ramène des points détectés dans une zone (rect normalisé {x,y,w,h}) vers l'image entière */
-  function mapFromRect(lm, rect) {
-    return lm.map((p) => ({ x: rect.x + p.x * rect.w, y: rect.y + p.y * rect.h, z: (p.z || 0) * rect.w, visibility: p.visibility == null ? 1 : p.visibility }));
-  }
-  function boxIoU(a, b) {
-    const x0 = Math.max(a.x, b.x), y0 = Math.max(a.y, b.y), x1 = Math.min(a.x + a.w, b.x + b.w), y1 = Math.min(a.y + a.h, b.y + b.h);
-    const i = Math.max(0, x1 - x0) * Math.max(0, y1 - y0); return i / ((a.w * a.h + b.w * b.h - i) || 1e-9);
-  }
-  /** La personne touche-t-elle un bord de la zone (et pas un bord de l'image) ? → elle est coupée */
-  function cutByRect(box, rect) {
-    const e = 0.01;
-    return (box.x < rect.x + e && rect.x > e) || (box.x + box.w > rect.x + rect.w - e && rect.x + rect.w < 1 - e) ||
-      (box.y < rect.y + e && rect.y > e) || (box.y + box.h > rect.y + rect.h - e && rect.y + rect.h < 1 - e);
-  }
-  /** Fusionne les personnes trouvées dans plusieurs zones (une même personne vue 2 fois → 1).
-      dets = [{lm, world, rect}] (lm déjà dans l'image entière). Renvoie [{lm, world, box}] */
-  function mergeDetections(dets) {
-    const it = dets.map((d) => {
-      const box = poseBox(d.lm); let v = 0; for (const p of d.lm) v += p.visibility == null ? 1 : p.visibility; v /= d.lm.length || 1;
-      const cut = d.rect ? cutByRect(box, d.rect) : false;
-      const zoom = d.rect ? 1 / Math.max(0.2, d.rect.h) : 1; // une zone agrandie voit mieux les petites personnes
-      return { lm: d.lm, world: d.world, box, q: v * (cut ? 0.45 : 1) * (1 + 0.15 * Math.min(3, zoom - 1)) };
-    }).sort((a, b) => b.q - a.q);
-    const keep = [];
-    const key = (lm) => [11, 12, 23, 24].map((i) => lm[i]);
-    for (const d of it) {
-      const dup = keep.some((k) => {
-        if (boxIoU(k.box, d.box) > 0.35) return true;
-        const a = key(k.lm), b = key(d.lm); let s = 0; for (let i = 0; i < 4; i++) s += Math.hypot(a[i].x - b[i].x, a[i].y - b[i].y);
-        return s / 4 < 0.25 * Math.max(0.02, Math.min(k.box.h, d.box.h));
-      });
-      if (!dup) keep.push(d);
-    }
-    return keep.map((d) => ({ lm: d.lm, world: d.world, box: d.box }));
-  }
-
-  /** Suivi de toutes les personnes (chacune garde son numéro d'une image à l'autre) */
-  class MultiTracker {
-    constructor(aspect, st) { this.aspect = aspect || 1; this.tracks = st ? st.tracks.map((x) => Object.assign({}, x, { box: Object.assign({}, x.box) })) : []; this.next = st ? st.next : 1; }
-    state() { return { tracks: this.tracks.map((x) => ({ id: x.id, box: x.box, lastT: x.lastT, hits: x.hits, first: x.first })), next: this.next }; }
-    /** boxes = cadres de l'image ; renvoie les numéros (id) dans le même ordre */
-    step(boxes, t) {
-      const pairs = [];
-      this.tracks.forEach((tr, ti) => {
-        const gap = Math.max(0, t - tr.lastT); if (gap > 30) return;
-        const h = Math.max(tr.box.h, 0.03), lim = gap > 3 ? 1.1 : 0.5 + 0.2 * gap;
-        boxes.forEach((b, bi) => {
-          const d = Math.hypot((b.cx - tr.box.cx) * this.aspect, b.cy - tr.box.cy) / h;
-          const s = d + 0.8 * Math.abs(Math.log(Math.max(b.h, 0.02) / h)) + 0.02 * Math.min(gap, 30);
-          if (s <= lim) pairs.push([s, ti, bi]);
-        });
-      });
-      pairs.sort((a, b) => a[0] - b[0]);
-      const ids = new Array(boxes.length).fill(0), usedT = new Set();
-      for (const [, ti, bi] of pairs) {
-        if (usedT.has(ti) || ids[bi]) continue; usedT.add(ti);
-        const tr = this.tracks[ti], b = boxes[bi];
-        tr.box = { cx: b.cx, cy: b.cy, h: 0.7 * b.h + 0.3 * tr.box.h, w: b.w, x: b.x, y: b.y }; tr.lastT = t; tr.hits++; ids[bi] = tr.id;
-      }
-      boxes.forEach((b, bi) => {
-        if (ids[bi]) return;
-        const tr = { id: this.next++, box: { cx: b.cx, cy: b.cy, h: b.h, w: b.w, x: b.x, y: b.y }, lastT: t, hits: 1, first: t };
-        this.tracks.push(tr); ids[bi] = tr.id;
-      });
-      // ménage : on oublie les apparitions très courtes perdues depuis longtemps
-      if (this.tracks.length > 24) this.tracks = this.tracks.filter((x) => t - x.lastT < 30 || x.hits > 40).slice(-24);
-      return ids;
-    }
-  }
-
-  const MED_TMP = new Float64Array(64);
-  function median(vals, n) { // vals : tableau réutilisable, n valeurs
-    const a = MED_TMP.subarray(0, n); for (let i = 0; i < n; i++) a[i] = vals[i]; a.sort();
-    return n % 2 ? a[(n - 1) >> 1] : (a[n / 2 - 1] + a[n / 2]) / 2;
-  }
-  const FUSE_F = FEATS.filter((f) => SCALE[f] !== Infinity);
-  /** Fusion du groupe : à chaque instant, valeur médiane des personnes qui font la même chose que la majorité.
-      po = {fps, times, tracks:[{id, feats}]} (feats : n images × NF, NaN si absente).
-      Renvoie une séquence comme resample() + info {persons, used (moyenne), share[]} */
-  function fuseGroup(po, opt) {
-    opt = opt || {};
-    const fps = po.fps, times = po.times, m = times.length;
-    if (!m) return null;
-    const t0 = times[0], t1 = times[m - 1];
-    let seqs = (po.tracks || []).map((tr) => ({ id: tr.id, s: resample(times, tr.feats, fps, t0, t1) }));
-    seqs = seqs.filter((x) => { let v = 0; for (let i = 0; i < x.s.n; i++) v += x.s.valid[i]; return v >= Math.max(fps * 4, 0.08 * x.s.n); });
-    if (!seqs.length) return null;
-    const n = seqs[0].s.n, P = seqs.length;
-    if (P === 1) return Object.assign(seqs[0].s, { group: { persons: 1, used: 1, share: [1] } });
-    const X = seqs.map((x) => x.s.X), V = seqs.map((x) => x.s.valid);
-    // positions : chacun par rapport à sa propre place (les personnes ne sont pas au même endroit)
-    const rel = ['cx', 'shY'].map((f) => FI[f]);
-    const base = seqs.map(() => rel.map(() => null));
-    seqs.forEach((x, p) => rel.forEach((f, k) => {
-      const c = col(X[p], n, f), b = smooth(c, Math.round(fps * 20) | 1); base[p][k] = b;
-      for (let i = 0; i < n; i++) X[p][i * NF + f] = c[i] - b[i];
-    }));
-    const W = Math.round(fps * 4), hop = Math.max(1, Math.round(fps)), SH = Math.round(fps * 0.25);
-    const agree = seqs.map(() => new Float32Array(n)), cnt = new Float32Array(n);
-    const vals = new Float64Array(P), cons = new Float64Array(n * NF), cv = new Uint8Array(n);
-    const consensus = (useW) => {
-      for (let i = 0; i < n; i++) {
-        let any = false;
-        for (let f = 0; f < NF; f++) {
-          let k = 0;
-          for (let p = 0; p < P; p++) if (V[p][i] && (!useW || agree[p][i] >= 0.5)) vals[k++] = X[p][i * NF + f];
-          if (!k && useW) { // personne d'accord ici : la meilleure disponible
-            let bp = -1, bw = -1; for (let p = 0; p < P; p++) if (V[p][i] && agree[p][i] > bw) { bw = agree[p][i]; bp = p; }
-            if (bp >= 0) vals[k++] = X[bp][i * NF + f];
-          }
-          if (k) { cons[i * NF + f] = median(vals, k); any = true; }
-        }
-        cv[i] = any ? 1 : 0;
-      }
-    };
-    const FF = FUSE_F.map((f) => FI[f]), SC = FUSE_F.map((f) => SCALE[f]);
-    const PF = ['tilt', 'hipY', 'kneeL', 'kneeR', 'elbL', 'elbR', 'wrWL', 'wrWR'].map((f) => [FI[f], MSCALE[f]]);
-    for (let pass = 0; pass < 2; pass++) {
-      consensus(pass > 0);
-      for (const a of agree) a.fill(0); cnt.fill(0);
-      for (let a = 0; a < n; a += hop) {
-        const b = Math.min(n, a + W); if (b - a < Math.max(4, W / 2)) continue;
-        for (let p = 0; p < P; p++) {
-          let nv = 0; for (let i = a; i < b; i++) if (V[p][i] && cv[i]) nv++;
-          let ok = 0;
-          if (nv >= 0.6 * (b - a)) {
-            // énergie du mouvement commun, et écart de la personne (avec un petit décalage permis)
-            let em = 0, ep = 0, best = Infinity, post = 0;
-            for (let k = 0; k < FF.length; k++) {
-              const f = FF[k], s = SC[k]; let mm = 0, mp = 0, c = 0;
-              for (let i = a; i < b; i++) if (V[p][i] && cv[i]) { mm += cons[i * NF + f]; mp += X[p][i * NF + f]; c++; }
-              mm /= c; mp /= c;
-              for (let i = a; i < b; i++) if (V[p][i] && cv[i]) { const u = (cons[i * NF + f] - mm) / s, w = (X[p][i * NF + f] - mp) / s; em += u * u; ep += w * w; }
-            }
-            for (const [f, s] of PF) { let mm = 0, mp = 0, c = 0; for (let i = a; i < b; i++) if (V[p][i] && cv[i]) { mm += cons[i * NF + f]; mp += X[p][i * NF + f]; c++; } post += Math.abs(mm - mp) / c / s; }
-            post /= PF.length;
-            for (let d = -SH; d <= SH; d++) {
-              let er = 0, c = 0;
-              for (let k = 0; k < FF.length; k++) {
-                const f = FF[k], s = SC[k]; let mm = 0, mp = 0, cc = 0;
-                for (let i = a; i < b; i++) { const j = i + d; if (j < 0 || j >= n || !V[p][j] || !cv[i]) continue; mm += cons[i * NF + f]; mp += X[p][j * NF + f]; cc++; }
-                if (!cc) continue; mm /= cc; mp /= cc;
-                for (let i = a; i < b; i++) { const j = i + d; if (j < 0 || j >= n || !V[p][j] || !cv[i]) continue; const r = ((X[p][j * NF + f] - mp) - (cons[i * NF + f] - mm)) / s; er += r * r; }
-                c = cc;
-              }
-              if (c) best = Math.min(best, er);
-            }
-            const still = em / nv < 0.25;
-            if (post > 0.9) ok = 0; // autre position (ex. au sol quand les autres sont debout)
-            else if (still) ok = ep / nv < Math.max(0.6, 3 * em / nv) ? 1 : 0;
-            else ok = best < 0.5 * em ? 1 : 0;
-          }
-          for (let i = a; i < b; i++) agree[p][i] += ok;
-        }
-        for (let i = a; i < b; i++) cnt[i]++;
-      }
-      for (let p = 0; p < P; p++) for (let i = 0; i < n; i++) agree[p][i] = cnt[i] ? agree[p][i] / cnt[i] : 1;
-    }
-    consensus(true);
-    // positions : on remet une place fixe (médiane des places de chacun) — sinon des sauts quand quelqu'un apparaît
-    const relC = rel.map((f, k) => { let q = 0; for (let p = 0; p < P; p++) { const c = quantile(base[p][k], 0.5); if (isFinite(c)) vals[q++] = c; } return q ? median(vals, q) : 0; });
-    const out = new Float32Array(n * NF), valid = new Uint8Array(n);
-    let usedSum = 0; const share = new Array(P).fill(0);
-    for (let i = 0; i < n; i++) {
-      valid[i] = cv[i];
-      for (let f = 0; f < NF; f++) out[i * NF + f] = cons[i * NF + f];
-      rel.forEach((f, k) => { out[i * NF + f] += relC[k]; });
-      let u = 0; for (let p = 0; p < P; p++) if (V[p][i] && agree[p][i] >= 0.5) { u++; share[p]++; }
-      usedSum += u;
-    }
-    let last = -1; for (let i = 0; i < n; i++) { if (valid[i]) last = i; else if (last >= 0) for (let f = 0; f < NF; f++) out[i * NF + f] = out[last * NF + f]; }
-    return { fps, t0, n, X: out, valid, group: { persons: P, used: Math.round(usedSum / n * 10) / 10, ids: seqs.map((x) => x.id), share: share.map((x) => Math.round(x / n * 100) / 100) } };
-  }
-
-  /* ======================= 3. Outils de signal ======================= */
+  /* ======================= 1. Outils de signal ======================= */
   function smooth(a, k) {
     const n = a.length, out = new Float64Array(n); if (k <= 1) { for (let i = 0; i < n; i++) out[i] = a[i]; return out; }
     const h = Math.floor(k / 2); let s = 0, c = 0;
@@ -311,279 +27,8 @@
     return sab / (Math.sqrt(saa * sbb) || 1e-9);
   }
 
-  /** Période dominante (en secondes) par autocorrélation ; {period, strength} */
-  function estimatePeriod(sig, fps, minS, maxS) {
-    const n = sig.length; minS = minS || 0.35; maxS = Math.min(maxS || 8, n / fps / 1.6);
-    const m = mean(sig), x = new Float64Array(n); let e = 0;
-    for (let i = 0; i < n; i++) { x[i] = sig[i] - m; e += x[i] * x[i]; }
-    if (e < 1e-9) return { period: null, strength: 0 };
-    const l0 = Math.max(1, Math.round(minS * fps)), l1 = Math.floor(maxS * fps);
-    if (l1 <= l0 + 1) return { period: null, strength: 0 };
-    const r = new Float64Array(l1 + 2);
-    for (let l = l0 - 1; l <= l1 + 1; l++) {
-      let s = 0; for (let i = 0; i + l < n; i++) s += x[i] * x[i + l];
-      r[l] = s / e * n / (n - l);
-    }
-    let gmax = -1; for (let l = l0; l <= l1; l++) if (r[l] > gmax) gmax = r[l];
-    if (gmax < 0.15) return { period: null, strength: Math.max(0, gmax) };
-    for (let l = l0; l <= l1; l++) {
-      if (r[l] >= r[l - 1] && r[l] >= r[l + 1] && r[l] >= 0.7 * gmax) {
-        const a = r[l - 1], b = r[l], c = r[l + 1], den = a - 2 * b + c;
-        const off = den !== 0 ? 0.5 * (a - c) / den : 0;
-        return { period: (l + Math.max(-0.5, Math.min(0.5, off))) / fps, strength: b };
-      }
-    }
-    return { period: null, strength: 0 };
-  }
 
-  /** Comptage des répétitions par hystérésis (seuil adaptatif).
-      Renvoie {count, starts[], peaks[], period, amp} (indices d'échantillons). */
-  function countReps(sig, fps, opt) {
-    opt = opt || {};
-    const n = sig.length;
-    const empty = { count: 0, starts: [], peaks: [], rests: [], period: null, amp: 0 };
-    if (n < Math.max(4, fps * 0.8)) return empty;
-    let s = smooth(sig, Math.max(1, Math.round(fps * 0.18)) | 1);
-    const pe = estimatePeriod(s, fps, 0.35, 10);
-    let period = pe.period;
-    // retirer la dérive lente
-    const dk = Math.max(3, Math.round(fps * (period ? Math.max(2.5, period * 2) : 3))) | 1;
-    const tr = smooth(s, dk);
-    const d = new Float64Array(n); for (let i = 0; i < n; i++) d[i] = s[i] - tr[i];
-    // orientation : la position de repos est celle du début
-    const k0 = Math.max(1, Math.round(fps * 0.4));
-    let m0 = 0; for (let i = 0; i < k0; i++) m0 += s[i]; m0 /= k0;
-    const smed = quantile(s, 0.5);
-    const flip = opt.flip != null ? opt.flip : (m0 > smed);
-    if (flip) for (let i = 0; i < n; i++) d[i] = -d[i];
-    // seuil local
-    const win = Math.max(Math.round(fps * 4), Math.round(fps * (period || 2) * 3));
-    const half = Math.floor(win / 2);
-    const amp = quantile(d, 0.95) - quantile(d, 0.05);
-    if (!(amp > (opt.minAmp || 0.35))) return Object.assign(empty, { amp: amp || 0, period });
-    const step = Math.max(1, Math.round(fps / 2));
-    const loc = new Float64Array(n);
-    for (let c = 0; c < n; c += step) {
-      const lo = Math.max(0, c - half), hi = Math.min(n, c + half);
-      const sl = d.slice(lo, hi), r = quantile(sl, 0.95) - quantile(sl, 0.05);
-      for (let i = c; i < Math.min(n, c + step); i++) loc[i] = Math.max(r, amp * 0.3);
-    }
-    const peaks = [], starts = [], rests = [];
-    let state = 0, best = -1, bestV = -1e9, lastPeak = -1, minSince = d[0], riseFrom = d[0];
-    for (let i = 0; i < n; i++) {
-      const hi = 0.2 * loc[i], lo = -0.12 * loc[i];
-      if (state === 0) {
-        if (d[i] < minSince) minSince = d[i];
-        if (d[i] > hi) { state = 1; best = i; bestV = d[i]; riseFrom = minSince; }
-      } else {
-        if (d[i] > bestV) { bestV = d[i]; best = i; }
-        if (d[i] < lo) {
-          // on ne compte que si le signal est vraiment « monté » (évite le faux pic du début)
-          if (bestV - riseFrom >= 0.3 * loc[best]) { peaks.push(best); lastPeak = best; }
-          state = 0; minSince = d[i];
-        }
-      }
-    }
-    if (state === 1 && best > lastPeak) {
-      // dernière répétition incomplète : on la compte si elle a vraiment eu lieu
-      // (il faut que le retour ait commencé : sinon c'est un simple changement de position)
-      if (bestV > 0.3 * loc[best] && bestV - riseFrom >= 0.45 * loc[best] && d[n - 1] < bestV - 0.3 * loc[best]) peaks.push(best);
-    }
-    // fusion des pics trop proches (bruit)
-    const minGap = Math.max(Math.round(fps * 0.3), period ? Math.round(period * fps * 0.45) : 0);
-    const pk = [];
-    for (const p of peaks) {
-      if (pk.length && p - pk[pk.length - 1] < minGap) { if (d[p] > d[pk[pk.length - 1]]) pk[pk.length - 1] = p; }
-      else pk.push(p);
-    }
-    // début de chaque répétition = dernier moment « en bas » avant le pic (le mouvement démarre)
-    let prev = 0;
-    for (let j = 0; j < pk.length; j++) {
-      let mv = 1e9;
-      for (let i = prev; i <= pk[j]; i++) if (d[i] < mv) mv = d[i];
-      const lim = mv + 0.12 * (d[pk[j]] - mv);
-      let mi = pk[j]; while (mi > prev && d[mi] > lim) mi--;
-      starts.push(mi);
-      // centre de la zone « au repos » (pour le tempo)
-      const lim2 = mv + 0.15 * (d[pk[j]] - mv); let sw = 0, sc = 0;
-      for (let i = prev; i <= pk[j]; i++) if (d[i] <= lim2) { sw += i; sc++; }
-      rests.push(sc ? sw / sc : mi);
-      prev = pk[j];
-    }
-    if (pk.length >= 3) {
-      const g = []; for (let j = 1; j < pk.length; j++) g.push(pk[j] - pk[j - 1]);
-      period = quantile(g, 0.5) / fps;
-    }
-    return { count: pk.length, starts, peaks: pk, rests, period, amp, d };
-  }
-
-  /* ======================= 4. Mise en forme des séquences ======================= */
-  /** Ré-échantillonnage régulier. times (s), feats (tableau plat n*NF) → {fps, t0, n, X: Float32Array, valid: Uint8Array} */
-  function resample(times, feats, fps, t0, t1) {
-    const m = times.length;
-    if (t0 == null) t0 = m ? times[0] : 0; if (t1 == null) t1 = m ? times[m - 1] : 0;
-    const n = Math.max(0, Math.floor((t1 - t0) * fps) + 1);
-    const X = new Float32Array(n * NF), valid = new Uint8Array(n);
-    let j = 0;
-    for (let i = 0; i < n; i++) {
-      const t = t0 + i / fps;
-      while (j + 1 < m && times[j + 1] <= t) j++;
-      // trouver des voisins valides
-      let a = j; while (a >= 0 && !isFinite(feats[a * NF])) a--;
-      let b = j + 1; while (b < m && !isFinite(feats[b * NF])) b++;
-      if (a >= 0 && times[a] > t) a = -1;
-      let ok = false;
-      if (a >= 0 && b < m && times[b] - times[a] <= 1.5) {
-        const w = (t - times[a]) / ((times[b] - times[a]) || 1);
-        for (let f = 0; f < NF; f++) X[i * NF + f] = feats[a * NF + f] * (1 - Math.max(0, Math.min(1, w))) + feats[b * NF + f] * Math.max(0, Math.min(1, w));
-        ok = true;
-      } else if (a >= 0 && t - times[a] <= 0.6) { for (let f = 0; f < NF; f++) X[i * NF + f] = feats[a * NF + f]; ok = true; }
-      else if (b < m && times[b] - t <= 0.6) { for (let f = 0; f < NF; f++) X[i * NF + f] = feats[b * NF + f]; ok = true; }
-      valid[i] = ok ? 1 : 0;
-    }
-    // trous : on recopie la dernière valeur connue (marqués non valides)
-    let last = -1;
-    for (let i = 0; i < n; i++) {
-      if (valid[i]) last = i;
-      else if (last >= 0) for (let f = 0; f < NF; f++) X[i * NF + f] = X[last * NF + f];
-    }
-    const firstV = valid.indexOf(1);
-    if (firstV > 0) for (let i = 0; i < firstV; i++) for (let f = 0; f < NF; f++) X[i * NF + f] = X[firstV * NF + f];
-    // normaliser position image par la taille du torse
-    const tl = []; for (let i = 0; i < n; i++) if (valid[i]) tl.push(X[i * NF + FI.tl]);
-    const sc = quantile(tl, 0.9) || 1;
-    for (let i = 0; i < n; i++) { X[i * NF + FI.shY] /= sc; X[i * NF + FI.cx] /= sc; }
-    return { fps, t0, n, X, valid };
-  }
-
-  function col(X, n, f, a, b) {
-    a = a || 0; b = b == null ? n : b; const o = new Float64Array(b - a);
-    for (let i = a; i < b; i++) o[i - a] = X[i * NF + f]; return o;
-  }
-
-  /** Statistiques d'un passage [a,b) : moyenne, amplitude (p90-p10 en unités), etc. */
-  function segStats(seq, a, b) {
-    const { X, n } = seq; const st = { mean: {}, amp: {}, ampN: {} };
-    for (let f = 0; f < NF; f++) {
-      const c = col(X, n, f, a, b); const name = FEATS[f];
-      st.mean[name] = mean(c);
-      const am = quantile(c, 0.92) - quantile(c, 0.08);
-      st.amp[name] = am; st.ampN[name] = SCALE[name] === Infinity ? 0 : am / SCALE[name];
-    }
-    return st;
-  }
-
-  /** Candidats de signal pour le comptage dans [a,b) */
-  function candidates(seq, a, b) {
-    const { X, n, fps } = seq; const out = [];
-    const push = (name, sig, scale, alt) => {
-      const z = new Float64Array(sig.length); for (let i = 0; i < sig.length; i++) z[i] = sig[i] / scale;
-      const am = quantile(z, 0.92) - quantile(z, 0.08);
-      out.push({ name, z, amp: am, alt });
-    };
-    for (const [l, r] of PAIRS) {
-      const L = col(X, n, FI[l], a, b), R = col(X, n, FI[r], a, b);
-      const c = corr(L, R);
-      const aL = quantile(L, 0.92) - quantile(L, 0.08), aR = quantile(R, 0.92) - quantile(R, 0.08);
-      if (c > 0.3) { const m = new Float64Array(L.length); for (let i = 0; i < L.length; i++) m[i] = (L[i] + R[i]) / 2; push(l.slice(0, -1), m, SCALE[l]); }
-      else if (c < -0.3 && Math.min(aL, aR) > 0.5 * Math.max(aL, aR)) {
-        const zl = L.map((x) => x / SCALE[l]), zr = R.map((x) => x / SCALE[r]);
-        push(l.slice(0, -1) + '±', L, SCALE[l], { L: zl, R: zr });
-      }
-      else { push(l, L, SCALE[l]); push(r, R, SCALE[r]); }
-    }
-    for (const s of SINGLES) push(s, col(X, n, FI[s], a, b), SCALE[s]);
-    for (const c of out) {
-      const pe = estimatePeriod(smooth(c.z, Math.max(1, Math.round(fps * 0.18)) | 1), fps, 0.35, 10);
-      c.period = pe.period; c.per = pe.strength;
-      c.score = c.amp * (0.25 + Math.max(0, pe.strength));
-    }
-    out.sort((x, y) => y.score - x.score);
-    return out;
-  }
-
-  /* ======================= 5. Découpage en segments ======================= */
-  const ACT = FEATS.filter((f) => SCALE[f] !== Infinity && f !== 'cx' && f !== 'shY');
-  function windowDesc(seq, a, b) {
-    const { X, fps } = seq; const d = [];
-    let maxA = 0, dom = -1;
-    for (let k = 0; k < ACT.length; k++) {
-      const f = FI[ACT[k]]; let s = 0, s2 = 0, c = 0;
-      for (let i = a; i < b; i++) { const v = X[i * NF + f]; s += v; s2 += v * v; c++; }
-      const m = s / c, sd = Math.sqrt(Math.max(0, s2 / c - m * m)) / SCALE[ACT[k]];
-      d.push(Math.sqrt(sd));
-      if (sd > maxA) { maxA = sd; dom = f; }
-    }
-    // posture moyenne
-    const pm = (name, sc) => { let s = 0; for (let i = a; i < b; i++) s += X[i * NF + FI[name]]; return s / (b - a) / sc; };
-    d.push(pm('tilt', 25)); d.push(pm('hipY', 0.35)); d.push((pm('wrWL', 0.6) + pm('wrWR', 0.6)) / 2);
-    d.push((pm('elbL', 60) + pm('elbR', 60)) / 2); d.push((pm('kneeL', 60) + pm('kneeR', 60)) / 2);
-    // rythme
-    let per = 0;
-    if (dom >= 0 && maxA > 0.25) {
-      const c = col(X, seq.n, dom, a, b); const pe = estimatePeriod(c, fps, 0.35, 6);
-      per = pe.period ? Math.log2(pe.period) * 0.9 : 0;
-    }
-    d.push(per);
-    return d;
-  }
-  function dvec(u, v) { let s = 0; for (let i = 0; i < u.length; i++) { const x = u[i] - v[i]; s += x * x; } return Math.sqrt(s); }
-
-  /** Découpe la séquence en passages homogènes. Renvoie [[a,b),…] en indices. */
-  function segmentSeq(seq, opt) {
-    opt = opt || {};
-    const { n, fps } = seq; if (n < fps * 2) return [[0, n]];
-    const W = Math.round(fps * (opt.win || 5)), hop = Math.max(1, Math.round(fps * 0.5)), Wmin = Math.round(fps * 1.5);
-    const nov = [], pos = [];
-    for (let c = Wmin; c + Wmin <= n; c += hop) {
-      const w = Math.min(W, c, n - c);
-      nov.push(dvec(windowDesc(seq, c - w, c), windowDesc(seq, c, c + w))); pos.push(c);
-    }
-    if (!nov.length) return [[0, n]];
-    const med = quantile(nov, 0.5);
-    const thr = Math.max(opt.thr || 0.9, med * 2.2);
-    const minLen = Math.round(fps * (opt.minLen || 3)), minEdge = Math.round(fps * 1.5);
-    let cuts = [];
-    for (let i = 0; i < nov.length; i++) {
-      const lo = Math.max(0, i - Math.round(4 * fps / hop)), hi = Math.min(nov.length - 1, i + Math.round(4 * fps / hop));
-      let isMax = true; for (let j = lo; j <= hi; j++) if (nov[j] > nov[i] || (nov[j] === nov[i] && j < i)) { isMax = false; break; }
-      if (isMax && nov[i] > thr) cuts.push({ p: pos[i], v: nov[i] });
-    }
-    cuts = cuts.filter((c) => c.p >= minEdge && n - c.p >= minEdge);
-    // espacement minimal
-    cuts.sort((x, y) => y.v - x.v); const kept = [];
-    for (const c of cuts) if (kept.every((k) => Math.abs(k.p - c.p) >= minLen)) kept.push(c);
-    kept.sort((x, y) => x.p - y.p);
-    const segs = []; let s = 0;
-    for (const c of kept) { segs.push([s, c.p]); s = c.p; }
-    segs.push([s, n]);
-    return segs;
-  }
-
-  /** Retire les moments immobiles au début / à la fin de chaque passage */
-  function trimIdle(seq, segs) {
-    const { fps } = seq; const out = [];
-    for (const [a, b] of segs) {
-      const c = candidates(seq, a, b)[0];
-      if (!c || c.amp < 0.6) { out.push([a, b, true]); continue; }
-      const z = smooth(c.z, Math.max(1, Math.round(fps * 0.18)) | 1);
-      const w = Math.max(2, Math.round(fps * Math.max(1.2, (c.period || 2) * 0.75)));
-      const act = (i) => { let lo = 1e9, hi = -1e9; for (let k = Math.max(0, i - w); k < Math.min(z.length, i + w); k++) { if (z[k] < lo) lo = z[k]; if (z[k] > hi) hi = z[k]; } return hi - lo; };
-      const thr = 0.4 * c.amp;
-      let s = 0; while (s < z.length && act(s) < thr) s++;
-      let e = z.length - 1; while (e > s && act(e) < thr) e--;
-      s = Math.max(0, s - Math.round(w * 0.5)); e = Math.min(z.length, e + Math.round(w * 0.5));
-      const min = Math.round(fps * 1.5);
-      if (s >= min) out.push([a, a + s, true]); else s = 0;
-      if (z.length - e >= min) { out.push([a + s, a + e]); out.push([a + e, b, true]); } else out.push([a + s, b]);
-    }
-    // regrouper les pauses voisines
-    const m = [];
-    for (const g of out) { const l = m[m.length - 1]; if (l && l[2] && g[2]) l[1] = g[1]; else m.push(g.slice()); }
-    return m;
-  }
-
-  /* ======================= 6. Reconnaissance ======================= */
+  /* ======================= 2. Mouvements par style ======================= */
   const MOVES = {
     pump: ['Squat', 'Soulevé de terre', 'Rowing', 'Épaulé', 'Développé couché', 'Pompes', 'Développé militaire',
       'Curl biceps', 'Extension triceps', 'Dips', 'Fentes', 'Élévations latérales', 'Élévations frontales',
@@ -595,276 +40,6 @@
     step: ['Pas de base', 'Montée genou', 'Pas en V', 'Repeater', 'Over the top', 'Tap', 'Pause']
   };
   const STYLES = { pump: 'Pump', combat: 'Combat', attack: 'Attack', step: 'Step' };
-
-  function maxA(st, a, b) {
-    if (st.pa) { const base = a.slice(0, -1); return st.pa[base] || 0; }
-    return Math.max(st.ampN[a], st.ampN[b]);
-  }
-  /** amplitude « périodique » : on ne garde que ce qui se répète */
-  function periodicAmps(cands) {
-    const pa = {};
-    for (const c of cands) {
-      const base = c.name.replace(/[LR±]$/, '');
-      const v = c.amp * Math.min(1, Math.max(0, (c.per - 0.15) / 0.55));
-      if (!(pa[base] >= v)) { pa[base] = v; pa['sym_' + base] = c.name === base; }
-    }
-    return pa;
-  }
-  function avgM(st, a, b) { return (st.mean[a] + st.mean[b]) / 2; }
-
-  /** Règles simples → {name, conf} */
-  function ruleName(st, style, dom) {
-    const knee = maxA(st, 'kneeL', 'kneeR'), hip = maxA(st, 'hipL', 'hipR'), elb = maxA(st, 'elbL', 'elbR');
-    const sh = maxA(st, 'shL', 'shR'), wrW = maxA(st, 'wrWL', 'wrWR'), tiltA = st.pa ? (st.pa.tilt || 0) : st.ampN.tilt;
-    const A1 = (k) => (st.pa ? (st.pa[k] || 0) : st.ampN[k]);
-    const ankH = maxA(st, 'ankHL', 'ankHR'), kneeH = maxA(st, 'kneeHL', 'kneeHR'), wrF = maxA(st, 'wrFL', 'wrFR');
-    const tilt = st.mean.tilt, mWrW = avgM(st, 'wrWL', 'wrWR'), mElb = avgM(st, 'elbL', 'elbR');
-    const mKnee = avgM(st, 'kneeL', 'kneeR');
-    const feetZ = st.mean.feetZ, kneeDiff = Math.abs(st.mean.kneeL - st.mean.kneeR);
-    const lying = tilt > 62, bent = tilt >= 28 && tilt <= 62;
-    const alt = dom && dom.alt;
-    const domName = dom ? dom.name.replace('±', '') : '';
-    const total = knee + hip + elb + sh + wrW + tiltA + ankH + kneeH + wrF + A1('feetSpread') + A1('shY');
-    const R = (name, conf) => ({ name, conf: Math.max(0.2, Math.min(0.92, conf)) });
-    const still = total < 1.4 || (dom && dom.amp < 0.6);
-    if (style === 'step') {
-      if (still) return R('Pause', 0.5);
-      if (kneeH > 1.1) return R('Montée genou', 0.55);
-      if (A1('feetSpread') > 1) return R('Pas en V', 0.45);
-      if (ankH > 1) return R('Repeater', 0.4);
-      return R('Pas de base', 0.4);
-    }
-    if (lying) {
-      if (still) return R('Gainage', 0.75);
-      if (style === 'attack' && kneeH > 1 && alt) return R('Mountain climbers', 0.6);
-      if (elb > 1 && A1('shY') > 0.6 && mWrW < 0.2) return R('Pompes', 0.7);
-      if (elb > 1 && mWrW >= 0.2) return R('Développé couché', 0.75);
-      if (elb > 1) return R('Pompes', 0.5);
-      if (tiltA > 0.7 && mKnee < 135) return R('Crunch', 0.6);
-      if (hip > 1) return R('Pont fessier', 0.5);
-      return R(style === 'pump' ? 'Gainage' : 'Gainage', 0.35);
-    }
-    if (style === 'attack') {
-      if (tiltA > 2.5) return R('Burpees', 0.6);
-      if (wrW > 1.2 && A1('feetSpread') > 0.8) return R('Jumping jack', 0.65);
-      if (kneeH > 1 && alt) return R('Montées de genoux', 0.65);
-      if (knee > 1.2 && A1('feetZ') > 1) return R('Fentes sautées', 0.5);
-      if (knee > 1.2) return R('Squat', 0.5);
-      if (still) return R('Pause', 0.5);
-      return R('Course sur place', 0.35);
-    }
-    if (style === 'combat') {
-      if (still) return R('Pause', 0.5);
-      if (knee > 1.1 && st.pa && st.pa.sym_knee && kneeH < knee) return R('Squat', 0.6);
-      if (ankH > 1.4 || (kneeH > 1.2 && ankH > 0.8)) {
-        if (kneeH > 1.2 && ankH < 2.2 && domName.startsWith('kneeH')) return R('Genou', 0.55);
-        if (Math.abs(st.mean.lean) > 12 || A1('lean') > 1) return R('Coup de pied latéral', 0.5);
-        if (tilt > 25) return R('Coup de pied arrière', 0.45);
-        return R('Coup de pied avant', 0.55);
-      }
-      if (wrF > 1 || elb > 1.2) {
-        const mElbH = avgM(st, 'elbHL', 'elbHR');
-        if (wrW > wrF * 1.2 && mElb < 125) return R('Uppercut', 0.5);
-        if (mElbH > -0.25 && mElb < 130) return R('Crochet', 0.5);
-        if (alt) return R('Jab cross', 0.6);
-        const left = st.ampN.wrFL + st.ampN.elbL > st.ampN.wrFR + st.ampN.elbR;
-        return R(left ? 'Jab' : 'Cross', 0.45);
-      }
-      if (knee > 1.2) return R('Squat', 0.55);
-      return R('Pause', 0.3);
-    }
-    // ---------- Pump ----------
-    if (still) return R(bent ? 'Rowing' : 'Pause', 0.3);
-    if (tiltA > 1.3 && knee < 1.6 && tiltA * 30 > knee * 20) return R('Soulevé de terre', 0.7);
-    if (knee > 1.1 && knee >= elb * 0.8) {
-      if (kneeDiff > 18 || feetZ > 0.25) return R('Fentes', 0.65);
-      if (wrW > 1.3 && elb > 1.2) return R('Épaulé', 0.45);
-      return R('Squat', knee > 1.6 ? 0.85 : 0.65);
-    }
-    if (bent) {
-      if (elb > 0.8 || sh > 0.8) return R('Rowing', 0.75);
-      return R('Rowing', 0.4);
-    }
-    if (wrW > 1.3 && elb > 1 && hip > 0.8) return R('Épaulé', 0.5);
-    if (elb > 1.1) {
-      if (mWrW > 0.25 && sh < 1) return R('Extension triceps', 0.6);
-      if (sh > 1.1 && wrW > 1) return R('Développé militaire', 0.65);
-      if (sh < 1.2 && mWrW < 0.2) return R('Curl biceps', 0.75);
-      return R('Développé militaire', 0.45);
-    }
-    if (sh > 1.1) {
-      if (mElb > 125) return R(A1('wrSpread') > 0.6 ? 'Élévations latérales' : 'Élévations frontales', 0.6);
-      return R('Développé militaire', 0.5);
-    }
-    if (knee > 0.7) return R('Squat', 0.4);
-    return R('Pause', 0.3);
-  }
-
-  /** Empreinte d'un passage (vecteur de nombres) */
-  function fingerprint(st, period) {
-    const v = [];
-    for (const f of FEATS) {
-      if (MSCALE[f] !== Infinity) v.push(st.mean[f] / MSCALE[f]);
-      if (SCALE[f] !== Infinity && f !== 'cx') v.push(Math.sqrt(Math.max(0, st.ampN[f])) * 0.9);
-    }
-    v.push(period ? Math.log2(Math.max(0.3, period)) * 0.4 : 0);
-    return v.map((x) => (isFinite(x) ? Math.round(x * 1000) / 1000 : 0));
-  }
-  function fpDist(a, b) {
-    if (!a || !b || a.length !== b.length) return Infinity;
-    let s = 0; for (let i = 0; i < a.length; i++) { const d = a[i] - b[i]; s += d * d; }
-    return Math.sqrt(s / a.length);
-  }
-  const FP_THR = 0.3;
-  /** Plus proche voisin parmi les empreintes apprises */
-  function nearest(vec, fps, style) {
-    let best = null, bd = Infinity;
-    for (const fp of fps || []) {
-      if (style && fp.style && fp.style !== style) continue;
-      const d = fpDist(vec, fp.vec); if (d < bd) { bd = d; best = fp; }
-    }
-    return best ? { fp: best, d: bd } : null;
-  }
-
-  /** Tempo : « single », « 2/2 », « 3/1 », « pulses »… */
-  function tempoLabel(startsT, peaksT, bpm) {
-    if (startsT.length < 2) return '';
-    const beat = 60 / (bpm || 130);
-    const A = [], B = [], D = [];
-    for (let j = 0; j < peaksT.length; j++) {
-      const s = startsT[j], p = peaksT[j], nx = startsT[j + 1];
-      if (nx == null) break; A.push(p - s); B.push(nx - p); D.push(nx - s);
-    }
-    if (D.length < 2) return '';
-    const md = quantile(D, 0.5); const cv = Math.sqrt(D.reduce((x, y) => x + (y - md) * (y - md), 0) / D.length) / md;
-    if (cv > 0.3) return '';
-    const tot = md / beat; if (tot < 1.5) return 'pulses';
-    const a = quantile(A, 0.5), b = quantile(B, 0.5);
-    const rt = Math.max(2, Math.round(tot));
-    const ra = Math.max(1, Math.min(rt - 1, Math.round(rt * a / (a + b)))), rb = rt - ra;
-    if (ra === 1 && rb === 1) return 'single';
-    return ra + '/' + rb;
-  }
-
-  /** Construit le script d'un morceau à partir d'une séquence ré-échantillonnée */
-  function buildScript(seq, opt) {
-    opt = opt || {};
-    const style = opt.style || 'pump', fpsL = opt.fingerprints || [], vocab = opt.vocab || {};
-    const { fps, t0 } = seq;
-    let segs = trimIdle(seq, segmentSeq(seq, opt));
-    const out = [];
-    const analyse = (a, b, forcePause) => {
-      const st = segStats(seq, a, b);
-      const cands = candidates(seq, a, b);
-      const dom = cands[0];
-      st.pa = periodicAmps(cands);
-      let rep;
-      if (dom && dom.alt) {
-        const fl = restFlip(dom.name), rl = countReps(dom.alt.L, fps, { flip: fl }), rr = countReps(dom.alt.R, fps, { flip: fl });
-        const st2 = rl.starts.concat(rr.starts).sort((x, y) => x - y), pk = rl.peaks.concat(rr.peaks).sort((x, y) => x - y);
-        rep = { count: rl.count + rr.count, starts: st2, peaks: pk, rests: [], period: rl.period && rr.period ? (rl.period + rr.period) / 4 : null };
-      } else rep = dom ? countReps(dom.z, fps, { flip: restFlip(dom.name) }) : { count: 0, starts: [], peaks: [], rests: [] };
-      const vec = fingerprint(st, rep.period || (dom && dom.period));
-      let r = ruleName(st, style, dom);
-      let source = 'règle';
-      const nn = forcePause || !dom || dom.amp < 0.6 || (rep.count < 2 && r.name === 'Pause') ? null : nearest(vec, fpsL, style);
-      if (nn && nn.d < FP_THR) {
-        const c = 0.6 + 0.35 * (1 - nn.d / FP_THR);
-        if (nn.fp.name !== r.name || c > r.conf) { r = { name: nn.fp.name, conf: c }; source = 'appris'; }
-      }
-      if (forcePause) r = { name: 'Pause', conf: 0.8 };
-      // petit morceau de 1 ou 2 répétitions : c'est une transition
-      if (!forcePause && rep.count < 3 && (b - a) < fps * 6 && r.name !== 'Gainage') { r = { name: 'Pause', conf: 0.5 }; source = 'règle'; }
-      if (r.name === 'Pause' || r.name === 'Gainage') rep = { count: 0, starts: [], peaks: [], rests: [] };
-      let conf = r.conf;
-      if (dom && dom.per < 0.3 && rep.count > 2) conf *= 0.8;
-      const toT = (i) => Math.round((t0 + (a + i) / fps) * 100) / 100;
-      const startsT = rep.starts.map(toT), peaksT = rep.peaks.map(toT), restsT = (rep.rests || []).map(toT);
-      return {
-        name: vocab[r.name] || r.name, base: r.name, reps: rep.count, start: toT(0), end: toT(b - a),
-        repTimes: startsT, peakTimes: peaksT, tempo: r.name === 'Pause' || r.name === 'Gainage' ? '' : tempoLabel(restsT.length === peaksT.length ? restsT : startsT, peaksT, opt.bpm),
-        conf: Math.round(conf * 100) / 100, source, vec, dom: dom ? dom.name : '', period: rep.period
-      };
-    };
-    for (const [a, b, idle] of segs) { if (idle && (b - a) < fps * 4) continue; out.push(analyse(a, b, idle)); }
-    // fusion des voisins identiques
-    for (let i = out.length - 1; i > 0; i--) {
-      const A = out[i - 1], B = out[i];
-      if (A.base === B.base && fpDist(A.vec, B.vec) < 0.22 && (!A.period || !B.period || Math.abs(Math.log2(A.period / B.period)) < 0.4)) {
-        const a = Math.round((A.start - t0) * fps), b = Math.round((B.end - t0) * fps);
-        out.splice(i - 1, 2, analyse(a, Math.min(seq.n, b)));
-      }
-    }
-    // caler chaque frontière sur le début réel du mouvement suivant
-    for (let i = 1; i < out.length; i++) {
-      const A = out[i - 1], B = out[i];
-      if (!A.reps || !B.reps) continue;
-      const a = Math.round((A.start - t0) * fps), c = Math.round((B.start - t0) * fps), b = Math.min(seq.n, Math.round((B.end - t0) * fps));
-      const c2 = Math.max(a + Math.round(fps * 2), c - Math.round(fps * 1.5));
-      const B2 = analyse(c2, b);
-      if (B2.base !== B.base || B2.reps <= B.reps || !B2.repTimes.length) continue;
-      const nc = Math.round((B2.repTimes[0] - t0) * fps);
-      if (nc >= c || nc <= a + fps) continue;
-      // la répétition disputée ressemble-t-elle plus à B qu'à A ?
-      const per = Math.round(fps * (B.period || 2));
-      const w1 = Math.min(b, nc + per); if (w1 - nc < 3) continue;
-      const stw = segStats(seq, nc, w1); stw.pa = null;
-      const v = fingerprint(stw, B.period);
-      if (!(fpDist(v, B.vec) < fpDist(v, A.vec))) continue;
-      const A2 = analyse(a, nc), B3 = analyse(nc, b);
-      if (A2.base === A.base && A2.reps >= A.reps - 1 && B3.reps > B.reps) { out[i - 1] = A2; out[i] = B3; }
-    }
-    // la dernière répétition d'un passage déborde un peu sur le suivant : on la rend au passage
-    for (let i = 0; i < out.length; i++) {
-      const A = out[i], B = out[i + 1];
-      if (!A.reps) continue;
-      const a = Math.round((A.start - t0) * fps), c = Math.round((A.end - t0) * fps);
-      const freeAfter = !B || B.base === 'Pause';
-      const lim = B ? Math.round((B.end - t0) * fps) - (freeAfter ? 0 : Math.round(fps * 2)) : seq.n;
-      const c2 = Math.min(seq.n, lim, c + Math.round(fps * (freeAfter ? 2.5 : 1.5)));
-      if (c2 <= c + 1) continue;
-      const A2 = analyse(a, c2);
-      if (A2.base !== A.base || A2.reps < A.reps + 1 || A2.reps > A.reps + (freeAfter ? 2 : 1)) continue;
-      const lastPk = A2.peakTimes[A2.peakTimes.length - 1];
-      if (!(lastPk <= A.end) && !freeAfter) continue;
-      const lastSt = A2.repTimes[A2.repTimes.length - 1];
-      const nc = freeAfter ? c2 : Math.min(c2, Math.round((Math.min(A.end + 1.5, lastPk + (lastPk - lastSt) * 1.1) - t0) * fps));
-      out[i] = analyse(a, nc);
-      if (out[i].reps !== A2.reps) { out[i] = A; continue; }
-      if (B) { const b = Math.round((B.end - t0) * fps); if (b - nc >= 2) out[i + 1] = B.base === 'Pause' ? Object.assign({}, B, { start: out[i].end }) : analyse(nc, b); else out.splice(i + 1, 1); }
-    }
-    // même mouvement, tempo différent : placer la frontière sur la répétition où le rythme change
-    for (let i = 1; i < out.length; i++) {
-      const A = out[i - 1], B = out[i];
-      if (A.base !== B.base || !A.reps || !B.reps || A.base === 'Pause') continue;
-      const a = Math.round((A.start - t0) * fps), b = Math.min(seq.n, Math.round((B.end - t0) * fps));
-      const U = analyse(a, b); const st = U.repTimes;
-      if (st.length < 6) continue;
-      const g = []; for (let j = 1; j < st.length; j++) g.push(Math.log(st[j] - st[j - 1]));
-      let bj = -1, bc = Infinity;
-      for (let j = 2; j <= g.length - 2; j++) {
-        const L = g.slice(0, j), R = g.slice(j), ml = mean(L), mr = mean(R);
-        let c = 0; for (const x of L) c += (x - ml) ** 2; for (const x of R) c += (x - mr) ** 2;
-        if (c < bc) { bc = c; bj = j; }
-      }
-      if (bj < 0) continue;
-      const cut = Math.round((st[bj] - t0) * fps);
-      if (cut <= a + 2 || cut >= b - 2) continue;
-      out[i - 1] = analyse(a, cut); out[i] = analyse(cut, b);
-    }
-    // couper les passages « vides » au début et à la fin
-    out.forEach((s) => { s.check = s.conf < 0.6 && s.base !== 'Pause'; s.id = Math.random().toString(36).slice(2, 10); });
-    return out;
-  }
-
-  /** Recalcule un segment sur [start,end] (après coupe/fusion) */
-  function analyseRange(seq, start, end, opt) {
-    const a = Math.max(0, Math.round((start - seq.t0) * seq.fps)), b = Math.min(seq.n, Math.round((end - seq.t0) * seq.fps));
-    if (b - a < 2) return null;
-    const sub = { fps: seq.fps, t0: seq.t0 + a / seq.fps, n: b - a, X: seq.X.subarray(a * NF, b * NF), valid: seq.valid.subarray(a, b) };
-    const r = buildScript(sub, Object.assign({}, opt, { thr: 1e9 }));
-    return r[0];
-  }
 
   /* ======================= 7. Audio : FFT, caractéristiques, alignement ======================= */
   function fft(re, im, inv) {
@@ -1452,7 +627,7 @@
   function segLine(s, i) {
     const r = s.reps > 0 ? ' × ' + s.reps : '';
     const t = s.tempo ? ' (' + s.tempo + ')' : '';
-    return (i + 1) + '. ' + s.name + r + t;
+    return (i + 1) + '. ' + s.name + r + t + (s.note ? ' – ' + s.note : '');
   }
   function fmtTime(t) {
     t = Math.max(0, t || 0); const m = Math.floor(t / 60), s = Math.floor(t % 60);
@@ -1460,29 +635,185 @@
   }
 
   /* ======================= 9. Lecture (jeu de danse) ======================= */
-  /** État d'affichage à l'instant vt (temps vidéo) */
+  /** État d'affichage à l'instant vt (même base de temps que les lignes) */
   function playState(segs, vt) {
     if (!segs.length) return null;
     let i = segs.findIndex((s) => vt >= s.start && vt < s.end);
     if (i < 0) {
       if (vt < segs[0].start) return { idx: -1, before: true, next: segs[0], remain: segs[0].start - vt, frac: 0 };
-      // entre deux segments ?
       i = segs.findIndex((s) => s.start > vt);
       if (i < 0) return { idx: segs.length, after: true };
       return { idx: i - 0.5, gap: true, next: segs[i], remain: segs[i].start - vt, frac: 0 };
     }
     const s = segs[i];
     let rep = 0; for (const t of s.repTimes || []) if (t <= vt + 0.05) rep++;
-    if (s.reps && rep === 0) rep = 0;
     return { idx: i, seg: s, rep: Math.min(rep, s.reps || 0), next: segs[i + 1] || null, remain: s.end - vt, frac: (vt - s.start) / Math.max(0.01, s.end - s.start) };
   }
 
+  /* ======================= 10. Mon script (écrit à la main) ======================= */
+  /** Temps par répétition selon le tempo (en temps de musique) */
+  const TEMPOS = ['single', '2/2', '3/1', '1/3', '4/4', 'pulses'];
+  const TEMPO_BEATS = { single: 2, '2/2': 4, '3/1': 4, '1/3': 4, '4/4': 8, pulses: 1 };
+  function beatsPerRep(tempo) { const k = String(tempo || '').trim().toLowerCase(); return TEMPO_BEATS[k] || null; }
+
+  /** Ajoute une ligne à sa place (ordre chronologique ; sans heure = à la fin). Renvoie la nouvelle liste. */
+  function insertLine(lines, line) {
+    const out = lines.slice();
+    if (line.t == null) { out.push(line); return out; }
+    let i = out.length;
+    while (i > 0 && (out[i - 1].t == null || out[i - 1].t > line.t)) i--;
+    out.splice(i, 0, line); return out;
+  }
+  /** Remet les lignes dans l'ordre chronologique (stable ; sans heure à la fin) */
+  function sortLines(lines) {
+    return lines.map((l, i) => [l, i]).sort((a, b) => {
+      const ta = a[0].t, tb = b[0].t;
+      if (ta == null && tb == null) return a[1] - b[1]; if (ta == null) return 1; if (tb == null) return -1;
+      return ta - tb || a[1] - b[1];
+    }).map((x) => x[0]);
+  }
+  const CONTENT = ['kind', 'name', 'reps', 'tempo', 'note'];
+  /** Déplacer une ligne d'un cran (dir −1 / +1) : le contenu change de place, les heures restent dans l'ordre */
+  function moveLine(lines, id, dir) {
+    const out = lines.map((l) => Object.assign({}, l));
+    const i = out.findIndex((l) => l.id === id), j = i + dir;
+    if (i < 0 || j < 0 || j >= out.length) return { lines: out, id };
+    const a = out[i], b = out[j];
+    for (const k of CONTENT) { const x = a[k]; a[k] = b[k]; b[k] = x; }
+    const x = a.id; a.id = b.id; b.id = x; // l'identifiant suit le contenu
+    return { lines: out, id };
+  }
+  /** Durée estimée d'une ligne (secondes vidéo) d'après le tempo et le BPM */
+  function lineDur(l, bpm) { const b = beatsPerRep(l.tempo); return b && l.reps > 0 && bpm ? b * l.reps * 60 / bpm : null; }
+  /** Dupliquer : la copie se place à l'heure actuelle si elle est après l'original, sinon juste après lui */
+  function dupLine(lines, id, now, bpm, newId) {
+    const s = lines.find((l) => l.id === id); if (!s) return lines.slice();
+    const c = Object.assign({}, s, { id: newId });
+    if (s.t == null) c.t = null;
+    else if (now != null && now > s.t + 0.5) c.t = Math.round(now * 10) / 10;
+    else c.t = Math.round((s.t + (lineDur(s, bpm) || 1)) * 10) / 10;
+    if (c.t == null) { const out = lines.slice(); out.splice(lines.indexOf(s) + 1, 0, c); return out; }
+    return insertLine(lines, c);
+  }
+  /** Coller un bloc de lignes à l'heure « at » (les écarts entre les lignes sont gardés). mkId() donne un nouvel identifiant. */
+  function pasteBlock(lines, block, at, mkId, bpm) {
+    if (!block || !block.length) return lines.slice();
+    const t0 = block.find((l) => l.t != null);
+    let cursor = at;
+    const copies = block.map((l) => {
+      let t;
+      if (at == null) t = null;
+      else if (t0 && l.t != null) t = at + (l.t - t0.t);
+      else t = cursor;
+      if (t != null) { t = Math.round(t * 10) / 10; cursor = t + (lineDur(l, bpm) || 2); }
+      return Object.assign({}, l, { id: mkId(), t });
+    });
+    let out = lines.slice(); for (const c of copies) out = insertLine(out, c);
+    return out;
+  }
+
+  /** Lignes → frise dans le temps de LA MUSIQUE (fichier propre).
+      o = { sync, sure, bpm, attack, startV / endV (début / fin du morceau, temps vidéo) }
+      - musique retrouvée avec certitude + toutes les lignes ont une heure : débuts vidéo convertis par le recalage
+      - sinon : durées calculées avec le BPM de la musique et le tempo / les répétitions */
+  function buildTimeline(lines, o) {
+    o = o || {};
+    const L = (lines || []).filter((l) => l && (l.name || l.kind));
+    const bpm = o.bpm || null, beat = bpm ? 60 / bpm : null, sy = o.sync || null, ratio = sy && sy.ratio ? sy.ratio : 1;
+    const toM = (vt) => (sy ? videoToMusic(sy, vt) : vt);
+    const timed = L.length && L.every((l) => l.t != null);
+    let mode;
+    if (o.sure && sy && timed) mode = 'video';
+    else if (bpm) mode = 'bpm';
+    else mode = timed ? 'approx' : 'fixed';
+    const items = []; let cursor = null;
+    for (let i = 0; i < L.length; i++) {
+      const l = L[i], nx = L[i + 1];
+      const bpr = beatsPerRep(l.tempo);
+      let start, end;
+      if (mode === 'video') {
+        start = toM(l.t);
+        end = nx ? toM(nx.t) : (o.endV != null && o.endV > l.t ? toM(o.endV) : start + (bpr && l.reps && beat ? bpr * l.reps * beat : 16));
+      } else {
+        if (cursor == null) {
+          if (sy && l.t != null) cursor = Math.max(0, toM(l.t));
+          else if (l.t != null && o.startV != null) cursor = Math.max(0, l.t - o.startV); // « top départ » au début du morceau
+          else cursor = o.attack || 0;
+        }
+        start = cursor;
+        let d = null;
+        if (bpr && l.reps > 0 && beat) d = bpr * l.reps * beat;
+        else if (l.t != null && nx && nx.t != null && nx.t > l.t) d = (nx.t - l.t) / ratio;
+        else if (l.t != null && !nx && o.endV != null && o.endV > l.t) d = (o.endV - l.t) / ratio;
+        else d = beat ? 8 * beat : 16;
+        end = start + d; cursor = end;
+      }
+      if (!(end > start)) end = start + 0.5;
+      let repDur = null;
+      if (l.reps > 0) repDur = bpr && beat ? bpr * beat : (end - start) / l.reps;
+      const repTimes = [];
+      if (repDur) for (let k = 0; k < l.reps && start + k * repDur < end + 0.01; k++) repTimes.push(Math.round((start + k * repDur) * 1000) / 1000);
+      items.push({ id: l.id, kind: l.kind || 'move', name: l.name || (l.kind === 'pause' ? 'Pause' : 'Transition'), reps: l.reps || 0, tempo: l.tempo || '', note: l.note || '', start: Math.round(start * 1000) / 1000, end: Math.round(end * 1000) / 1000, repDur, repTimes, counted: !!repDur });
+    }
+    return { mode, items };
+  }
+
+  /** Numéro d'édition dans un nom (« Pump 99 » → 99 ; les dates sont ignorées) */
+  function editionNumber(name) {
+    const s = String(name || '').replace(/\b\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}\b/g, ' ');
+    const m = s.match(/(\d+)(?!.*\d)/);
+    return m ? +m[1] : null;
+  }
+  /** Ordre des éditions : numéro décroissant, puis la plus récente */
+  function sortEditions(list) {
+    return list.slice().sort((a, b) => {
+      const na = editionNumber(a.name), nb = editionNumber(b.name);
+      if (na != null && nb != null && na !== nb) return nb - na;
+      if (na != null && nb == null) return -1; if (nb != null && na == null) return 1;
+      return (b.created || 0) - (a.created || 0);
+    });
+  }
+  const BASE_FOLDERS = [{ id: 'pump', name: 'Pump', style: 'pump' }, { id: 'combat', name: 'Combat', style: 'combat' }, { id: 'attack', name: 'Attack', style: 'attack' }, { id: 'step', name: 'Step', style: 'step' }];
+  /** Ancien cours → rangé dans le dossier de son style ; ancien script (analyse) → lignes de « Mon script ». Renvoie true si modifié. */
+  function migrateCourse(c, folders, mkId) {
+    let ch = false;
+    const ids = new Set((folders || BASE_FOLDERS).map((f) => f.id));
+    if (!c.folder || !ids.has(c.folder)) {
+      const byStyle = (folders || BASE_FOLDERS).find((f) => f.style === c.style);
+      c.folder = byStyle ? byStyle.id : (ids.has(c.style) ? c.style : 'pump');
+      if (!c.style) c.style = 'pump';
+      ch = true;
+    }
+    for (const m of c.morceaux || []) {
+      if (!Array.isArray(m.lines)) {
+        m.lines = (m.segments || []).filter((s) => !(s.base === 'Pause' && !s.reps) && s.name).map((s) => ({
+          id: mkId ? mkId() : 'l' + Math.random().toString(36).slice(2, 9), kind: s.name === 'Pause' ? 'pause' : 'move', name: s.name, reps: s.reps || 0, tempo: TEMPOS.includes(s.tempo) ? s.tempo : (s.tempo || ''), note: '', t: s.start != null ? Math.round(s.start * 10) / 10 : null
+        }));
+        ch = true;
+      }
+    }
+    if (c.version !== 3) { c.version = 3; ch = true; }
+    return ch;
+  }
+  /** Mouvements les plus utilisés d'un style (dans toutes les éditions), du plus au moins utilisé */
+  function topMoves(courses, style) {
+    const n = {};
+    for (const c of courses) if (c.style === style) for (const m of c.morceaux || []) for (const l of m.lines || []) if (l.kind !== 'pause' && l.kind !== 'trans' && l.name) n[l.name] = (n[l.name] || 0) + 1;
+    return Object.keys(n).sort((a, b) => n[b] - n[a] || a.localeCompare(b)).map((k) => ({ name: k, n: n[k] }));
+  }
+  /** Ligne lisible : « 1. Squat × 16 (2/2) » */
+  function lineText(l, i) {
+    const nm = l.kind === 'pause' ? (l.name || 'Pause') : l.kind === 'trans' ? (l.name || 'Transition') : l.name;
+    return segLine({ name: nm, reps: l.reps, tempo: l.tempo && l.tempo !== '—' ? l.tempo : '', note: l.note }, i);
+  }
+  /** Recherche simple (sans accents ni majuscules) */
+  function norm(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+
   return {
-    FEATS, FI, NF, SCALE, poseFeatures, poseBox, trackStep, smooth, quantile, estimatePeriod, countReps,
-    resample, segmentSeq, segStats, candidates, buildScript, analyseRange, ruleName, fingerprint, fpDist, nearest, FP_THR,
-    MOVES, STYLES, tempoLabel, fft, AudioFeatureStream, audioFeaturesFromPCM, prepareVideo, alignMusic, silenceCuts,
+    smooth, quantile, MOVES, STYLES, fft, AudioFeatureStream, audioFeaturesFromPCM, prepareVideo, alignMusic, silenceCuts,
     prepareVideo2, findMusic, placeMusics, verifyChunks, sliceFeat, cutSongs, trackNumber, proposeMusics,
-    firstBeat, makeSync, musicToVideo, videoToMusic, mapFromRect, boxIoU, mergeDetections, MultiTracker, fuseGroup,
-    trimSilence, estimateBPM, segLine, fmtTime, playState, ASR, AHOP
+    firstBeat, makeSync, musicToVideo, videoToMusic, trimSilence, estimateBPM, segLine, fmtTime, playState, ASR, AHOP,
+    TEMPOS, beatsPerRep, insertLine, sortLines, moveLine, dupLine, pasteBlock, lineDur, buildTimeline,
+    editionNumber, sortEditions, BASE_FOLDERS, migrateCourse, topMoves, lineText, norm
   };
 });
