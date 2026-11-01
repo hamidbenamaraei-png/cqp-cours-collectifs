@@ -363,5 +363,23 @@ section('18. Script en texte libre : analyse d\'une ligne, migration, jeu');
   ok(!crash && C.textPlayLines('0 fois 2-2', 120)[0].dur === null, 'texte libre bizarre : jamais d\'erreur' + (crash ? ' (' + crash.message + ')' : ''));
 }
 
+section('19. Script ligne par ligne (v10) : texte ↔ lignes');
+{
+  const v9 = 'Dl 2.2 x4\nTirage manton 3.1 x4\n\nPause\n\n\nDt 22 x 2\nDt 1.1 x 4';
+  const L = C.textToLines(v9);
+  ok(JSON.stringify(L) === JSON.stringify(['Dl 2.2 x4', 'Tirage manton 3.1 x4', '—', 'Pause', '—', 'Dt 22 x 2', 'Dt 1.1 x 4']), 'texte v9 → lignes, lignes vides → un seul « — » : ' + JSON.stringify(L));
+  ok(C.linesToScript(L) === 'Dl 2.2 x4\nTirage manton 3.1 x4\n\nPause\n\nDt 22 x 2\nDt 1.1 x 4', 'lignes → texte : le séparateur redevient une ligne vide');
+  ok(JSON.stringify(C.textToLines('\n\n  Squat × 8  \n\n')) === '["Squat × 8"]', 'pas de séparateur au début ni à la fin, espaces retirés');
+  ok(C.textToLines('').length === 0 && C.linesToScript([]) === '', 'script vide');
+  ok(C.linesToScript(['A', '—', '—', 'B', '-', '']) === 'A\n\nB', 'séparateurs en double ou à la fin : nettoyés');
+  ok(C.isSep('—') && C.isSep('---') && C.isSep('') && !C.isSep('Dt 1.1') && !C.isSep('- squat'), 'reconnaissance du séparateur');
+  ok(C.lineNumbers(L).join(',') === '1,2,0,3,0,4,5', 'numéros des lignes (séparateurs sans numéro)');
+  const t2 = C.linesToScript(L);
+  const nums = []; for (const b of C.parseScript(t2)) for (const p of b) nums.push(p.n + ':' + p.raw);
+  ok(nums.join('|') === '1:Dl 2.2 x4|2:Tirage manton 3.1 x4|3:Pause|4:Dt 22 x 2|5:Dt 1.1 x 4' && C.parseScript(t2).length === 3, 'même numérotation et mêmes blocs que la mise en page propre');
+  ok(JSON.stringify(C.textToLines(C.linesToScript(L))) === JSON.stringify(L), 'aller-retour stable');
+  ok(JSON.stringify(C.textToLines('a\r\nb')) === '["a","b"]', 'retours à la ligne Windows');
+}
+
 console.log(`\n${passes} réussis, ${fails} échoués`);
 process.exit(fails ? 1 : 0);

@@ -917,6 +917,26 @@
   }
   /** Nombre de lignes écrites (lignes vides non comptées) */
   function textCount(t) { return String(t || '').split('\n').filter((x) => x.trim()).length; }
+  /* ---- Script ligne par ligne (01/11, v10) : le stockage reste le texte libre ---- */
+  const SEP = '—';
+  /** Ligne « séparateur » : vide, ou seulement des tirets (« — », « - », « --- ») */
+  function isSep(s) { return /^[\s\-–—_]*$/.test(String(s == null ? '' : s)); }
+  /** Texte libre → lignes de la liste. Les lignes vides (séparation de blocs) deviennent une seule ligne « — » ; rien au début ni à la fin. */
+  function textToLines(text) {
+    const out = [];
+    for (const raw of String(text || '').replace(/\r\n?/g, '\n').split('\n')) {
+      const s = raw.replace(/\s+$/, '');
+      if (isSep(s)) { if (out.length && out[out.length - 1] !== SEP) out.push(SEP); } else out.push(s.replace(/^\s+/, ''));
+    }
+    while (out.length && out[out.length - 1] === SEP) out.pop();
+    return out;
+  }
+  /** Lignes de la liste → texte libre (le séparateur redevient une ligne vide) */
+  function linesToScript(lines) {
+    return textToLines((lines || []).map((l) => (isSep(l) ? '' : String(l).trim())).join('\n')).map((l) => (l === SEP ? '' : l)).join('\n');
+  }
+  /** Numéro affiché de chaque ligne (les séparateurs n'ont pas de numéro : 0) — même numérotation que la mise en page propre */
+  function lineNumbers(lines) { let n = 0; return (lines || []).map((l) => (isSep(l) ? 0 : ++n)); }
 
   const LET = 'a-zA-ZÀ-ÖØ-öø-ÿ'; // lettres (sans × ni ÷)
   // ordre = priorité (un morceau de texte déjà reconnu n'est plus repris)
@@ -1007,6 +1027,7 @@
     firstBeat, makeSync, musicToVideo, videoToMusic, trimSilence, estimateBPM, segLine, fmtTime, playState, ASR, AHOP,
     TEMPOS, beatsPerRep, insertLine, sortLines, moveLine, dupLine, pasteBlock, lineDur, buildTimeline,
     editionNumber, sortEditions, BASE_FOLDERS, migrateCourse, topMoves, lineText, norm,
-    linesToText, textOf, textCount, parseLine, parseScript, textPlayLines
+    linesToText, textOf, textCount, parseLine, parseScript, textPlayLines,
+    SEP, isSep, textToLines, linesToScript, lineNumbers
   };
 });

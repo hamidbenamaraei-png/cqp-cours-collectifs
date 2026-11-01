@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
 <meta name="robots" content="noindex, nofollow, noarchive">
 <meta name="theme-color" content="#151a33">
 <meta name="mobile-web-app-capable" content="yes">
@@ -188,6 +188,43 @@ select{max-width:100%;text-overflow:ellipsis}
 .pvbar{display:flex;gap:8px;align-items:center;justify-content:center;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:#0d1124}
 .pvbar button{min-width:56px;height:52px;border-radius:14px;border:2px solid var(--line);background:var(--card2);color:#fff;font-size:22px;cursor:pointer}
 .pvbar span{color:var(--soft);min-width:56px;text-align:center}
+/* ✍️ mon script ligne par ligne (v10) */
+.wrow{display:flex;gap:8px;align-items:stretch;margin:8px 0 0}
+.wrow .win{flex:1;min-width:0;padding:10px 12px;font-size:18px;border-radius:12px;min-height:48px}
+.wrow .wclose{flex:0 0 58px;width:58px;border-radius:12px;border:2px solid var(--line);background:var(--card2);color:#fff;font:inherit;font-size:13px;font-weight:700;line-height:1.1;cursor:pointer;padding:2px;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.wrow .wclose span{display:block;white-space:nowrap}
+body.wtyping .wrow .wadd{width:46px}
+body.wtyping .wrow .win{padding:10px 8px}
+.wrow .wadd{flex:0 0 auto;width:52px;border-radius:12px;border:2px solid var(--or);background:#3a2a22;color:#fff;font-size:22px;cursor:pointer;padding:0}
+.wmode{display:flex;align-items:center;gap:8px;margin:6px 0 0;min-height:36px}
+.wmode .wmt{flex:1;min-width:0;font-size:15px;font-weight:800;color:var(--ja);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wmode button{flex:0 0 auto;min-height:36px;border-radius:10px;border:2px solid var(--line);background:var(--card2);color:#fff;font:inherit;font-size:15px;font-weight:700;cursor:pointer;padding:2px 10px;white-space:nowrap}
+.wmode .wcan{border-color:var(--ja)}
+.wlist{max-height:46vh;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;background:#11162c;border:2px solid var(--line);border-radius:14px;padding:4px 0;margin:0 0 12px;-webkit-overflow-scrolling:touch}
+.wempty{margin:10px 14px}
+.wl{display:flex;gap:8px;align-items:baseline;padding:7px 12px;font-size:18px;line-height:1.35;cursor:pointer;border-bottom:1px solid #1d2448}
+.wl:last-child{border-bottom:0}
+.wl .wn{flex:0 0 auto;min-width:30px;text-align:right;color:var(--or);font-weight:900;font-variant-numeric:tabular-nums}
+.wl .wt{flex:1;min-width:0;overflow-wrap:break-word}
+.wl.wpz .wt{color:var(--mute);font-style:italic}
+.wl.wsep{padding:12px 12px;align-items:center}
+.wl .whr{display:block;flex:1;height:0;border-top:2px dashed var(--mute)}
+.wl.on{background:#252d56}
+.wl.ed{background:#3b3216}.wl.ed .wt{color:var(--ja)}
+.wl.ins{box-shadow:inset 0 3px 0 var(--ja)}
+.wmenu{display:flex;flex-wrap:wrap;gap:6px;padding:6px 10px 10px;background:#252d56;border-bottom:1px solid var(--line)}
+.wmenu button{flex:1 1 60px;min-height:44px;border-radius:11px;border:2px solid var(--line);background:#11162c;color:#fff;font:inherit;font-size:15px;font-weight:700;cursor:pointer;padding:2px 6px;white-space:nowrap}
+.wmenu button.w2{flex:1 1 130px}
+.wmenu button.red{background:var(--ko);border-color:var(--ko);flex:1 1 150px}
+.wmenu button:disabled{opacity:.35}
+.wmenu .wq{flex:1 1 100%;font-weight:800;color:#ffb3bf}
+body.wtyping{overflow:hidden}
+body.wtyping .top,body.wtyping #wfoot{display:none}
+body.wtyping .wpane{position:fixed;left:0;right:0;top:0;height:100vh;margin:0 auto;max-width:640px;display:flex;flex-direction:column;z-index:30;background:var(--bg);padding:0 16px 4px;overflow:hidden}
+body.wtyping .wstick{position:static;flex:0 0 auto;margin:0 -16px 6px;padding-top:6px}
+body.wtyping .wstick video{max-height:none}
+body.wtyping #wbody{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+body.wtyping .wlist{flex:1 1 auto;min-height:0;max-height:none;margin:0}
 .hide{display:none!important}
 #print{display:none}
 @media print{
@@ -217,8 +254,8 @@ select{max-width:100%;text-overflow:ellipsis}
 <body>
 <div id="app"><p class="soft" style="margin-top:40px;text-align:center">Chargement…</p></div>
 <div id="print"></div>
-<script src="core.js?v=9"></script>
-<script src="mp4.js?v=9"></script>
-<script src="app.js?v=9"></script>
+<script src="core.js?v=10"></script>
+<script src="mp4.js?v=10"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>

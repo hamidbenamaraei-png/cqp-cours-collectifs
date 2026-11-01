@@ -78,6 +78,7 @@
     const key = ((html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/) || [])[1] || '').replace(/<[^>]+>/g, '').trim();
     const y = window.scrollY, same = key && key === lastScreen;
     document.documentElement.style.scrollPaddingTop = '';
+    document.body.classList.remove('wtyping');
     app.innerHTML = html; acts = actions || {}; lastScreen = key;
     if (same) { window.scrollTo(0, y); requestAnimationFrame(() => window.scrollTo(0, y)); } else window.scrollTo(0, 0);
   }
@@ -952,6 +953,10 @@
     };
     return blocks.map((bl) => '<div class="sblk">' + bl.map(line).join('') + '</div>').join('');
   }
+  /* « ✍️ Mon script » (v10) : une petite case d'une ligne sous la vidéo ; Entrée ajoute la ligne à la fin du script.
+     Le script se construit ligne par ligne dans une liste qui défile seule. Pendant l'écriture (clavier ouvert),
+     la vidéo, ses boutons et la case restent fixes en haut de la partie visible de l'écran : la page ne bouge plus.
+     Stockage inchangé : le texte libre du morceau (m.text), une ligne par entrée ; un séparateur « — » = une ligne vide. */
   async function scrWrite(cid, mid) {
     S.wantAwake = false; keepAwake(false);
     const c = await dget('courses', cid); if (!c) return scrHome();
@@ -962,52 +967,179 @@
     const url = await videoURL(c);
     const nPh = (await photosOf(m.id)).length;
     let editing = !(m.textOk && m.text.trim());
+    const L = C.textToLines(m.text); // les lignes de la liste (le texte n'est réécrit qu'au premier changement)
+    let mode = { k: 'add' }, menuAt = -1, delAsk = false, wmode = false, savedY = 0, tapT = 0, baseH = 0, kbSeen = false;
     const rel = (t) => fmt(Math.max(0, t - m.start));
     const v = () => $('#wv');
-    const ta = () => $('#wta');
-    let left = false, saveT = null, textT = null;
-    /** Enregistre le texte tapé (tout de suite) */
-    const flush = async () => {
-      clearTimeout(textT); textT = null;
-      const t = ta(); if (!t) return;
-      if (t.value !== m.text) { m.text = t.value; m.textOk = false; }
+    const inp = () => $('#win');
+    const lst = () => $('#wlist');
+    const pane = () => $('#wpane');
+    let left = false, saveT = null;
+    const nums = () => C.lineNumbers(L);
+    const lineName = (i) => { const n = nums()[i]; return n ? 'la ligne ' + n : 'le séparateur'; };
+    /** Enregistre le script (tout de suite) */
+    const save = async () => {
+      const t = C.linesToScript(L);
+      if (t !== m.text) { m.text = t; m.textOk = false; }
       await saveCourse(c);
-      const s = $('#wsaved'); if (s && document.contains(t)) { s.textContent = 'Enregistré ✓'; s.classList.add('on'); }
+      const s = $('#wsaved'); if (s) { s.textContent = 'Enregistré ✓'; s.classList.add('on'); }
     };
-    /** Quitter l'écran : la vidéo s'arrête, le texte et la position sont enregistrés tout de suite */
+    /** Ce qui est encore dans la case (pas encore validé par Entrée) n'est pas perdu en quittant */
+    const pending = () => { const e = inp(); if (e && e.value.trim()) commit(true); };
+    /** Quitter l'écran : la vidéo s'arrête, le script et la position sont enregistrés tout de suite */
     const leave = async () => {
+      pending();
       left = true; clearTimeout(saveT); S.flushWrite = null;
-      if (ta()) { const t = ta(); if (t.value !== m.text) { m.text = t.value; m.textOk = false; } }
-      clearTimeout(textT);
+      exitType(true); detach();
       const x = v(); if (x) { x.pause(); if (x.readyState >= 1) m.lastT = Math.round(x.currentTime * 10) / 10; }
+      const t = C.linesToScript(L); if (t !== m.text) { m.text = t; m.textOk = false; }
       await saveCourse(c);
     };
     const photoBtn = '<button class="btn sec small wbtn" data-act="photo">📷 ' + (nPh ? 'Photos (' + nPh + ')' : 'Photo de ma feuille') + '</button>';
-    const bodyHtml = () => editing
+
+    /* ---------- la liste ---------- */
+    const menuHtml = (i) => '<div class="wmenu">' + (delAsk
+      ? '<span class="wq">Supprimer ' + lineName(i) + ' ?</span><button data-act="lm" data-op="delok" class="red">🗑️ Oui, supprimer</button><button data-act="lm" data-op="delno">Non</button>'
+      : '<button data-act="lm" data-op="mod" class="w2">✏️ Modifier</button><button data-act="lm" data-op="ins" class="w2">➕ Insérer avant</button>' +
+        '<button data-act="lm" data-op="up"' + (i ? '' : ' disabled') + ' aria-label="Monter la ligne">⬆️</button><button data-act="lm" data-op="down"' + (i < L.length - 1 ? '' : ' disabled') + ' aria-label="Descendre la ligne">⬇️</button>' +
+        '<button data-act="lm" data-op="del" class="w2">🗑️ Supprimer</button>') + '</div>';
+    const listHtml = () => {
+      if (!L.length) return '<p class="mute wempty">Ton script s\'affiche ici, ligne par ligne.</p>';
+      const N = nums();
+      return L.map((l, i) => {
+        const cls = 'wl' + (C.isSep(l) ? ' wsep' : '') + (C.parseLine(l).kind === 'pause' ? ' wpz' : '') + (i === menuAt ? ' on' : '') + (mode.k === 'edit' && mode.i === i ? ' ed' : '') + (mode.k === 'ins' && mode.i === i ? ' ins' : '');
+        const row = '<div class="' + cls + '" data-act="line" data-i="' + i + '">' + (C.isSep(l) ? '<i class="whr" aria-label="Séparateur"></i>' : '<span class="wn">' + N[i] + '.</span><span class="wt">' + esc(l) + '</span>') + '</div>';
+        return row + (i === menuAt ? menuHtml(i) : '');
+      }).join('');
+    };
+    /** Fait défiler la liste elle-même (jamais la page) pour montrer la ligne i (ou la dernière) */
+    const showLine = (i) => {
+      const box = lst(); if (!box) return;
+      if (i == null || i >= L.length - 1) { box.scrollTop = box.scrollHeight; return; }
+      const r = box.querySelector('.wl[data-i="' + i + '"]'); if (!r) return;
+      const mn = i === menuAt ? box.querySelector('.wmenu') : null;
+      const top = r.offsetTop - box.offsetTop, bot = (mn ? mn.offsetTop + mn.offsetHeight : r.offsetTop + r.offsetHeight) - box.offsetTop;
+      if (top < box.scrollTop) box.scrollTop = top - 4;
+      else if (bot > box.scrollTop + box.clientHeight) box.scrollTop = bot - box.clientHeight + 4;
+    };
+    const paintList = (show) => { const b = lst(); if (!b) return; const y = b.scrollTop; b.innerHTML = listHtml(); b.scrollTop = y; showLine(show); };
+    const modeHtml = () => {
+      const t = mode.k === 'edit' ? 'Modification de ' + lineName(mode.i) : mode.k === 'ins' ? 'Insertion avant ' + lineName(mode.i) : '';
+      return t ? '<span class="wmt">' + t + '</span><button data-act="wcancel" class="wcan">Annuler</button>' : '<span class="wmt"></span>';
+    };
+    const paintMode = () => {
+      const e = $('#wmode'); if (!e) return;
+      e.innerHTML = modeHtml(); e.classList.toggle('hide', mode.k === 'add');
+      const fb = $('#wform .wclose'); if (fb) fb.classList.toggle('hide', !wmode);
+      const i = inp(); if (i) i.placeholder = mode.k === 'edit' ? 'Corrige la ligne puis ↵' : 'Écris un mouvement puis ↵';
+      layout();
+    };
+    const setMode = (k, i) => { mode = k === 'add' ? { k } : { k, i }; paintMode(); };
+    /** Entrée (ou ➕) : ajoute la ligne à la fin, ou remplace / insère selon le mode. La case se vide et garde le clavier. */
+    const commit = (quiet) => {
+      const e = inp(); if (!e) return;
+      let val = e.value.trim();
+      if (!val) return;
+      if (C.isSep(val)) val = C.SEP;
+      let show;
+      if (mode.k === 'edit' && mode.i < L.length) { L[mode.i] = val; show = mode.i; mode = { k: 'add' }; }
+      else if (mode.k === 'ins' && mode.i < L.length) { L.splice(mode.i, 0, val); show = mode.i; mode = { k: 'ins', i: mode.i + 1 }; }
+      else { L.push(val); show = L.length - 1; mode = { k: 'add' }; }
+      e.value = ''; menuAt = -1; delAsk = false;
+      if (quiet) { const t = C.linesToScript(L); if (t !== m.text) { m.text = t; m.textOk = false; } return; }
+      const s = $('#wsaved'); if (s) { s.textContent = ''; s.classList.remove('on'); }
+      paintList(show); paintMode(); save();
+    };
+    /* ---------- mode écriture (clavier ouvert) : tout est fixe en haut, seule la liste défile ---------- */
+    const layout = () => {
+      const p = pane(); if (!p) return;
+      if (!wmode) return;
+      const vv = window.visualViewport;
+      const H = Math.round(vv ? vv.height : window.innerHeight), top = Math.round(vv ? vv.offsetTop : 0);
+      p.style.top = top + 'px'; p.style.height = H + 'px';
+      const x = v();
+      if (x) {
+        const box = lst(), atEnd = box && box.scrollTop + box.clientHeight >= box.scrollHeight - 2, y = box ? box.scrollTop : 0;
+        const others = p.offsetHeight - (box ? box.offsetHeight : 0) - x.offsetHeight;
+        const row = (box && box.querySelector('.wl:not(.wsep)')) ? box.querySelector('.wl:not(.wsep)').offsetHeight : 38;
+        const room = H - others - Math.round(row * 4.6) - 6; // au moins 4 à 5 lignes du script visibles
+        x.style.height = Math.max(56, Math.min(Math.round(H * 0.35), room, 260)) + 'px';
+        if (box) box.scrollTop = atEnd ? box.scrollHeight : y; // la liste garde sa place (la dernière ligne reste visible)
+      }
+    };
+    const onVV = () => {
+      if (!document.contains(pane())) return detach();
+      const vv = window.visualViewport, h = vv ? vv.height : window.innerHeight;
+      if (wmode && h < baseH * 0.8) kbSeen = true;
+      // le clavier a été fermé (bouton Retour d'Android) alors que la case garde le curseur : retour à l'écran normal
+      else if (wmode && kbSeen && h >= baseH - 60) return exitType();
+      layout();
+    };
+    const attach = () => { const vv = window.visualViewport; if (vv) { vv.addEventListener('resize', onVV); vv.addEventListener('scroll', onVV); } window.addEventListener('resize', onVV); };
+    const detach = () => { const vv = window.visualViewport; if (vv) { vv.removeEventListener('resize', onVV); vv.removeEventListener('scroll', onVV); } window.removeEventListener('resize', onVV); };
+    const enterType = () => {
+      if (wmode || !editing) return;
+      savedY = window.scrollY; wmode = true; kbSeen = false;
+      baseH = Math.max(window.visualViewport ? window.visualViewport.height : 0, window.innerHeight);
+      document.body.classList.add('wtyping');
+      attach(); paintMode(); layout();
+      showLine(mode.k === 'add' ? null : mode.i);
+    };
+    /** Sortie du mode écriture : l'écran normal revient (titre, photo, Valider) */
+    function exitType(noScroll) {
+      if (!wmode) return;
+      wmode = false; detach();
+      document.body.classList.remove('wtyping');
+      const p = pane(); if (p) { p.style.top = ''; p.style.height = ''; }
+      const x = v(); if (x) x.style.height = '';
+      const e = inp(); if (e && document.activeElement === e) e.blur();
+      paintMode();
+      const bx = lst(); if (bx) bx.scrollTop = bx.scrollHeight; // la dernière ligne reste visible
+      if (!noScroll) window.scrollTo(0, savedY);
+    }
+    const focusIn = () => { const e = inp(); if (!e) return; try { e.focus({ preventScroll: true }); const n = e.value.length; e.setSelectionRange(n, n); } catch (er) { /* rien */ } enterType(); };
+
+    /* ---------- l'écran ---------- */
+    const editHtml = () => editing
+      ? '<form id="wform" class="wrow" autocomplete="off" action="#"><input type="text" id="win" class="win" enterkeyhint="enter" autocomplete="off" autocorrect="off" spellcheck="false" autocapitalize="sentences" aria-label="Écris un mouvement" placeholder="Écris un mouvement puis ↵"><button type="submit" class="wadd" aria-label="Ajouter la ligne">➕</button><button type="button" data-act="wclose" class="wclose hide" aria-label="Fermer le clavier"><span>⌨️</span><span>Fermer</span></button></form>' +
+        '<div id="wmode" class="wmode hide"></div>'
+      : '';
+    const footHtml = () => editing
       ? '<div class="wbar">' + photoBtn + '<span id="wsaved" class="wsaved"></span></div>' +
-        '<textarea id="wta" class="wta" rows="12" autocomplete="off" autocorrect="off" spellcheck="false" autocapitalize="sentences" aria-label="Mon script" placeholder="Une ligne par mouvement, par exemple :&#10;Squat × 8 (2-2)&#10;Squat × 16 1-1&#10;3 pulses × 4&#10;Pause">' + esc(m.text) + '</textarea>' +
         '<button class="btn green" data-act="ok">✅ Valider mon script</button>'
       : '<div class="wbar"><span class="badge ok">✅ Script validé · ' + tcount(m) + ' ligne' + (tcount(m) > 1 ? 's' : '') + '</span>' + photoBtn + '</div>' +
-        '<div class="card sc" id="wsc">' + scriptHtml(m.text) + '</div>' +
         '<button class="btn" data-act="edit">✏️ Modifier</button>' +
         '<div class="row"><button class="btn sec small" data-act="play">🎮 Jouer</button><button class="btn sec small" data-act="read">📖 Lire</button></div>';
     const paint = () => {
-      const b = $('#wbody'); if (!b) return;
-      b.innerHTML = bodyHtml();
-      const t = ta();
-      if (t) t.addEventListener('input', () => {
-        const s = $('#wsaved'); if (s) { s.textContent = ''; s.classList.remove('on'); }
-        clearTimeout(textT); textT = setTimeout(() => { if (!left) flush(); }, 500);
-      });
+      const ed = $('#wedit'), b = $('#wbody'), f = $('#wfoot'); if (!b) return;
+      ed.innerHTML = editHtml(); f.innerHTML = footHtml();
+      if (editing) { b.innerHTML = '<div id="wlist" class="wlist" aria-label="Mon script, ligne par ligne">' + listHtml() + '</div>'; showLine(null); }
+      else b.innerHTML = '<div class="card sc" id="wsc">' + scriptHtml(m.text) + '</div>';
+      const e = inp();
+      if (e) {
+        e.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.keyCode === 13) { ev.preventDefault(); setTimeout(() => commit(), 0); } });
+        $('#wform').addEventListener('submit', (ev) => { ev.preventDefault(); commit(); });
+        e.addEventListener('focus', enterType);
+        e.addEventListener('pointerdown', () => { if (!wmode) savedY = window.scrollY; });
+        // le clavier se ferme (bouton Retour, toucher ailleurs) : retour à l'écran normal, sauf si on vient de toucher un bouton de la partie fixe
+        e.addEventListener('blur', () => setTimeout(() => {
+          if (left || !wmode || document.activeElement === inp()) return;
+          const a = document.activeElement, p = pane();
+          if (Date.now() - tapT < 700 && inp()) { try { inp().focus({ preventScroll: true }); } catch (er) { /* rien */ } return; }
+          if (a && p && p.contains(a) && a !== document.body) return; // barre de temps : on reste en mode écriture
+          exitType();
+        }, 250));
+        paintMode();
+      }
     };
     render('<div class="top"><button class="back" data-act="back">‹</button><h1>✍️ ' + esc(m.name) + '</h1></div>' +
-      '<div class="wstick" id="wstick">' + (url ? '<video id="wv" src="' + url + '" playsinline preload="auto"></video>' +
+      '<div class="wpane" id="wpane"><div class="wstick" id="wstick">' + (url ? '<video id="wv" src="' + url + '" playsinline preload="auto"></video>' +
         '<div class="vctl"><button data-act="b5" aria-label="Reculer de 5 secondes">⏪ 5</button><button data-act="pp" id="wpp" class="main" aria-label="Lecture ou pause">▶️</button><button data-act="f5" aria-label="Avancer de 5 secondes">5 ⏩</button>' +
         '<button data-act="spd" data-s="0.5">0,5×</button><button data-act="spd" data-s="0.75">0,75×</button><button data-act="spd" data-s="1" class="on">1×</button></div>' +
         '<div class="vtime"><b id="wt">0:00</b><input type="range" id="wr" min="0" max="' + Math.max(1, Math.round((m.end - m.start) * 10) / 10) + '" step="0.1" value="0" aria-label="Position dans le morceau"><span class="mute">' + fmt(m.end - m.start) + '</span></div>' :
         '<div class="card j small" style="margin:0">🎬 La vidéo n\'est pas gardée dans l\'appli. Rechoisis-la pour écrire en la regardant (elle sera gardée).<button class="btn sec small" style="margin:8px 0 0" data-act="revid">🎬 Choisir la vidéo</button></div>') +
-        '</div>' +
-      '<div id="wbody"></div>',
+        '<div id="wedit"></div></div>' +
+      '<div id="wbody"></div></div><div id="wfoot"></div>',
     {
       back: async () => { await leave(); scrCourse(cid); },
       revid: async () => { await leave(); await giveVideo(c); scrWrite(cid, mid); },
@@ -1015,29 +1147,49 @@
       b5: () => { const x = v(); if (x) x.currentTime = Math.max(m.start, x.currentTime - 5); },
       f5: () => { const x = v(); if (x) x.currentTime = Math.min(m.end, x.currentTime + 5); },
       spd: (b) => { const x = v(); if (!x) return; x.playbackRate = +b.dataset.s; app.querySelectorAll('[data-act="spd"]').forEach((e) => e.classList.toggle('on', e === b)); },
+      line: (b) => { const i = +b.dataset.i; delAsk = false; menuAt = menuAt === i ? -1 : i; paintList(i); },
+      lm: (b) => {
+        const i = menuAt, op = b.dataset.op; if (i < 0 || i >= L.length) return;
+        const swap = (a, z) => { [L[a], L[z]] = [L[z], L[a]]; if (mode.k !== 'add') { if (mode.i === a) mode.i = z; else if (mode.i === z) mode.i = a; } menuAt = z; paintList(z); paintMode(); save(); };
+        if (op === 'mod') { menuAt = -1; setMode('edit', i); const e = inp(); e.value = C.isSep(L[i]) ? '—' : L[i]; paintList(i); focusIn(); }
+        else if (op === 'ins') { const wasEdit = mode.k === 'edit'; menuAt = -1; setMode('ins', i); const e = inp(); if (wasEdit) e.value = ''; paintList(i); focusIn(); }
+        else if (op === 'up' && i > 0) swap(i, i - 1);
+        else if (op === 'down' && i < L.length - 1) swap(i, i + 1);
+        else if (op === 'del') { delAsk = true; paintList(i); }
+        else if (op === 'delno') { delAsk = false; paintList(i); }
+        else if (op === 'delok') {
+          L.splice(i, 1); menuAt = -1; delAsk = false;
+          if (mode.k === 'edit' && mode.i === i) { mode = { k: 'add' }; const e = inp(); if (e) e.value = ''; }
+          else if (mode.k !== 'add' && mode.i > i) mode.i--;
+          if (mode.k === 'ins' && mode.i >= L.length) mode = { k: 'add' };
+          paintList(Math.min(i, L.length - 1)); paintMode(); save(); toast('Ligne supprimée');
+        }
+      },
+      wcancel: () => { const was = mode.k; mode = { k: 'add' }; if (was === 'edit') { const e = inp(); if (e) e.value = ''; } paintList(); paintMode(); },
+      wclose: () => exitType(),
       ok: async () => {
-        await flush();
+        pending(); exitType(true);
+        await save();
         if (!m.text.trim()) { toast('Écris d\'abord ton script.'); return; }
         m.textOk = true; await saveCourse(c);
-        editing = false; paint(); window.scrollTo(0, 0);
+        editing = false; menuAt = -1; mode = { k: 'add' }; paint(); window.scrollTo(0, 0);
         toast('Script validé ✅');
       },
-      edit: () => {
-        editing = true; paint();
-        const t = ta(); if (t) { try { t.focus({ preventScroll: true }); t.setSelectionRange(t.value.length, t.value.length); } catch (e) { /* rien */ } }
-      },
+      edit: () => { editing = true; paint(); window.scrollTo(0, 0); },
       read: async () => { await leave(); scrRead(cid, mid); },
       play: async () => { await leave(); scrPlay(cid, mid); },
       photo: async () => { await leave(); photoMenu(c, m, () => scrWrite(cid, mid)); }
     });
+    // les boutons de la partie fixe et la liste ne prennent pas le clavier à la case (le clavier reste ouvert)
+    const pn = pane();
+    pn.addEventListener('mousedown', (ev) => { if (wmode && ev.target.closest('button, .wl, video')) ev.preventDefault(); });
+    pn.addEventListener('pointerdown', (ev) => { if (wmode && ev.target.closest('button:not(.wclose), .wl, video')) tapT = Date.now(); });
     paint();
-    S.flushWrite = () => { if (!left && ta()) return flush(); };
-    // le curseur ne se cache pas derrière la vidéo collée en haut
-    const st = $('#wstick'); if (st) document.documentElement.style.scrollPaddingTop = (st.offsetHeight + 8) + 'px';
+    S.flushWrite = () => { if (!left) return save(); };
     const x = v();
     if (x) {
       const startAt = m.lastT != null && m.lastT >= m.start && m.lastT < m.end ? m.lastT : m.start;
-      x.addEventListener('loadedmetadata', () => { x.currentTime = startAt; const s2 = $('#wstick'); if (s2) document.documentElement.style.scrollPaddingTop = (s2.offsetHeight + 8) + 'px'; }, { once: true });
+      x.addEventListener('loadedmetadata', () => { x.currentTime = startAt; layout(); }, { once: true });
       x.addEventListener('timeupdate', () => {
         if (x.currentTime > m.end) { x.pause(); x.currentTime = m.end; }
         else if (x.currentTime < m.start - 0.3) x.currentTime = m.start;
@@ -1054,7 +1206,7 @@
       r.addEventListener('input', () => { r.dragging = true; x.currentTime = m.start + (+r.value); const t = $('#wt'); if (t) t.textContent = rel(m.start + (+r.value)); });
       r.addEventListener('change', () => { r.dragging = false; });
     }
-    window.SM_WRITE = { c, m, video: x, flush };
+    window.SM_WRITE = { c, m, video: x, lines: L, save, get wmode() { return wmode; } };
   }
 
   /** Renommer un mouvement partout (scripts, vocabulaire) */
