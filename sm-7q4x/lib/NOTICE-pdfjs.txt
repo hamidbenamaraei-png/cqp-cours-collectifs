@@ -1,0 +1,4 @@
+pdf.js (paquet npm pdfjs-dist 6.2.108, version « legacy ») - https://mozilla.github.io/pdf.js/
+Copyright Mozilla Foundation. Sous licence Apache 2.0 : voir LICENSE-pdfjs.txt.
+Fichiers copiés sans modification : pdf.min.mjs, pdf.worker.min.mjs (dossier legacy/build du paquet).
+Utilisé par ScriptMove pour afficher le livret dans le téléphone, sans connexion.

@@ -1,7 +1,8 @@
 /* ScriptMove – fonctionne sans Internet après la 1re visite.
-   Ne met en cache que les fichiers de l'appli (jamais tes vidéos, tes musiques ni tes photos : elles restent dans l'appli). */
-const V = 'sm-app-v11';
-const CORE = ['./', './index.html', './core.js', './mp4.js', './app.js', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png'];
+   Ne met en cache que les fichiers de l'appli (jamais tes vidéos, tes musiques, tes photos ni tes livrets : ils restent dans l'appli).
+   lib/ : pdf.js 6.2.108 (Mozilla, licence Apache 2.0, voir lib/LICENSE-pdfjs.txt) pour afficher le livret sans Internet. */
+const V = 'sm-app-v12';
+const CORE = ['./', './index.html', './core.js', './mp4.js', './app.js', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png', './lib/pdf.min.mjs', './lib/pdf.worker.min.mjs'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(V).then((c) => c.addAll(CORE.map((x) => new Request(x, { cache: 'reload' })))).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => {
   // anciennes versions (et l'ancien détecteur de mouvements) : effacées

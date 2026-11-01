@@ -1042,6 +1042,43 @@
     return L;
   }
 
+  /* ======================= Livret (PDF ou images) d'une édition (01/11) ======================= */
+  /** Page ramenée entre 1 et le nombre de pages */
+  function lvClamp(p, pages) { p = Math.round(+p || 1); if (pages > 0) p = Math.min(pages, p); return Math.max(1, p); }
+  /** Proposition si rien n'est réglé : numéro du morceau + 1 (le livret commence souvent par un sommaire) */
+  function lvDefaultPage(num, pages) { return lvClamp((+num || 1) + 1, pages); }
+  /** Page du livret d'un morceau (num = son numéro, à partir de 1) : { page, auto } ; auto = proposition, pas réglée */
+  function lvPageOf(m, num, pages) {
+    if (m && m.lvPage != null && isFinite(+m.lvPage) && +m.lvPage >= 1) return { page: lvClamp(m.lvPage, pages), auto: false };
+    return { page: lvDefaultPage(num, pages), auto: true };
+  }
+  /** « Régler les suivants à la suite » : les morceaux après list[i] reçoivent page + 1, page + 2…
+      (on s'arrête à la dernière page du livret). Renvoie le nombre de morceaux réglés. */
+  function lvFillNext(list, i, page, pages) {
+    let n = 0;
+    for (let j = i + 1; j < list.length; j++) {
+      const p = Math.round(+page) + (j - i);
+      if (pages > 0 && p > pages) break;
+      list[j].lvPage = p; n++;
+    }
+    return n;
+  }
+  /** Ce qui est gardé sur l'édition (pour l'affichage) */
+  function lvMeta(rec) { return rec ? { kind: rec.kind, name: rec.name || '', pages: rec.pages, size: rec.size, date: rec.created || Date.now() } : null; }
+  /** Livret → objet de sauvegarde (fichiers en texte) ; toData(blob) → Promise<texte data:> */
+  async function lvPack(rec, toData) {
+    const files = [];
+    for (const b of rec.files || []) files.push({ type: b.type || '', data: await toData(b) });
+    return { cid: rec.cid, kind: rec.kind, name: rec.name || '', size: rec.size, pages: rec.pages, created: rec.created, files };
+  }
+  /** Objet de sauvegarde → livret ; fromData(texte, type) → Promise<Blob> */
+  async function lvUnpack(o, fromData) {
+    if (!o || !o.cid || !Array.isArray(o.files) || !o.files.length) return null;
+    const files = [];
+    for (const f of o.files) files.push(await fromData(f.data, f.type));
+    return { cid: o.cid, kind: o.kind === 'img' ? 'img' : 'pdf', name: o.name || '', size: o.size || files.reduce((a, b) => a + (b.size || 0), 0), pages: o.pages || files.length, created: o.created || Date.now(), files };
+  }
+
   /** Recherche simple (sans accents ni majuscules) */
   function norm(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
 
@@ -1053,6 +1090,7 @@
     TEMPOS, beatsPerRep, insertLine, sortLines, moveLine, dupLine, pasteBlock, lineDur, buildTimeline,
     editionNumber, sortEditions, BASE_FOLDERS, migrateCourse, topMoves, lineText, norm,
     linesToText, textOf, textCount, parseLine, parseScript, textPlayLines,
-    SEP, isSep, textToLines, linesToScript, lineNumbers, protectTexts, pushHistory
+    SEP, isSep, textToLines, linesToScript, lineNumbers, protectTexts, pushHistory,
+    lvClamp, lvDefaultPage, lvPageOf, lvFillNext, lvMeta, lvPack, lvUnpack
   };
 });

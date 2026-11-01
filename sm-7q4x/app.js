@@ -417,6 +417,194 @@
     });
   }
 
+  /* ======================= 📄 Mon livret (PDF ou images des pages), un par édition (v12) =======================
+     Copié dans l'appli (store 'data', clé 'lv:' + id de l'édition) : { cid, kind: 'pdf' | 'img', name, size, pages, created, files: [Blob…] }.
+     Sur l'édition : c.livret = { kind, name, pages, size, date } ; sur chaque morceau : m.lvPage (si Hamid l'a réglée).
+     Le livret reste dans le téléphone : rien n'est jamais envoyé, et il n'y a pas de bouton pour le partager. */
+  const lvKey = (cid) => 'lv:' + cid;
+  const getLivret = (cid) => dget('data', lvKey(cid));
+  const lvSize = (b) => (b < 1e6 ? Math.max(1, Math.round((b || 0) / 1e3)) + ' Ko' : fmtSize(b));
+  const lvPages = (n) => n + ' page' + (n > 1 ? 's' : '');
+  const isPdf = (f) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name || '');
+  let pdfLib = null;
+  /** pdf.js (dans le dossier lib/ de l'appli : marche sans Internet) */
+  function pdfjs() {
+    if (!pdfLib) pdfLib = import('./lib/pdf.min.mjs?v=12').then((lib) => { lib.GlobalWorkerOptions.workerSrc = new URL('lib/pdf.worker.min.mjs?v=12', location.href).href; return lib; }).catch((e) => { pdfLib = null; throw e; });
+    return pdfLib;
+  }
+  const openPdf = async (blob) => (await pdfjs()).getDocument({ data: new Uint8Array(await blob.arrayBuffer()), isEvalSupported: false });
+  const LV = { cid: null, task: null, doc: null }; // le PDF ouvert reste prêt (réouverture rapide)
+  function lvForget() { if (LV.task) { try { LV.task.destroy(); } catch (e) { /* rien */ } } LV.cid = null; LV.task = null; LV.doc = null; }
+  async function lvDoc(cid, rec) {
+    if (LV.cid === cid && LV.doc) return LV.doc;
+    lvForget(); const task = await openPdf(rec.files[0]); LV.task = task; LV.cid = cid;
+    LV.doc = await task.promise; return LV.doc;
+  }
+  /** Page du livret d'un morceau : { page, auto } (auto = proposition : numéro du morceau + 1) */
+  function lvPageFor(c, m) {
+    const ms = c.morceaux.filter((x) => !x.lost); const num = ms.findIndex((x) => x.id === m.id) + 1;
+    return C.lvPageOf(m, num || 1, c.livret ? c.livret.pages : 0);
+  }
+  /** Ajouter (ou remplacer) le livret : un PDF, ou des images (les pages, dans l'ordre choisi) */
+  async function addLivret(c) {
+    const fs = await pickFile('application/pdf,image/*', true); if (!fs.length) return false;
+    const pdfs = fs.filter(isPdf), imgs = fs.filter((f) => !isPdf(f));
+    if (pdfs.length > 1 || (pdfs.length && imgs.length)) { await ask('Un seul PDF', 'Choisis <b>un seul PDF</b>, ou bien les photos des pages (sans PDF).', [{ label: 'OK, compris', value: 1 }]); return false; }
+    const size = fs.reduce((a, f) => a + (f.size || 0), 0);
+    const noSpace = () => ask('Pas assez de place', 'Pas assez de place dans le téléphone pour ce livret (' + lvSize(size) + ').' + (c.livret ? ' Ton livret actuel est gardé.' : '') + '<br><span class="mute">Pour libérer de la place : retire la vidéo gardée d\'une autre édition (« 🗑️ Retirer la vidéo »), puis réessaie.</span>', [{ label: 'OK, compris', value: 1 }]);
+    try {
+      if (navigator.storage && navigator.storage.estimate) { const e = await navigator.storage.estimate(); if (e.quota && e.quota - (e.usage || 0) < size + 20e6) { await noSpace(); return false; } }
+    } catch (e) { /* on essaie quand même */ }
+    render('<div class="top"><h1>Je garde ton livret</h1></div><div class="card o"><h2>📄 Copie du livret dans l\'appli…</h2><div class="bar"><i id="lvb"></i></div><p style="margin:8px 0 2px"><b id="lvpc">0 %</b> · <span class="soft">' + lvSize(size) + '</span></p>' +
+      '<p class="soft small" id="lvst">Lecture du fichier…</p><p class="mute">Il reste dans ton téléphone : rien n\'est envoyé.</p></div>');
+    const ui = (f, t) => { const b = $('#lvb'); if (b) b.style.width = Math.round(f * 100) + '%'; const p = $('#lvpc'); if (p) p.textContent = Math.round(f * 100) + ' %'; if (t) { const s = $('#lvst'); if (s) s.textContent = t; } };
+    const rec = { cid: c.id, kind: pdfs.length ? 'pdf' : 'img', name: fs[0].name || '', size, pages: 0, created: Date.now(), files: [] };
+    try {
+      if (rec.kind === 'pdf') {
+        ui(0.1, 'Lecture du PDF…');
+        const blob = new Blob([await fs[0].arrayBuffer()], { type: 'application/pdf' });
+        ui(0.4, 'Je compte les pages…');
+        let task = null;
+        try { task = await openPdf(blob); rec.pages = (await task.promise).numPages; } catch (e) {
+          console.warn('livret', e); try { if (task) task.destroy(); } catch (e2) { /* rien */ }
+          await ask('PDF pas lisible', 'Ce PDF ne peut pas être ouvert par l\'appli (fichier abîmé ou protégé par un mot de passe ?).', [{ label: 'OK', value: 1 }]); return false;
+        }
+        try { task.destroy(); } catch (e) { /* rien */ }
+        rec.files = [blob];
+      } else {
+        for (let i = 0; i < fs.length; i++) {
+          ui(0.05 + 0.75 * i / fs.length, 'Page ' + (i + 1) + ' sur ' + fs.length + '…');
+          try { const bm = await createImageBitmap(fs[i]); if (bm.close) bm.close(); } catch (e) {
+            await ask('Image pas lisible', 'L\'image « ' + esc(fs[i].name) + ' » ne peut pas être lue. Choisis des photos en JPG ou PNG.', [{ label: 'OK', value: 1 }]); return false;
+          }
+          rec.files.push(new Blob([await fs[i].arrayBuffer()], { type: fs[i].type || 'image/jpeg' }));
+        }
+        rec.pages = rec.files.length;
+      }
+      ui(0.85, 'Enregistrement dans l\'appli…');
+      await dput('data', rec, lvKey(c.id));
+    } catch (e) {
+      console.warn('livret non gardé', e);
+      if (isQuota(e)) await noSpace(); else await ask('Livret pas gardé', 'Je n\'ai pas réussi à copier le livret dans l\'appli.', [{ label: 'OK', value: 1 }]);
+      return false;
+    }
+    if (LV.cid === c.id) lvForget();
+    c.livret = C.lvMeta(rec); await saveCourse(c);
+    ui(1, 'C\'est fait !'); toast('Livret ajouté ✅ (' + lvPages(rec.pages) + ')');
+    return true;
+  }
+  async function removeLivret(c) {
+    const r = await ask('Retirer le livret ?', 'Le livret est retiré de l\'appli (' + lvSize(c.livret.size) + ' libérés). <b>Tes scripts, ta vidéo et tes photos sont gardés.</b>', [{ label: '🗑️ Oui, retirer le livret', value: 1, cls: 'red' }, { label: 'Non, le garder', value: 0, cls: 'sec' }]);
+    if (!r) return false;
+    await ddel('data', lvKey(c.id)); if (LV.cid === c.id) lvForget();
+    c.livret = null; await saveCourse(c); toast('Livret retiré ✅'); return true;
+  }
+  /** Visionneuse plein écran : ◀ ▶ ou balayage, pincer pour zoomer, toucher deux fois pour zoomer / dézoomer, glisser quand on est zoomé.
+      Elle se pose par-dessus l'écran : en la fermant on retrouve tout comme avant (vidéo, script, jeu). */
+  function viewLivret(c, page) {
+    return new Promise(async (resolve) => {
+      const el = document.createElement('div'); el.className = 'lv';
+      el.innerHTML = '<div class="lvtop"><b>📄 ' + esc(c.name) + '</b><button data-l="close" aria-label="Fermer le livret">✖</button></div>' +
+        '<div class="lvst" id="lvst"><div class="lvpg" id="lvpg"></div><p class="lvmsg" id="lvmsg">Ouverture du livret…</p></div>' +
+        '<div class="lvbar"><button data-l="prev" aria-label="Page précédente">◀</button><span id="lvn"></span><button data-l="next" aria-label="Page suivante">▶</button></div>';
+      document.body.appendChild(el);
+      const st = $('#lvst', el), pg = $('#lvpg', el), msg = $('#lvmsg', el);
+      let N = 0, i = 1, sc = 1, x = 0, y = 0, base = { w: 0, h: 0 }, token = 0, q = 0, closed = false, bmp = null, rec = null, doc = null;
+      const close = () => { if (closed) return; closed = true; window.removeEventListener('resize', onResize); if (bmp && bmp.close) bmp.close(); el.remove(); window.SM_LV = null; resolve(); };
+      el.addEventListener('click', (e) => { const b = e.target.closest('[data-l]'); if (!b) return; const a = b.dataset.l; if (a === 'close') close(); else if (a === 'prev') go(i - 1); else if (a === 'next') go(i + 1); });
+      const bounds = () => ({ bx: Math.max(0, (base.w * sc - st.clientWidth) / 2), by: Math.max(0, (base.h * sc - st.clientHeight) / 2) });
+      const apply = (free) => {
+        if (!free) { const { bx, by } = bounds(); x = Math.max(-bx, Math.min(bx, x)); y = Math.max(-by, Math.min(by, y)); }
+        pg.style.transform = 'translate(' + x + 'px,' + y + 'px) scale(' + sc + ')';
+      };
+      /** Taille de la page à l'écran (toute la largeur, sans dépasser la hauteur) */
+      const pageSize = async (n) => {
+        if (doc) { const p = await doc.getPage(n); const v = p.getViewport({ scale: 1 }); return { p, w: v.width, h: v.height }; }
+        if (bmp && bmp.close) bmp.close();
+        bmp = await createImageBitmap(rec.files[n - 1]); return { b: bmp, w: bmp.width, h: bmp.height };
+      };
+      let cur = null;
+      /** Dessine la page en canvas, net (densité de l'écran × zoom, sans dépasser ~16 millions de points) */
+      const draw = async (quality) => {
+        const t = ++token; const W = st.clientWidth, H = st.clientHeight;
+        if (!cur || !W || !H) return;
+        const k = Math.min(W / cur.w, H / cur.h); base = { w: Math.floor(cur.w * k), h: Math.floor(cur.h * k) };
+        const dpr = window.devicePixelRatio || 1;
+        const qq = Math.max(1, Math.min(quality || 1, 4, Math.sqrt(16e6 / (base.w * base.h * dpr * dpr))));
+        const cv = document.createElement('canvas');
+        cv.width = Math.max(1, Math.round(base.w * dpr * qq)); cv.height = Math.max(1, Math.round(base.h * dpr * qq));
+        cv.style.width = base.w + 'px'; cv.style.height = base.h + 'px';
+        try {
+          if (cur.p) await cur.p.render({ canvas: cv, viewport: cur.p.getViewport({ scale: cv.width / cur.w }) }).promise;
+          else { const g = cv.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(cur.b, 0, 0, cv.width, cv.height); }
+        } catch (e) { if (!/cancel/i.test(String(e && (e.name || e.message)))) console.warn('livret', e); return; }
+        if (t !== token || closed) return;
+        q = qq; pg.style.width = base.w + 'px'; pg.style.height = base.h + 'px'; pg.replaceChildren(cv); apply();
+      };
+      async function go(n) {
+        n = Math.max(1, Math.min(N, n)); if (!N) return;
+        const same = n === i && cur; i = n; $('#lvn', el).textContent = 'Page ' + i + ' / ' + N;
+        el.querySelector('[data-l="prev"]').disabled = i <= 1; el.querySelector('[data-l="next"]').disabled = i >= N;
+        if (same) return;
+        sc = 1; x = 0; y = 0; apply();
+        const t = ++token;
+        try { const s = await pageSize(i); if (t !== token || closed) return; cur = s; } catch (e) { console.warn('livret', e); msg.textContent = 'Cette page ne peut pas s\'afficher.'; return; }
+        msg.textContent = ''; await draw(1);
+      }
+      let rT = null; const onResize = () => { clearTimeout(rT); rT = setTimeout(() => { sc = 1; x = 0; y = 0; draw(1); }, 150); };
+      window.addEventListener('resize', onResize);
+      /* gestes : un doigt = balayer (page suivante / précédente) ou glisser quand on est zoomé ; deux doigts = zoomer */
+      const pts = new Map(); let g = null, lastTap = { t: 0, x: 0, y: 0 }, moved = false;
+      const center = () => { const r = st.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+      const startG = () => {
+        const p = Array.from(pts.values()); const o = center();
+        g = { sc, x, y, n: p.length, o, x0: p[0].x, y0: p[0].y, mid: p.length > 1 ? { x: (p[0].x + p[1].x) / 2, y: (p[0].y + p[1].y) / 2 } : null, d: p.length > 1 ? Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) : 0 };
+      };
+      const zoomAt = (s2, fx, fy, from) => { // garde le point (fx, fy) sous le doigt
+        const o = center(), k = s2 / from.sc;
+        x = fx - o.x - k * (from.mid.x - o.x - from.x); y = fy - o.y - k * (from.mid.y - o.y - from.y); sc = s2;
+      };
+      st.addEventListener('pointerdown', (e) => { try { st.setPointerCapture(e.pointerId); } catch (er) { /* rien */ } pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (pts.size === 1) moved = false; else moved = true; startG(); });
+      st.addEventListener('pointermove', (e) => {
+        if (!pts.has(e.pointerId) || !g) return; pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        const p = Array.from(pts.values());
+        if (p.length >= 2 && g.n >= 2) {
+          const d = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
+          zoomAt(Math.max(1, Math.min(6, g.sc * d / Math.max(10, g.d))), (p[0].x + p[1].x) / 2, (p[0].y + p[1].y) / 2, g); apply();
+        } else if (p.length === 1) {
+          const dx = p[0].x - g.x0, dy = p[0].y - g.y0; if (Math.hypot(dx, dy) > 10) moved = true;
+          if (g.sc > 1.01) { x = g.x + dx; y = g.y + dy; apply(); } else if (moved && Math.abs(dx) > Math.abs(dy)) { x = dx * 0.6; apply(true); }
+        }
+      });
+      const up = (e) => {
+        if (!pts.has(e.pointerId)) return;
+        const wasOne = pts.size === 1 && g && g.n === 1; const p0 = pts.get(e.pointerId); pts.delete(e.pointerId);
+        if (wasOne && g.sc <= 1.01 && moved) { // balayage
+          const dx = p0.x - g.x0, dy = p0.y - g.y0; x = 0; apply();
+          if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.3) go(dx < 0 ? i + 1 : i - 1);
+        } else if (wasOne && !moved && e.type === 'pointerup') { // toucher : deux fois = zoom / dézoom
+          const now = Date.now();
+          if (now - lastTap.t < 320 && Math.hypot(p0.x - lastTap.x, p0.y - lastTap.y) < 40) {
+            lastTap.t = 0;
+            if (sc > 1.05) { sc = 1; x = 0; y = 0; } else zoomAt(2.5, p0.x, p0.y, { sc: 1, x: 0, y: 0, mid: { x: p0.x, y: p0.y } });
+            apply(); if (sc > 1) draw(sc);
+          } else lastTap = { t: now, x: p0.x, y: p0.y };
+        }
+        if (sc <= 1.01) { sc = 1; x = 0; y = 0; apply(); }
+        if (pts.size) startG(); else { g = null; if (sc > q + 0.2) draw(sc); }
+      };
+      st.addEventListener('pointerup', up); st.addEventListener('pointercancel', up);
+      window.SM_LV = { el, get page() { return i; }, get pages() { return N; }, get zoom() { return sc; }, get quality() { return q; }, go, close }; // pour les tests
+      try {
+        rec = await getLivret(c.id);
+        if (!rec || !rec.files || !rec.files.length) { msg.textContent = 'Livret introuvable dans l\'appli. Rajoute-le depuis la page de l\'édition.'; return; }
+        if (rec.kind === 'pdf') { doc = await lvDoc(c.id, rec); N = doc.numPages; } else N = rec.files.length;
+        if (closed) return;
+        i = 0; await go(C.lvClamp(page || 1, N));
+      } catch (e) { console.warn('livret', e); if (LV.cid === c.id) lvForget(); msg.textContent = 'Le livret ne peut pas s\'ouvrir (fichier abîmé ?).'; }
+    });
+  }
+
   /* ======================= Accueil : la bibliothèque ======================= */
   async function scrHome() {
     S.wantAwake = false; keepAwake(false);
@@ -472,7 +660,7 @@
       '<button class="btn" data-act="new">➕ Nouvelle édition</button>' +
       (list.length ? list.map((c) => {
         const ms = c.morceaux.filter((m) => !m.lost); const w = ms.filter((m) => C.textCount(C.textOf(m))).length;
-        return '<button class="seg" data-act="open" data-id="' + c.id + '"><span class="t"><b>' + esc(c.name) + '</b><span class="mute">' + fmtDate(c.created) + ' · ' + ms.length + ' morceau' + (ms.length > 1 ? 'x' : '') + ' · ✍️ ' + w + ' / ' + ms.length + ' écrit' + (w > 1 ? 's' : '') + (c.video && c.video.kept ? ' · 🎬' : '') + '</span></span><span style="font-size:24px">›</span></button>';
+        return '<button class="seg" data-act="open" data-id="' + c.id + '"><span class="t"><b>' + esc(c.name) + '</b><span class="mute">' + fmtDate(c.created) + ' · ' + ms.length + ' morceau' + (ms.length > 1 ? 'x' : '') + ' · ✍️ ' + w + ' / ' + ms.length + ' écrit' + (w > 1 ? 's' : '') + (c.video && c.video.kept ? ' · 🎬' : '') + '</span>' + (c.livret ? '<span class="lvbadge"><span class="badge">📄 livret</span></span>' : '') + '</span><span style="font-size:24px">›</span></button>';
       }).join('') : '<div class="card"><p class="soft">Aucune édition dans ce dossier.</p><p class="mute">Touche « ➕ Nouvelle édition » : choisis la vidéo du cours et tes musiques.</p></div>') +
       (!f.builtin && !list.length ? '<button class="btn ghost small" data-act="del">🗑️ Supprimer ce dossier (vide)</button>' : ''),
     {
@@ -868,18 +1056,27 @@
     const ms = c.morceaux.filter((m) => !m.lost);
     const fo = folderOf(c.folder);
     const kept = c.video && c.video.kept;
+    const lv = c.livret;
+    /** Réglage « Page du livret » d'un morceau (la proposition automatique est affichée en clair, pas imposée) */
+    const lvSet = (m) => { const r = lvPageFor(c, m); return '<div class="lvset" data-id="' + m.id + '"><span class="lvl">📄 Page du livret :</span><button data-act="lvpm" data-id="' + m.id + '" data-d="-1" aria-label="Page d\'avant">−</button><b class="lvnum' + (r.auto ? ' auto' : '') + '">' + r.page + '</b><button data-act="lvpm" data-id="' + m.id + '" data-d="1" aria-label="Page d\'après">+</button><span class="lvhint mute">' + (r.auto ? 'proposée' : '') + '</span></div>' +
+      '<div class="lvq hide" data-id="' + m.id + '"><span>Régler les suivants à la suite ?</span><button data-act="lvfill" data-id="' + m.id + '">Oui</button><button data-act="lvno" data-id="' + m.id + '">Non</button></div>'; };
     render('<div class="top"><button class="back" data-act="back">‹</button><h1>' + esc(c.name) + '</h1><button class="back" data-act="ren" aria-label="Renommer l\'édition">✏️</button></div>' +
       '<p class="mute">📁 ' + esc(fo ? fo.name : '') + ' · ' + fmtDate(c.created) + ' · ' + (c.video ? fmt(c.video.duration) : '') + '</p>' +
       (oldCut(c) ? '<div class="card r"><h3>⚠️ Découpage à refaire</h3><p class="soft small">Cette édition a été découpée avec l\'ancienne méthode : des musiques ont pu être placées n\'importe où. La nouvelle méthode ne place une musique que si elle est sûre. Ta vidéo, tes musiques, le nom et tes scripts sont gardés.</p><button class="btn" data-act="redo">🔁 Refaire le découpage</button></div>' : '') +
       '<div class="card ' + (kept ? 'g' : 'j') + ' small">' + (kept ? '🎬 <b>Vidéo gardée dans l\'appli</b> (' + fmtSize(kept.size) + ')<button class="btn ghost small" style="margin:8px 0 0" data-act="rmvid">🗑️ Retirer la vidéo (garder scripts et musiques)</button>' : '🎬 <b>La vidéo n\'est pas gardée</b> dans l\'appli.' + (c.video ? ' <span class="mute">(' + esc(c.video.name) + ', ' + fmtSize(c.video.size) + ')</span>' : '') + '<button class="btn sec small" style="margin:8px 0 0" data-act="addvid">🎬 Remettre la vidéo</button>') + '</div>' +
+      (lv ? '<div class="card g small lvcard">📄 <b>Mon livret</b> · <span id="lvinfo">' + lvPages(lv.pages) + ' · ' + lvSize(lv.size) + '</span>' +
+        '<button class="btn small" style="margin:8px 0 8px" data-act="lvsee">📄 Voir mon livret</button><div class="row tight"><button class="btn sec small" style="margin:0" data-act="lvadd">🔁 Remplacer</button><button class="btn sec small" style="margin:0" data-act="lvrm">🗑️ Retirer</button></div></div>'
+        : '<button class="btn sec" data-act="lvadd">📄 Ajouter mon livret</button>') +
       '<div class="row"><button class="btn sec" data-act="script">📖 Script de l\'édition</button><button class="btn sec" data-act="pdf">🖨️ PDF</button></div>' +
       ms.map((m, i) => '<div class="card mrc ' + (C.textCount(C.textOf(m)) ? 'g' : 'o') + '"><div class="head"><button class="btn sec small" style="width:auto;flex:0 0 auto;margin:0 8px 0 0;padding:6px 10px" data-act="renm" data-id="' + m.id + '" aria-label="Renommer ce morceau">✏️</button><h2 style="flex:1 1 auto;min-width:0">' + (i + 1) + '. ' + esc(m.name) + '</h2></div>' +
         '<p style="margin:0 0 6px">' + scriptState(m, nPh(m.id)) + '</p>' +
+        (lv ? lvSet(m) : '') +
         '<p class="mute">' + fmt(m.start) + ' → ' + fmt(m.end) + (m.musicId && musics[m.musicId] ? ' · 🎵 ' + esc(musics[m.musicId].name) + (m.alignMode === 'sure' ? ' ✅' : m.alignMode === 'proposed' ? ' ❓' : '') : ' · pas de musique liée') + '</p>' +
         '<button class="btn small" data-act="write" data-id="' + m.id + '">✍️ Mon script</button>' +
         '<div class="row tight">' + (C.textCount(C.textOf(m)) ? '<button class="btn sec small" data-act="play" data-id="' + m.id + '">🎮 Jouer</button><button class="btn sec small" data-act="read" data-id="' + m.id + '">📖 Lire</button>' : '') +
         '<button class="btn sec small" data-act="photo" data-id="' + m.id + '">📷 ' + (nPh(m.id) ? 'Photos' : 'Photo') + '</button>' +
-        '<button class="btn sec small" data-act="link" data-id="' + m.id + '">🎵 ' + (m.musicId ? 'Musique' : 'Lier une musique') + '</button></div></div>').join('') +
+        '<button class="btn sec small" data-act="link" data-id="' + m.id + '">🎵 ' + (m.musicId ? 'Musique' : 'Lier une musique') + '</button>' +
+        (lv ? '<button class="btn sec small" data-act="lv" data-id="' + m.id + '">📄 Livret</button>' : '') + '</div></div>').join('') +
       '<div class="row"><button class="btn sec" data-act="cut">✂️ Modifier le découpage</button><button class="btn sec" data-act="mvf">📁 Changer de dossier</button></div>' +
       '<button class="btn ghost small" data-act="del">🗑️ Supprimer cette édition</button>',
     {
@@ -890,6 +1087,23 @@
       photo: (b) => photoMenu(c, c.morceaux.find((x) => x.id === b.dataset.id), () => scrCourse(cid)),
       script: () => scrCourseScript(c.id),
       pdf: () => printCourse(c),
+      lvadd: async () => { await addLivret(c); scrCourse(cid); },
+      lvrm: async () => { if (await removeLivret(c)) scrCourse(cid); },
+      lvsee: () => viewLivret(c, 1),
+      lv: (b) => { const m = c.morceaux.find((x) => x.id === b.dataset.id); if (m) viewLivret(c, lvPageFor(c, m).page); },
+      lvpm: (b) => {
+        const m = c.morceaux.find((x) => x.id === b.dataset.id); if (!m || !lv) return;
+        m.lvPage = C.lvClamp(lvPageFor(c, m).page + (+b.dataset.d), lv.pages); saveCourse(c);
+        const box = b.closest('.lvset'); box.querySelector('.lvnum').textContent = m.lvPage; box.querySelector('.lvnum').classList.remove('auto'); box.querySelector('.lvhint').textContent = '';
+        app.querySelectorAll('.lvq').forEach((q) => q.classList.toggle('hide', !(q.dataset.id === m.id && ms.indexOf(m) < ms.length - 1)));
+      },
+      lvfill: (b) => {
+        const m = c.morceaux.find((x) => x.id === b.dataset.id); if (!m || !lv) return;
+        const n = C.lvFillNext(ms, ms.indexOf(m), lvPageFor(c, m).page, lv.pages);
+        saveCourse(c).then(() => scrCourse(cid));
+        toast(n ? (n > 1 ? n + ' morceaux suivants réglés ✅' : 'Morceau suivant réglé ✅') : 'C\'est déjà la dernière page du livret.');
+      },
+      lvno: (b) => { const q = b.closest('.lvq'); if (q) q.classList.add('hide'); },
       link: (b) => linkMusic(c, b.dataset.id),
       cut: () => scrCut(c.id),
       redo: () => redoCut(c),
@@ -899,7 +1113,20 @@
         if (!r) return; await deleteVideo(c.id); c.video.kept = null; if (S.videoFor === c.id) S.videoFor = null; await saveCourse(c); toast('Vidéo retirée ✅'); scrCourse(cid);
       },
       ren: async () => { const n = await askText('Nom de l\'édition', c.name, 'ex. Pump 100'); if (n) { c.name = n; await saveCourse(c); scrCourse(c.id); } },
-      renm: async (b) => { const m = c.morceaux.find((x) => x.id === b.dataset.id); if (!m) return; const n = await askText('Nom du morceau', m.name, 'ex. 04 dos / épaules'); if (n) { m.name = n; m.renamed = true; m.autoName = false; await saveCourse(c); scrCourse(c.id); } },
+      renm: async (b) => {
+        const m = c.morceaux.find((x) => x.id === b.dataset.id); if (!m) return;
+        if (!lv) { const n = await askText('Nom du morceau', m.name, 'ex. 04 dos / épaules'); if (n) { m.name = n; m.renamed = true; m.autoName = false; await saveCourse(c); scrCourse(c.id); } return; }
+        const r = await morceauMenu(c, m); if (!r) return;
+        if (r.name && r.name !== m.name) { m.name = r.name; m.renamed = true; m.autoName = false; }
+        const changed = r.page !== lvPageFor(c, m).page || (lvPageFor(c, m).auto && r.touched);
+        if (changed) m.lvPage = r.page;
+        await saveCourse(c);
+        if (changed && ms.indexOf(m) < ms.length - 1) {
+          const f = await ask('Régler les suivants à la suite ?', 'Le morceau suivant aurait la page ' + (r.page + 1) + ', puis ' + (r.page + 2) + '… Tu pourras corriger à la main ensuite.', [{ label: 'Oui', value: 1 }, { label: 'Non', value: 0, cls: 'sec' }]);
+          if (f) { const n = C.lvFillNext(ms, ms.indexOf(m), r.page, lv.pages); await saveCourse(c); if (n) toast((n > 1 ? n + ' morceaux suivants réglés' : 'Morceau suivant réglé') + ' ✅'); }
+        }
+        scrCourse(c.id);
+      },
       mvf: async () => {
         const v = await ask('Dans quel dossier ?', '', S.folders.map((f) => ({ label: '📁 ' + f.name + (f.id === c.folder ? ' (actuel)' : ''), value: f.id, cls: f.id === c.folder ? 'sec' : '' })).concat([{ label: 'Annuler', value: null, cls: 'ghost' }]));
         if (!v || v === c.folder) return; const f = folderOf(v); c.folder = f.id; c.style = f.style; await saveCourse(c); toast('Rangée dans 📁 ' + f.name); scrCourse(cid);
@@ -909,8 +1136,24 @@
         if (!r) return;
         for (const m of c.morceaux) { await ddel('data', 'po:' + m.id); await ddel('data', 'th:' + m.id); }
         for (const p of ph) await ddel('photos', p.id);
+        await ddel('data', lvKey(c.id)); if (LV.cid === c.id) lvForget();
         await deleteVideo(c.id); await ddel('data', 'af:' + c.id); await ddel('courses', c.id); scrFolder(c.folder);
       }
+    });
+  }
+  /** Menu ✏️ d'un morceau quand l'édition a un livret : son nom et sa page du livret. Renvoie { name, page, touched } ou null */
+  function morceauMenu(c, m) {
+    return new Promise((res) => {
+      const r0 = lvPageFor(c, m); let page = r0.page, touched = false, done = false;
+      const s = sheet('<h2>✏️ ' + esc(m.name) + '</h2><label class="lab" for="mmn">Nom du morceau</label><input type="text" id="mmn" value="' + esc(m.name) + '" placeholder="ex. 04 dos / épaules">' +
+        '<label class="lab">📄 Page du livret</label><div class="stepper"><button data-sact="pm" data-d="-1" aria-label="Page d\'avant">−</button><b id="mmp">' + page + '</b><button data-sact="pm" data-d="1" aria-label="Page d\'après">+</button></div>' +
+        '<p class="mute" id="mmh" style="text-align:center">' + (r0.auto ? 'Proposée (numéro du morceau + 1). Change-la si besoin.' : 'Sur ' + lvPages(c.livret.pages) + '.') + '</p>' +
+        '<button class="btn" data-sact="ok">✅ Valider</button><button class="btn sec" data-sact="no">Annuler</button>', {
+        pm: (b) => { page = C.lvClamp(page + (+b.dataset.d), c.livret.pages); touched = true; $('#mmp').textContent = page; $('#mmh').textContent = 'Sur ' + lvPages(c.livret.pages) + '.'; },
+        ok: (b, e, close) => { done = true; const n = $('#mmn').value.trim(); close(); res({ name: n || m.name, page, touched }); },
+        no: (b, e, close) => { done = true; close(); res(null); }
+      }, () => { if (!done) res(null); });
+      void s;
     });
   }
   /** Photos d'un morceau : en ajouter, les voir */
@@ -1024,7 +1267,8 @@
       setText();
       await saveCourse(c);
     };
-    const photoBtn = '<button class="btn sec small wbtn" data-act="photo">📷 ' + (nPh ? 'Photos (' + nPh + ')' : 'Photo de ma feuille') + '</button>';
+    const photoBtn = '<button class="btn sec small wbtn" data-act="photo">📷 ' + (nPh ? 'Photos (' + nPh + ')' : 'Photo de ma feuille') + '</button>' +
+      (c.livret ? '<button class="btn sec small wbtn" data-act="lv">📄 Livret</button>' : ''); // (la barre est cachée pendant l'écriture, clavier ouvert)
 
     /* ---------- la liste ---------- */
     const menuHtml = (i) => '<div class="wmenu">' + (delAsk
@@ -1211,7 +1455,8 @@
       edit: () => { editing = true; paint(); window.scrollTo(0, 0); },
       read: async () => { await leave(); scrRead(cid, mid); },
       play: async () => { await leave(); scrPlay(cid, mid); },
-      photo: async () => { await leave(); photoMenu(c, m, () => scrWrite(cid, mid)); }
+      photo: async () => { await leave(); photoMenu(c, m, () => scrWrite(cid, mid)); },
+      lv: () => { if (S.flushWrite) S.flushWrite(); viewLivret(c, lvPageFor(c, m).page); } // par-dessus l'écran : la vidéo et le script ne bougent pas
     });
     // les boutons de la partie fixe et la liste ne prennent pas le clavier à la case (le clavier reste ouvert)
     const pn = pane();
@@ -1304,8 +1549,9 @@
       '<div class="card">' + readList(m) + '</div>' +
       '<div class="row"><button class="btn" data-act="write">✍️ Modifier</button><button class="btn sec" data-act="play">🎮 Jouer</button></div>' +
       '<div class="row"><button class="btn sec" data-act="copy">📋 Copier le texte</button><button class="btn sec" data-act="pdf">🖨️ PDF</button></div>' +
-      '<button class="btn sec" data-act="photo">📷 ' + (nPh ? 'Photos de ma feuille (' + nPh + ')' : 'Photo de ma feuille') + '</button>',
-    { back: () => scrCourse(cid), write: () => scrWrite(cid, mid), play: () => scrPlay(cid, mid), copy: () => copyText(scriptText(c, [m])), pdf: () => printCourse(c, [m]), photo: () => photoMenu(c, m, () => scrRead(cid, mid)) });
+      '<button class="btn sec" data-act="photo">📷 ' + (nPh ? 'Photos de ma feuille (' + nPh + ')' : 'Photo de ma feuille') + '</button>' +
+      (c.livret ? '<button class="btn sec" data-act="lv">📄 Livret (page ' + lvPageFor(c, m).page + ')</button>' : ''),
+    { back: () => scrCourse(cid), write: () => scrWrite(cid, mid), play: () => scrPlay(cid, mid), copy: () => copyText(scriptText(c, [m])), pdf: () => printCourse(c, [m]), photo: () => photoMenu(c, m, () => scrRead(cid, mid)), lv: () => viewLivret(c, lvPageFor(c, m).page) });
   }
   async function scrCourseScript(cid) {
     const c = await dget('courses', cid);
@@ -1341,7 +1587,7 @@
     if (choice === 'music') { P.url = URL.createObjectURL(mu.blob); P.audio = new Audio(P.url); P.audio.preload = 'auto'; }
     S.wantAwake = true; keepAwake(true);
     const el = document.createElement('div'); el.className = 'play';
-    el.innerHTML = '<div class="ph"><h3>' + esc(m.name) + '</h3>' + (photos.length ? '<button data-p="photo" aria-label="Voir la photo de ma feuille">📷</button>' : '') + '<button data-p="close" aria-label="Fermer">✖</button></div>' +
+    el.innerHTML = '<div class="ph"><h3>' + esc(m.name) + '</h3>' + (photos.length ? '<button data-p="photo" aria-label="Voir la photo de ma feuille">📷</button>' : '') + (c.livret ? '<button data-p="lv" aria-label="Voir mon livret">📄</button>' : '') + '<button data-p="close" aria-label="Fermer">✖</button></div>' +
       '<div class="main" data-p="tap"><div class="nx" id="pbefore"></div><div class="pnum" id="pnum"></div><div class="mv" id="pmv"></div><div class="cnt" id="pcnt"></div><div class="tempo" id="ptp"></div><div class="nx" id="pnote"></div><div class="phint" id="phint"></div></div>' +
       '<div class="nx" id="pnx" style="text-align:center"></div><div class="bar"><i id="pbar"></i></div>' +
       '<div class="ctl"><button data-p="prev" aria-label="Ligne précédente">⏮️</button><button class="main" data-p="pp" id="ppp">▶️</button><button data-p="next" aria-label="Ligne suivante">⏭️</button></div>' +
@@ -1416,6 +1662,7 @@
       else if (a === 'prev') go(-1); else if (a === 'next' || a === 'tap') go(1);
       else if (a === 'early') adj(0.25); else if (a === 'late') adj(-0.25);
       else if (a === 'photo') viewPhotos(photos.slice(), 0, null);
+      else if (a === 'lv') viewLivret(c, lvPageFor(c, m).page);
       else if (a === 'nextm') { close(); saveCourse(c); scrPlay(cid, nextM.id); }
     });
     window.SM_PLAY = { P, el, musicT, setMusicT, lines: L, auto }; // pour les tests
@@ -1472,9 +1719,10 @@
   const b64 = (blob) => new Promise((res) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.readAsDataURL(blob); });
   async function doBackup() {
     const courses = await dall('courses'); const musics = await dall('musics'); const photos = await dall('photos');
-    const msize = musics.reduce((a, m) => a + (m.blob ? m.blob.size : 0), 0) + photos.reduce((a, p) => a + (p.blob ? p.blob.size : 0), 0);
+    const lvs = (await tx('data', 'readonly', (s) => s.getAll(IDBKeyRange.bound('lv:', 'lv:\uffff')))) || [];
+    const msize = musics.reduce((a, m) => a + (m.blob ? m.blob.size : 0), 0) + photos.reduce((a, p) => a + (p.blob ? p.blob.size : 0), 0) + lvs.reduce((a, l) => a + (l.size || 0), 0);
     const opts = [{ label: '💾 Scripts seulement (léger)', value: 'light' }];
-    if (msize < 150e6) opts.push({ label: '🎵 Avec musiques et photos (' + fmtSize(msize) + ')', value: 'full', cls: 'sec' });
+    if (msize < 150e6) opts.push({ label: '🎵 Avec musiques, photos' + (lvs.length ? ' et livrets' : '') + ' (' + fmtSize(msize) + ')', value: 'full', cls: 'sec' });
     opts.push({ label: 'Annuler', value: null, cls: 'ghost' });
     const r = await ask('Sauvegarder', 'Un fichier est enregistré dans ton téléphone (dossier Téléchargements). Garde-le précieusement, par exemple sur ton Drive.<br><span class="mute">Les vidéos ne sont pas dans la sauvegarde (trop grosses).</span>', opts);
     if (!r) return;
@@ -1484,6 +1732,7 @@
       toast('Préparation…');
       data.musics = []; for (const m of musics) if (m.blob) data.musics.push({ id: m.id, name: m.name, type: m.type, duration: m.duration, bpm: m.bpm, attack: m.attack, len: m.len, data: await b64(m.blob) });
       data.photos = []; for (const p of photos) data.photos.push({ id: p.id, cid: p.cid, mid: p.mid, w: p.w, h: p.h, created: p.created, data: await b64(p.blob) });
+      data.livrets = []; for (const l of lvs) if (l && l.files && l.files.length) data.livrets.push(await C.lvPack(l, b64));
     }
     const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
@@ -1499,16 +1748,24 @@
     if (!r) return;
     for (const fo of d.folders || []) if (!S.folders.some((x) => x.id === fo.id)) S.folders.push(fo);
     await saveKV('folders');
+    const lvIn = {}; for (const o of d.livrets || []) if (o && o.cid) lvIn[o.cid] = o;
     for (const c of d.courses || []) {
       const here = await dget('courses', c.id);
       // la vidéo gardée n'est pas dans la sauvegarde : on garde celle du téléphone si elle y est
       c.video = Object.assign({}, c.video || {}, { kept: here && here.video && here.video.kept ? here.video.kept : null });
+      // le livret : celui de la sauvegarde complète, sinon celui déjà dans le téléphone
+      if (lvIn[c.id]) c.livret = C.lvMeta(lvIn[c.id]);
+      else c.livret = here && here.livret && (await getLivret(c.id)) ? here.livret : null;
       C.migrateCourse(c, S.folders, uid);
       await saveCourse(c);
     }
     for (const m of d.musics || []) { const blob = await (await fetch(m.data)).blob(); await dput('musics', { id: m.id, name: m.name, type: m.type, duration: m.duration, bpm: m.bpm, attack: m.attack, len: m.len, blob }); }
     for (const p of d.photos || []) { const blob = await (await fetch(p.data)).blob(); await dput('photos', { id: p.id, cid: p.cid, mid: p.mid, w: p.w, h: p.h, created: p.created, blob }); }
     for (const k in d.thumbs || {}) await dput('data', d.thumbs[k], 'th:' + k);
+    for (const o of d.livrets || []) {
+      const rec = await C.lvUnpack(o, async (u, type) => { const b = await (await fetch(u)).blob(); return type && b.type !== type ? new Blob([b], { type }) : b; });
+      if (rec) { await dput('data', rec, lvKey(rec.cid)); if (LV.cid === rec.cid) lvForget(); }
+    }
     // ancienne sauvegarde : anciens noms de mouvements → nouveaux
     if (!(d.version >= 3)) { const k = { vocab: d.vocab || {}, prints: d.prints || [], customMoves: d.customMoves || {}, favs: d.favs || {} }; C.migrateMoveLists(k); Object.assign(d, k); }
     for (const st in d.favs || {}) S.favs[st] = Object.assign({}, S.favs[st] || {}, d.favs[st]);
@@ -1529,6 +1786,6 @@
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
     try { navigator.serviceWorker.register('sw.js').catch(() => {}); } catch (e) { /* rien */ }
   }
-  S.api = { scrHome, scrFolder, scrCourse, scrWrite, scrRead, scrPlay, scrCourseScript, setVideo, dget, dput, dall, saveCourse, scriptText, storeVideo, videoURL, photosOf, migrateAll, loadKV };
+  S.api = { scrHome, scrFolder, scrCourse, scrWrite, scrRead, scrPlay, scrCourseScript, setVideo, dget, dput, dall, saveCourse, scriptText, storeVideo, videoURL, photosOf, migrateAll, loadKV, getLivret, viewLivret, lvPageFor };
   scrLock();
 })();

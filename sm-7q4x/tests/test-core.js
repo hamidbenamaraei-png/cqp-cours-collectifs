@@ -412,5 +412,36 @@ section('20. Protection des scripts (v11) : perte du texte de la v9 reproduite p
   ok(h.length === 2 && h[0].text === V9 && h[0].at === 3 && h[1].text === 'B', 'historique des textes : récent d\'abord, sans doublon ni vide');
 }
 
-console.log(`\n${passes} réussis, ${fails} échoués`);
-process.exit(fails ? 1 : 0);
+/* ---------- Livret (v12) ---------- */
+section('Livret : page par défaut, « régler les suivants », sauvegarde');
+(async () => {
+  ok(C.lvDefaultPage(1, 20) === 2 && C.lvDefaultPage(3, 20) === 4, 'proposition : numéro du morceau + 1 (sommaire en page 1)');
+  ok(C.lvDefaultPage(12, 10) === 10 && C.lvDefaultPage(0, 10) === 2, 'proposition jamais après la dernière page');
+  ok(C.lvClamp(0, 8) === 1 && C.lvClamp(9, 8) === 8 && C.lvClamp(3.6, 8) === 4 && C.lvClamp(5, 0) === 5, 'page ramenée entre 1 et le nombre de pages');
+  const r1 = C.lvPageOf({}, 3, 20), r2 = C.lvPageOf({ lvPage: 7 }, 3, 20), r3 = C.lvPageOf({ lvPage: 30 }, 3, 20), r4 = C.lvPageOf({ lvPage: null }, 2, 20);
+  ok(r1.page === 4 && r1.auto && r2.page === 7 && !r2.auto && r3.page === 20 && !r3.auto && r4.page === 3 && r4.auto, 'page réglée gardée, sinon proposition marquée « auto »');
+  const ms = [{}, {}, { lvPage: 9 }, {}, {}];
+  const n = C.lvFillNext(ms, 1, 5, 20);
+  ok(n === 3 && ms[0].lvPage === undefined && ms[1].lvPage === undefined && ms[2].lvPage === 6 && ms[3].lvPage === 7 && ms[4].lvPage === 8, 'régler les suivants : 6, 7, 8 après la page 5 (les précédents pas touchés)');
+  const ms2 = [{}, {}, {}, {}];
+  ok(C.lvFillNext(ms2, 0, 9, 10) === 1 && ms2[1].lvPage === 10 && ms2[2].lvPage === undefined, 'on s\'arrête à la dernière page du livret');
+  ok(C.lvFillNext(ms2, 3, 2, 10) === 0, 'dernier morceau : rien à régler');
+  // sauvegarde : le livret part dans l'export et revient pareil
+  const toData = async (b) => 'data:' + (b.type || 'application/octet-stream') + ';base64,' + Buffer.from(await b.arrayBuffer()).toString('base64');
+  const fromData = async (u, type) => { const m = /^data:([^;]*);base64,(.*)$/.exec(u); return new Blob([Buffer.from(m[2], 'base64')], { type: type || m[1] }); };
+  const pdf = new Blob([Buffer.from('%PDF-1.4 faux livret 5 pages')], { type: 'application/pdf' });
+  const rec = { cid: 'p98', kind: 'pdf', name: 'livret.pdf', size: pdf.size, pages: 5, created: 123, files: [pdf] };
+  const packed = await C.lvPack(rec, toData);
+  const json = JSON.parse(JSON.stringify({ app: 'ScriptMove', livrets: [packed], courses: [{ id: 'p98', livret: C.lvMeta(rec), morceaux: [{ id: 'a', lvPage: 4 }] }] }));
+  ok(json.livrets.length === 1 && json.livrets[0].files[0].data.startsWith('data:application/pdf;base64,') && json.livrets[0].pages === 5, 'export : le livret est dans la sauvegarde (fichier en texte)');
+  ok(json.courses[0].livret.pages === 5 && json.courses[0].livret.kind === 'pdf' && json.courses[0].morceaux[0].lvPage === 4, 'export : nombre de pages et page de chaque morceau gardés');
+  const back = await C.lvUnpack(json.livrets[0], fromData);
+  ok(back.cid === 'p98' && back.kind === 'pdf' && back.pages === 5 && back.files.length === 1 && back.files[0].type === 'application/pdf' && Buffer.from(await back.files[0].arrayBuffer()).toString() === '%PDF-1.4 faux livret 5 pages', 'restauration : le livret revient identique');
+  const imgs = { cid: 'c', kind: 'img', size: 6, pages: 2, files: [new Blob(['abc'], { type: 'image/jpeg' }), new Blob(['def'], { type: 'image/png' })] };
+  const bi = await C.lvUnpack(JSON.parse(JSON.stringify(await C.lvPack(imgs, toData))), fromData);
+  ok(bi.kind === 'img' && bi.pages === 2 && bi.files[1].type === 'image/png' && (await bi.files[1].text()) === 'def', 'livret en images : pages gardées dans l\'ordre');
+  ok((await C.lvUnpack(null, fromData)) === null && (await C.lvUnpack({ cid: 'x', files: [] }, fromData)) === null, 'sauvegarde sans livret : rien');
+  console.log(`\n${passes} réussis, ${fails} échoués`);
+  process.exit(fails ? 1 : 0);
+})();
+

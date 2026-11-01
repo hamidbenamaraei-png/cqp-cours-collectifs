@@ -232,6 +232,31 @@ body.wtyping .wstick{position:static;flex:1 1 auto;min-height:0;display:flex;fle
 body.wtyping .wstick video{flex:1 1 0;height:0;min-height:60px;width:100%;max-height:none;object-fit:contain}
 body.wtyping .wstick>.card{flex:1 1 auto}
 body.wtyping #wbody{display:none}
+/* 📄 mon livret (v12) */
+.lvcard .row.tight>*{flex:1 1 120px}
+.lvset{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 8px}
+.lvset .lvl{font-weight:700;font-size:16px;white-space:nowrap}
+.lvset button{flex:0 0 auto;width:46px;height:46px;border-radius:12px;border:2px solid var(--line);background:var(--card2);color:#fff;font:inherit;font-size:24px;font-weight:900;cursor:pointer;padding:0}
+.lvset .lvnum{min-width:38px;text-align:center;font-size:22px;font-variant-numeric:tabular-nums}
+.lvset .lvnum.auto{color:var(--mute);font-style:italic}
+.lvset .lvhint{font-size:14px}
+.lvq{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#3b3216;border:1px solid #6d5a24;border-radius:12px;padding:8px 10px;margin:0 0 10px}
+.lvq span{flex:1 1 100%;font-weight:700;color:#ffe29a;font-size:16px}
+.lvq button{flex:1 1 80px;min-height:44px;border-radius:11px;border:2px solid var(--line);background:#11162c;color:#fff;font:inherit;font-size:16px;font-weight:800;cursor:pointer}
+.lvq button:first-of-type{background:var(--or);border-color:var(--or);color:#1b1206}
+.lvbadge{display:block;margin-top:4px}
+.lv{position:fixed;inset:0;background:#000;z-index:60;display:flex;flex-direction:column}
+.lvtop{display:flex;align-items:center;gap:10px;padding:8px 12px;background:#0d1124}
+.lvtop b{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--soft)}
+.lvtop button{flex:0 0 auto;width:52px;height:52px;border-radius:14px;border:2px solid var(--line);background:var(--card2);color:#fff;font-size:22px;cursor:pointer}
+.lvst{flex:1;min-height:0;position:relative;overflow:hidden;touch-action:none;display:flex;align-items:center;justify-content:center;user-select:none;-webkit-user-select:none}
+.lvpg{flex:0 0 auto;transform-origin:center center;background:#fff;will-change:transform}
+.lvpg canvas{display:block}
+.lvmsg{position:absolute;left:16px;right:16px;top:40%;text-align:center;color:var(--soft);margin:0;pointer-events:none}
+.lvbar{display:flex;gap:10px;align-items:center;justify-content:center;padding:8px 12px calc(8px + env(safe-area-inset-bottom));background:#0d1124}
+.lvbar button{flex:0 0 auto;width:72px;height:52px;border-radius:14px;border:2px solid var(--line);background:var(--card2);color:#fff;font-size:22px;cursor:pointer}
+.lvbar button:disabled{opacity:.35}
+.lvbar span{flex:0 1 auto;min-width:120px;text-align:center;color:#fff;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
 .hide{display:none!important}
 #print{display:none}
 @media print{
@@ -261,8 +286,8 @@ body.wtyping #wbody{display:none}
 <body>
 <div id="app"><p class="soft" style="margin-top:40px;text-align:center">Chargement…</p></div>
 <div id="print"></div>
-<script src="core.js?v=11"></script>
-<script src="mp4.js?v=11"></script>
-<script src="app.js?v=11"></script>
+<script src="core.js?v=12"></script>
+<script src="mp4.js?v=12"></script>
+<script src="app.js?v=12"></script>
 </body>
 </html>
