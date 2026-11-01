@@ -328,10 +328,10 @@
     return null;
   }
   /** Rechoisir la vidéo d'une édition, et la garder dans l'appli */
-  async function giveVideo(c) {
-    const f = (await pickFile('video/*'))[0]; if (!f) return false;
+  async function giveVideo(c, given, sure) {
+    const f = given || (await pickFile('video/*'))[0]; if (!f) return false;
     if (c.video && c.video.size && f.size !== c.video.size) {
-      const r = await ask('Ce n\'est pas la même vidéo ?', 'La vidéo choisie n\'a pas la même taille que celle de « ' + esc(c.name) + ' ».', [{ label: 'Utiliser quand même', value: 1 }, { label: 'Annuler', value: 0, cls: 'sec' }]);
+      const r = sure ? 1 : await ask('Ce n\'est pas la même vidéo ?', 'La vidéo choisie n\'a pas la même taille que celle de « ' + esc(c.name) + ' ».', [{ label: 'Utiliser quand même', value: 1 }, { label: 'Annuler', value: 0, cls: 'sec' }]);
       if (!r) return false;
       const meta = await videoMeta(f); if (meta) c.video = Object.assign({}, c.video, { name: f.name, size: f.size, duration: meta.duration, w: meta.w, h: meta.h });
     }
@@ -698,10 +698,12 @@
     if (S.videoURL) URL.revokeObjectURL(S.videoURL);
     S.videoFile = file; S.videoURL = URL.createObjectURL(file); S.videoFor = cid || null;
   }
-  async function scrNew(fid) {
+  async function scrNew(fid, given) {
     const f = folderOf(fid) || S.folders[0];
     const nums = (await dall('courses')).filter((c) => c.folder === f.id).map((c) => C.editionNumber(c.name)).filter((n) => n != null);
     const st = { file: null, meta: null, name: f.name + ' ' + (nums.length ? Math.max(...nums) + 1 : ''), musics: [] };
+    // v19 : vidéo reçue par « Partager » : déjà choisie ; given.back = retour, given.stored = une fois la vidéo gardée
+    if (given && given.file) { st.file = given.file; st.meta = await videoMeta(given.file); }
     const draw = () => {
       render('<div class="top"><button class="back" data-act="back">‹</button><h1>Nouvelle édition</h1></div><p class="mute">📁 ' + esc(f.name) + '</p>' +
         '<div class="card o"><h2>1. Le nom</h2><input type="text" id="cname" value="' + esc(st.name) + '" placeholder="ex. ' + esc(f.name) + ' 100"></div>' +
@@ -712,7 +714,7 @@
         '<button class="btn sec" data-act="mus">🎵 Ajouter des musiques</button></div>' +
         '<button class="btn" data-act="go" ' + (st.file ? '' : 'disabled') + '>➡️ Continuer</button>',
       {
-        back: () => scrFolder(f.id),
+        back: () => (given && given.back ? given.back() : scrFolder(f.id)),
         vid: async () => { st.name = $('#cname').value; const x = (await pickFile('video/*'))[0]; if (!x) return; st.file = x; st.meta = await videoMeta(x); draw(); },
         mus: async () => { st.name = $('#cname').value; const fs = await pickFile('audio/*', true); st.musics.push(...fs); draw(); },
         rm: (b) => { st.name = $('#cname').value; st.musics.splice(+b.dataset.i, 1); draw(); },
@@ -726,6 +728,7 @@
           c.pendingMusics = mids;
           await saveCourse(c);
           await scrStoreVideo(c, st.file);
+          if (given && given.stored && st.file === given.file) await given.stored(c);
           scrPrepare(await dget('courses', c.id));
         }
       });
@@ -1034,7 +1037,7 @@
           if (!r) return; for (const p of ph) await ddel('photos', p.id);
           c.morceaux = c.morceaux.filter((x) => x.id !== b.dataset.id); await saveCourse(c); draw();
         },
-        ok: () => scrCourse(c.id),
+        ok: async () => { if (S.shareOn && await shareNext()) return; scrCourse(c.id); },
         redo: () => redoCut(c)
       });
       const v = $('#cutvid'); if (v) v.addEventListener('timeupdate', () => { const e = $('#vt'); if (e) e.textContent = fmt(v.currentTime); });
@@ -1183,10 +1186,15 @@
     if (!choice) return;
     if (choice === 'rm') { m.musicId = null; m.offset = null; m.sync = null; m.alignMode = null; await saveCourse(c); return scrCourse(c.id); }
     const f = (await pickFile('audio/*'))[0]; if (!f) return;
+    await linkMusicFile(c, m, f);
+    scrCourse(c.id);
+  }
+  /** Lie le fichier f (musique) au morceau m et le cale. Renvoie true si c'est fait. Le script du morceau n'est jamais touché. */
+  async function linkMusicFile(c, m, f) {
     const mu = { id: uid(), name: f.name.replace(/\.[^.]+$/, ''), type: f.type, blob: f };
     render('<div class="card o"><h2>Je cale la musique…</h2><p class="soft">Quelques secondes.</p></div>');
     let r;
-    try { r = await musicFeatures(mu); } catch (e) { toast('Je n\'arrive pas à lire ce fichier audio.'); return scrCourse(c.id); }
+    try { r = await musicFeatures(mu); } catch (e) { toast('Je n\'arrive pas à lire ce fichier audio.'); return false; }
     mu.duration = r.duration; mu.bpm = r.bpm; mu.attack = r.attack; mu.len = r.trim.end - r.trim.start; await dput('musics', mu);
     c.musicIds = courseMusicIds(c).concat([mu.id]);
     m.musicId = mu.id; m.offset = null; m.shift = 0;
@@ -1204,7 +1212,8 @@
       m.alignMode = 'manual'; m.sync = tempoSync(af, m, mu);
       toast('Elle n\'est pas exactement dans la vidéo : j\'ai calé son rythme sur le morceau. Ajuste avec « un peu avant / après ».', 5000);
     }
-    await saveCourse(c); scrCourse(c.id);
+    await saveCourse(c);
+    return true;
   }
 
   /* ======================= ✍️ Mon script (texte libre, 01/11) ======================= */
@@ -2012,16 +2021,132 @@
     toast('Restauré ✅', 3000); scrHome();
   }
 
+  /* ======================= 📤 Partage reçu (v19) =======================
+     « Partager › ScriptMove » depuis WhatsApp, la galerie, Fichiers… : le service worker met le fichier de côté
+     (kv 'sharePending' = { files: [{ id, name, type, size, blob }] }), puis on demande ici où le ranger.
+     Le rangement passe par les mêmes fonctions que dans l'appli : giveVideo / scrNew (vidéo de l'édition), linkMusicFile (musique d'un morceau). */
+  const SHARE_KEY = 'sharePending';
+  async function sharePending() { try { const p = await dget('kv', SHARE_KEY); return p && Array.isArray(p.files) ? p.files.filter((x) => x && x.blob) : []; } catch (e) { return []; } }
+  async function shareDrop(id) {
+    const left = (await sharePending()).filter((x) => id !== '*' && x.id !== id);
+    if (left.length) await dput('kv', { files: left, at: Date.now() }, SHARE_KEY); else await ddel('kv', SHARE_KEY);
+    return left;
+  }
+  function shareCleanURL() { try { if (/[?&]share=/.test(location.search)) history.replaceState(null, '', location.pathname); } catch (e) { /* rien */ } }
+  const shareExt = (n) => (String(n || '').match(/\.([a-z0-9]+)$/i) || [])[1] || '';
+  function shareKind(x) {
+    const t = String(x.type || '').toLowerCase(), e = shareExt(x.name).toLowerCase();
+    if (/^(m4a|mp3|wav|aac|ogg|oga|opus|flac|wma|amr)$/.test(e)) return 'audio';
+    if (t.startsWith('audio/')) return 'audio';
+    if (t.startsWith('video/') || /^(mp4|mov|m4v|webm|3gp|mkv|avi)$/.test(e)) return 'video';
+    return null;
+  }
+  const shareFile = (x) => (x.blob instanceof File ? x.blob : new File([x.blob], x.name || 'fichier', { type: x.type || x.blob.type || '' }));
+  /** Passe au fichier partagé suivant. Renvoie true s'il y en avait un. */
+  async function shareNext() {
+    const list = await sharePending();
+    if (!list.length) { S.shareOn = false; shareCleanURL(); return false; }
+    S.shareOn = true; scrShare(list[0], list.length); return true;
+  }
+  async function shareDone(x, where, open) {
+    const left = await shareDrop(x.id);
+    shareCleanURL();
+    render('<div class="top"><h1>Partage reçu</h1></div><div class="card g"><h2>✅ Rangé dans ' + esc(where) + '</h2><p class="soft small">' + (shareKind(x) === 'video' ? '🎬 ' : '🎵 ') + esc(x.name) + '</p></div>' +
+      (left.length ? '<button class="btn" data-act="next">➡️ Fichier suivant (' + left.length + ' restant' + (left.length > 1 ? 's' : '') + ')</button>' : '<button class="btn" data-act="open">👀 Voir</button>') +
+      '<button class="btn sec" data-act="home">🏠 Accueil</button>',
+    { next: () => shareNext(), open: () => { S.shareOn = false; open(); }, home: () => { S.shareOn = false; scrHome(); } });
+  }
+  /** Écran « Où veux-tu la ranger ? » */
+  async function scrShare(x, total, st) {
+    st = st || { kind: shareKind(x) };
+    const head = '<div class="top">' + (st.fid ? '<button class="back" data-act="up">‹</button>' : '') + '<h1>Partage reçu</h1></div>' +
+      '<div class="card o"><p style="margin:0">' + (st.kind === 'video' ? '🎬' : st.kind === 'audio' ? '🎵' : '📄') + ' <b>' + esc(x.name) + '</b></p><p class="mute" style="margin:4px 0 0">' + fmtSize(x.size || x.blob.size) + (total > 1 ? ' · ' + total + ' fichiers reçus' : '') + '</p></div>';
+    const foot = '<button class="btn ghost" data-act="cancel">✖ Annuler</button>' + (total > 1 ? '<button class="btn ghost small" data-act="cancelall">Tout annuler (' + total + ' fichiers)</button>' : '');
+    const common = {
+      cancel: async () => { const left = await shareDrop(x.id); if (left.length) return shareNext(); S.shareOn = false; shareCleanURL(); toast('Partage annulé.'); scrHome(); },
+      cancelall: async () => { await shareDrop('*'); S.shareOn = false; shareCleanURL(); toast('Partage annulé.'); scrHome(); },
+      up: () => scrShare(x, total, st.cid ? { kind: st.kind, fid: st.fid } : { kind: st.kind })
+    };
+    // 0. on ne sait pas si c'est une vidéo ou une musique
+    if (!st.kind) {
+      return render(head + '<h2>C\'est quoi ?</h2><button class="btn" data-act="k" data-k="video">🎬 La vidéo d\'un cours</button><button class="btn" data-act="k" data-k="audio">🎵 Une musique</button>' + foot,
+        Object.assign({ k: (b) => scrShare(x, total, { kind: b.dataset.k }) }, common));
+    }
+    // 1. le dossier
+    if (!st.fid) {
+      return render(head + '<h2>Où veux-tu la ranger ?</h2>' +
+        S.folders.map((f) => '<button class="seg" data-act="fold" data-id="' + esc(f.id) + '"><span class="t"><b>📁 ' + esc(f.name) + '</b></span><span style="font-size:24px">›</span></button>').join('') +
+        (st.kind === 'video' ? '<button class="btn ghost small" data-act="asmus">🎵 C\'est une musique ? La ranger comme musique</button>' : '') + foot,
+        Object.assign({ fold: (b) => scrShare(x, total, { kind: st.kind, fid: b.dataset.id }), asmus: () => scrShare(x, total, { kind: 'audio' }) }, common));
+    }
+    const f = folderOf(st.fid); if (!f) return scrShare(x, total, { kind: st.kind });
+    // 2. l'édition
+    if (!st.cid) {
+      const list = C.sortEditions((await dall('courses')).filter((c) => c.folder === f.id));
+      return render(head + '<p class="mute">📁 ' + esc(f.name) + '</p><h2>' + (st.kind === 'video' ? 'Vidéo de quelle édition ?' : 'Dans quelle édition ?') + '</h2>' +
+        (st.kind === 'video' ? '<button class="btn" data-act="newc">➕ Nouvelle édition avec cette vidéo</button>' : '') +
+        (list.length ? list.map((c) => '<button class="seg" data-act="ed" data-id="' + c.id + '"><span class="t"><b>' + esc(c.name) + '</b><span class="mute">' + c.morceaux.filter((m) => !m.lost).length + ' morceau(x)' + (c.video && c.video.kept ? ' · 🎬 vidéo gardée' : '') + '</span></span><span style="font-size:24px">›</span></button>').join('')
+          : '<div class="card"><p class="soft">Aucune édition dans ce dossier.</p>' + (st.kind === 'audio' ? '<p class="mute">Une musique se range dans un morceau d\'une édition. Choisis un autre dossier, ou crée d\'abord l\'édition avec la vidéo du cours.</p>' : '') + '</div>') + foot,
+        Object.assign({
+          ed: (b) => scrShare(x, total, { kind: st.kind, fid: f.id, cid: b.dataset.id }),
+          newc: () => scrNew(f.id, { file: shareFile(x), back: () => scrShare(x, total, st), stored: async () => { await shareDrop(x.id); shareCleanURL(); } })
+        }, common));
+    }
+    const c = await dget('courses', st.cid); if (!c) return scrShare(x, total, { kind: st.kind, fid: f.id });
+    const where = '📁 ' + f.name + ' › ' + c.name;
+    // 3a. une vidéo : c'est la vidéo de l'édition (comme « 🎬 Remettre la vidéo »)
+    if (st.kind === 'video') {
+      if (c.video && c.video.kept) {
+        const r = await ask('Remplacer la vidéo ?', '« ' + esc(c.name) + ' » a déjà une vidéo gardée (' + fmtSize(c.video.kept.size) + '). <b>Tes scripts, tes musiques et tes photos sont gardés.</b>', [{ label: '🔁 Oui, remplacer la vidéo', value: 1 }, { label: 'Non', value: 0, cls: 'sec' }]);
+        if (!r) return scrShare(x, total, { kind: st.kind, fid: f.id });
+      }
+      await giveVideo(c, shareFile(x), true);
+      const c2 = await dget('courses', c.id);
+      if (!(c2 && c2.video && c2.video.kept)) return scrShare(x, total, { kind: st.kind, fid: f.id }); // pas gardée (place, annulé…) : le partage reste en attente
+      return shareDone(x, where, () => scrCourse(c.id));
+    }
+    // 3b. une musique : dans quel morceau ?
+    const ms = c.morceaux.filter((m) => !m.lost);
+    const musics = {}; for (const mu of await dall('musics')) musics[mu.id] = mu;
+    render(head + '<p class="mute">' + esc(where) + '</p><h2>Dans quel morceau ?</h2>' +
+      ms.map((m, i) => '<button class="seg" data-act="mo" data-id="' + m.id + '"><span class="t"><b>' + (i + 1) + '. ' + esc(m.name) + '</b><span class="mute">' + (m.musicId && musics[m.musicId] ? '🎵 ' + esc(musics[m.musicId].name) : 'pas de musique') + (tcount(m) ? ' · ✍️ script écrit' : '') + '</span></span><span style="font-size:24px">›</span></button>').join('') +
+      '<button class="btn sec" data-act="newm">➕ Nouveau morceau</button>' + foot,
+    Object.assign({
+      mo: async (b) => {
+        const m = c.morceaux.find((y) => y.id === b.dataset.id); if (!m) return;
+        if (m.musicId) {
+          const cur = musics[m.musicId];
+          const r = await ask('Remplacer la musique ?', 'Ce morceau a déjà une musique' + (cur ? ' : <b>' + esc(cur.name) + '</b>' : '') + '.<br><b>Ton script est gardé</b>, seule la musique change.', [{ label: '🔁 Oui, remplacer', value: 1 }, { label: 'Non', value: 0, cls: 'sec' }]);
+          if (!r) return;
+        }
+        if (!(await linkMusicFile(c, m, shareFile(x)))) return scrShare(x, total, st);
+        shareDone(x, where + ' › ' + m.name, () => scrCourse(c.id));
+      },
+      newm: async () => {
+        const n = await askText('Nom du nouveau morceau', x.name.replace(/\.[^.]+$/, ''), 'ex. 04 dos / épaules'); if (!n) return;
+        const last = ms[ms.length - 1], t = last ? last.end : 0;
+        const m = newMorceau(n, t, t); m.renamed = true;
+        c.morceaux.splice(last ? c.morceaux.indexOf(last) + 1 : 0, 0, m);
+        await saveCourse(c);
+        if (!(await linkMusicFile(c, m, shareFile(x)))) return scrShare(x, total, st);
+        shareDone(x, where + ' › ' + m.name, () => scrCourse(c.id));
+      }
+    }, common));
+  }
+
   /* ======================= Démarrage ======================= */
   async function start() {
     await loadKV();
     try { await migrateAll(); } catch (e) { console.error('migration', e); }
     try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch (e) { /* rien */ }
+    // v19 : un fichier reçu par « Partager › ScriptMove » attend d'être rangé
+    if (/[?&]share=err/.test(location.search)) { shareCleanURL(); toast('Le fichier partagé n\'a pas pu être reçu. Réessaie.', 5000); }
+    if (await shareNext()) return;
     scrHome();
   }
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
     try { navigator.serviceWorker.register('sw.js').catch(() => {}); } catch (e) { /* rien */ }
   }
-  S.api = { scrMixes, scrMix, scrPickMorceau, scrMixScript, doBackup, printCourse, scrHome, scrFolder, scrCourse, scrWrite, scrRead, scrPlay, scrCourseScript, setVideo, dget, dput, dall, saveCourse, scriptText, storeVideo, videoURL, photosOf, migrateAll, loadKV, getLivret, viewLivret, lvPageFor };
+  S.api = { scrShare, shareNext, sharePending, scrMixes, scrMix, scrPickMorceau, scrMixScript, doBackup, printCourse, scrHome, scrFolder, scrCourse, scrWrite, scrRead, scrPlay, scrCourseScript, setVideo, dget, dput, dall, saveCourse, scriptText, storeVideo, videoURL, photosOf, migrateAll, loadKV, getLivret, viewLivret, lvPageFor };
   scrLock();
 })();
