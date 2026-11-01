@@ -1589,7 +1589,7 @@
     const el = document.createElement('div'); el.className = 'play';
     el.innerHTML = '<div class="ph"><h3>' + esc(m.name) + '</h3>' + (photos.length ? '<button data-p="photo" aria-label="Voir la photo de ma feuille">📷</button>' : '') + (c.livret ? '<button data-p="lv" aria-label="Voir mon livret">📄</button>' : '') + '<button data-p="close" aria-label="Fermer">✖</button></div>' +
       '<div class="main" data-p="tap"><div class="nx" id="pbefore"></div><div class="pnum" id="pnum"></div><div class="mv" id="pmv"></div><div class="cnt" id="pcnt"></div><div class="tempo" id="ptp"></div><div class="nx" id="pnote"></div><div class="phint" id="phint"></div></div>' +
-      '<div class="nx" id="pnx" style="text-align:center"></div><div class="bar"><i id="pbar"></i></div><div class="ptime" id="ptime"></div>' +
+      '<div class="nx" id="pnx" style="text-align:center"></div><div class="pseek" id="pseek"><div class="bar"><i id="pbar"></i></div><b class="pknob" id="pknob"></b></div><div class="ptime" id="ptime"></div>' +
       '<div class="ctl"><button data-p="prev" aria-label="Ligne précédente">⏮️</button><button class="main" data-p="pp" id="ppp">▶️</button><button data-p="next" aria-label="Ligne suivante">⏭️</button></div>' +
       (auto ? '<div class="adj"><button data-p="early">⏪ un peu avant</button><span id="pshift"></span><button data-p="late">un peu après ⏩</button></div>' : '') +
       '<p class="mute" style="text-align:center;margin:8px 0 0">' + how + '</p>' +
@@ -1640,8 +1640,9 @@
           $('#pcnt', el).innerHTML = cnt; $('#ptp', el).textContent = tp; $('#pnx', el).textContent = nx; $('#pbefore', el).textContent = bef; $('#pnote', el).textContent = note ? '📝 ' + note : ''; $('#pnum', el).textContent = num; $('#phint', el).textContent = hint;
         }
         { // barre : avance avec la musique, du début à la fin du morceau
-          const mt = musicT(); const D = totalT();
-          $('#pbar', el).style.width = (D ? Math.max(0, Math.min(1, mt / D)) * 100 : 0).toFixed(2) + '%';
+          const mt = P.drag != null ? P.drag : musicT(); const D = totalT();
+          const pc = (D ? Math.max(0, Math.min(1, mt / D)) * 100 : 0).toFixed(2) + '%';
+          $('#pbar', el).style.width = pc; $('#pknob', el).style.left = pc;
           const tt = fmt(mt) + (D ? ' / ' + fmt(D) : '');
           if (tt !== lastTT) { lastTT = tt; $('#ptime', el).textContent = tt; }
         }
@@ -1675,6 +1676,17 @@
       else if (a === 'lv') viewLivret(c, lvPageFor(c, m).page);
       else if (a === 'nextm') { close(); saveCourse(c); scrPlay(cid, nextM.id); }
     });
+    { // glisser le doigt sur la barre : avancer / reculer dans la musique (le script ne bouge pas)
+      const sk = $('#pseek', el);
+      const at = (e) => { const r = sk.getBoundingClientRect(); const D = totalT(); return D ? Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * D : 0; };
+      sk.addEventListener('pointerdown', (e) => { if (!totalT()) return; e.preventDefault(); try { sk.setPointerCapture(e.pointerId); } catch (x) { /* rien */ } P.drag = at(e); });
+      sk.addEventListener('pointermove', (e) => { if (P.drag != null) P.drag = at(e); });
+      const end = (e) => {
+        if (P.drag == null) return; const t = e.type === 'pointercancel' ? P.drag : at(e); P.drag = null;
+        const d = t - musicT(); setMusicT(t); P.lineStart += d; // la ligne en cours reste la même
+      };
+      sk.addEventListener('pointerup', end); sk.addEventListener('pointercancel', end);
+    }
     window.SM_PLAY = { P, el, musicT, setMusicT, lines: L, auto }; // pour les tests
     tick();
   }
