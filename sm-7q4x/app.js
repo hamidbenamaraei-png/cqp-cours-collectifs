@@ -1564,16 +1564,18 @@
   }
 
   /* ======================= Jeu de danse (texte validé, ligne par ligne) ======================= */
-  async function scrPlay(cid, mid) {
+  async function scrPlay(cid, mid, opt) {
     const c = await dget('courses', cid); if (!c) return scrHome();
     const m = c.morceaux.find((x) => x.id === mid); if (!m) return scrCourse(cid);
     if (!tcount(m)) { toast('Écris d\'abord ton script (✍️ Mon script).', 3500); return scrWrite(cid, mid); }
     if (!m.textOk) { toast('Valide d\'abord ton script (✅ Valider mon script).', 3500); return scrWrite(cid, mid); }
     const ms = c.morceaux.filter((x) => !x.lost && x.textOk && tcount(x));
     const nextM = ms[ms.indexOf(m) + 1];
+    const prevM = ms.indexOf(m) > 0 ? ms[ms.indexOf(m) - 1] : null;
     const mu = m.musicId ? await dget('musics', m.musicId) : null;
     const photos = await photosOf(mid);
-    const choice = await ask(m.name, mu ? '🎵 ' + esc(mu.name) : 'Pas de musique liée à ce morceau.', (mu ? [{ label: '▶️ Jouer avec ma musique', value: 'music' }] : [{ label: '🎵 Lier une musique', value: 'link' }])
+    const keep = opt && opt.choice && (opt.choice !== 'music' || mu) ? opt.choice : null;
+    const choice = keep || await ask(m.name, mu ? '🎵 ' + esc(mu.name) : 'Pas de musique liée à ce morceau.', (mu ? [{ label: '▶️ Jouer avec ma musique', value: 'music' }] : [{ label: '🎵 Lier une musique', value: 'link' }])
       .concat([{ label: '🎬 Top départ (la musique joue ailleurs)', value: 'top', cls: 'sec' }, { label: 'Retour', value: null, cls: 'ghost' }]));
     if (!choice) return scrCourse(cid);
     if (choice === 'link') return linkMusic(c, m.id);
@@ -1590,7 +1592,7 @@
     el.innerHTML = '<div class="ph"><h3>' + esc(m.name) + '</h3>' + (photos.length ? '<button data-p="photo" aria-label="Voir la photo de ma feuille">📷</button>' : '') + (c.livret ? '<button data-p="lv" aria-label="Voir mon livret">📄</button>' : '') + '<button data-p="close" aria-label="Fermer">✖</button></div>' +
       '<div class="main" data-p="tap"><div class="nx" id="pbefore"></div><div class="pnum" id="pnum"></div><div class="mv" id="pmv"></div><div class="cnt" id="pcnt"></div><div class="tempo" id="ptp"></div><div class="nx" id="pnote"></div><div class="phint" id="phint"></div></div>' +
       '<div class="nx" id="pnx" style="text-align:center"></div><div class="pseek" id="pseek"><div class="bar"><i id="pbar"></i></div><b class="pknob" id="pknob"></b></div><div class="ptime" id="ptime"></div>' +
-      '<div class="ctl"><button data-p="prev" aria-label="Ligne précédente">⏮️</button><button class="main" data-p="pp" id="ppp">▶️</button><button data-p="next" aria-label="Ligne suivante">⏭️</button></div>' +
+      '<div class="ctl"><button data-p="prevm" aria-label="Musique précédente"' + (prevM ? '' : ' disabled style="opacity:.35"') + '>⏮️</button><button class="main" data-p="pp" id="ppp">▶️</button><button data-p="nextm" aria-label="Musique suivante"' + (nextM ? '' : ' disabled style="opacity:.35"') + '>⏭️</button></div>' +
       (auto ? '<div class="adj"><button data-p="early">⏪ un peu avant</button><span id="pshift"></span><button data-p="late">un peu après ⏩</button></div>' : '') +
       '<p class="mute" style="text-align:center;margin:8px 0 0">' + how + '</p>' +
       (nextM ? '<button class="btn sec small" style="margin:10px 0 0" data-p="nextm">Morceau suivant ➡️</button>' : '');
@@ -1670,11 +1672,12 @@
       const a = b.dataset.p;
       if (a === 'close') { close(); saveCourse(c); scrCourse(cid); }
       else if (a === 'pp') { P.paused ? play() : pause(); }
-      else if (a === 'prev') go(-1); else if (a === 'next' || a === 'tap') go(1);
+      else if (a === 'tap') go(1);
       else if (a === 'early') adj(0.25); else if (a === 'late') adj(-0.25);
       else if (a === 'photo') viewPhotos(photos.slice(), 0, null);
       else if (a === 'lv') viewLivret(c, lvPageFor(c, m).page);
-      else if (a === 'nextm') { close(); saveCourse(c); scrPlay(cid, nextM.id); }
+      else if (a === 'nextm' && nextM) { close(); saveCourse(c); scrPlay(cid, nextM.id, { choice: P.mode, auto: true }); }
+      else if (a === 'prevm' && prevM) { close(); saveCourse(c); scrPlay(cid, prevM.id, { choice: P.mode, auto: true }); }
     });
     { // glisser le doigt sur la barre : avancer / reculer dans la musique (le script ne bouge pas)
       const sk = $('#pseek', el);
@@ -1689,6 +1692,7 @@
     }
     window.SM_PLAY = { P, el, musicT, setMusicT, lines: L, auto }; // pour les tests
     tick();
+    if (keep && opt.auto && choice === 'music') play();
   }
 
   /* ======================= Mes mouvements ======================= */
