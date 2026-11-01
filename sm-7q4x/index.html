@@ -92,7 +92,8 @@ select{max-width:100%;text-overflow:ellipsis}
 /* jeu de danse */
 .play{position:fixed;inset:0;background:#0d1124;z-index:40;display:flex;flex-direction:column;padding:14px 16px calc(14px + env(safe-area-inset-bottom))}
 .play .ph{display:flex;align-items:center;gap:10px}
-.play .ph h3{flex:1;min-width:0;margin:0;color:var(--soft);font-size:17px}
+.play .ph h3{flex:1;min-width:0;margin:0;color:var(--soft);font-size:17px;line-height:1.3;height:2.6em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;align-self:center}
+.play #pnx{min-height:2.7em;line-height:1.3}
 .play .ph button{flex:0 0 auto;width:50px;height:50px;border-radius:14px;border:2px solid var(--line);background:var(--card2);color:#fff;font-size:22px;cursor:pointer}
 .play .main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:6px;min-height:0}
 .play .mv{font-size:clamp(38px,12vw,76px);font-weight:900;line-height:1.05;overflow-wrap:normal;word-break:normal;hyphens:none}
@@ -286,8 +287,8 @@ body.wtyping #wbody{display:none}
 <body>
 <div id="app"><p class="soft" style="margin-top:40px;text-align:center">Chargement…</p></div>
 <div id="print"></div>
-<script src="core.js?v=15"></script>
-<script src="mp4.js?v=15"></script>
-<script src="app.js?v=15"></script>
+<script src="core.js?v=16"></script>
+<script src="mp4.js?v=16"></script>
+<script src="app.js?v=16"></script>
 </body>
 </html>

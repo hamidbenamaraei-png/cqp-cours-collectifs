@@ -1575,6 +1575,7 @@
     const mu = m.musicId ? await dget('musics', m.musicId) : null;
     const photos = await photosOf(mid);
     const keep = opt && opt.choice && (opt.choice !== 'music' || mu) ? opt.choice : null;
+    if (!keep && opt && opt.old) { opt.old.remove(); opt.old = null; } // pas de musique liée : on revient à la question habituelle
     const choice = keep || await ask(m.name, mu ? '🎵 ' + esc(mu.name) : 'Pas de musique liée à ce morceau.', (mu ? [{ label: '▶️ Jouer avec ma musique', value: 'music' }] : [{ label: '🎵 Lier une musique', value: 'link' }])
       .concat([{ label: '🎬 Top départ (la musique joue ailleurs)', value: 'top', cls: 'sec' }, { label: 'Retour', value: null, cls: 'ghost' }]));
     if (!choice) return scrCourse(cid);
@@ -1597,6 +1598,7 @@
       '<p class="mute" style="text-align:center;margin:8px 0 0">' + how + '</p>' +
       (nextM ? '<button class="btn sec small" style="margin:10px 0 0" data-p="nextm">Morceau suivant ➡️</button>' : '');
     document.body.appendChild(el);
+    if (opt && opt.old) opt.old.remove(); // changement de musique : l'ancien écran reste jusqu'à ce que le nouveau soit prêt
     const musicT = () => {
       if (P.mode === 'music') return P.audio.currentTime;
       return P.paused ? P.pausedAt : (performance.now() - P.ref) / 1000;
@@ -1666,7 +1668,9 @@
     };
     let saveT = null;
     const adj = (d) => { m.shift = Math.round(((m.shift || 0) + d) * 100) / 100; shiftTxt(); clearTimeout(saveT); saveT = setTimeout(() => saveCourse(c), 600); };
-    const close = () => { cancelAnimationFrame(P.raf); if (P.audio) { P.audio.pause(); URL.revokeObjectURL(P.url); } el.remove(); S.wantAwake = false; keepAwake(false); };
+    const stop = () => { cancelAnimationFrame(P.raf); if (P.audio) { P.audio.pause(); URL.revokeObjectURL(P.url); } };
+    const close = () => { stop(); el.remove(); S.wantAwake = false; keepAwake(false); };
+    const swap = (m2) => { stop(); el.style.pointerEvents = 'none'; saveCourse(c); scrPlay(cid, m2.id, { choice: P.mode, auto: true, old: el }); };
     el.addEventListener('click', (e) => {
       const b = e.target.closest('[data-p]'); if (!b) return;
       const a = b.dataset.p;
@@ -1676,8 +1680,8 @@
       else if (a === 'early') adj(0.25); else if (a === 'late') adj(-0.25);
       else if (a === 'photo') viewPhotos(photos.slice(), 0, null);
       else if (a === 'lv') viewLivret(c, lvPageFor(c, m).page);
-      else if (a === 'nextm' && nextM) { close(); saveCourse(c); scrPlay(cid, nextM.id, { choice: P.mode, auto: true }); }
-      else if (a === 'prevm' && prevM) { close(); saveCourse(c); scrPlay(cid, prevM.id, { choice: P.mode, auto: true }); }
+      else if (a === 'nextm' && nextM) swap(nextM);
+      else if (a === 'prevm' && prevM) swap(prevM);
     });
     { // glisser le doigt sur la barre : avancer / reculer dans la musique (le script ne bouge pas)
       const sk = $('#pseek', el);
