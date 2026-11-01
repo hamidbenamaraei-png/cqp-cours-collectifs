@@ -413,6 +413,40 @@ section('20. Protection des scripts (v11) : perte du texte de la v9 reproduite p
 }
 
 /* ---------- Livret (v12) ---------- */
+section('21. 🔀 Mes mix : références, numéros, durée, navigation par position');
+{
+  const P98 = { id: 'p98', name: 'Pump 98', folder: 'pump', morceaux: [
+    { id: 'a', name: 'Échauffement', start: 0, end: 300, text: 'Squat 8\nRowing 4', textOk: true },
+    { id: 'b', name: 'Squats', start: 300, end: 600, musicId: 'mu1' },
+    { id: 'x', name: 'perdu', start: 600, end: 700, lost: true },
+    { id: 'c', name: 'Poitrine', start: 700, end: 1000, text: 'Pompes 8', textOk: false }] };
+  const P99 = { id: 'p99', name: 'Pump 99', folder: 'pump', morceaux: [{ id: 'd', name: '01 Warm up', start: 0, end: 240 }, { id: 'e', name: '02 Squats', start: 240, end: 500, text: 'Squat 16', textOk: true }] };
+  const Z1 = { id: 'z1', name: 'Zumba 1', folder: 'f_z', morceaux: [{ id: 'f', name: 'Salsa', start: 0, end: 200, text: 'Pas 8', textOk: true }, { id: 'g', name: '2 Merengue', start: 200, end: 400 }] };
+  const courses = [P98, P99, Z1], folders = [{ id: 'pump', name: 'Pump' }, { id: 'f_z', name: 'Zumba' }];
+  const snap = JSON.stringify(courses);
+  const items = C.mixFromCourse(P98);
+  ok(items.length === 3 && items.map((r) => r.mid).join() === 'a,b,c' && items.every((r) => r.cid === 'p98'), 'partir d\'une édition : tous ses morceaux dans l\'ordre (sans les perdus)');
+  ok(C.mixNum(P98, P98.morceaux[3]) === 3 && C.mixNum(P99, P99.morceaux[1]) === 2 && C.mixNum(Z1, Z1.morceaux[1]) === 2, 'numéro : position (perdus ignorés) ou numéro en tête du titre');
+  const withLost = items.concat([{ cid: 'p98', mid: 'x' }, { cid: 'nope', mid: 'a' }, { cid: 'z1', mid: 'zz' }, { cid: 'z1', mid: 'f' }, { cid: 'p98', mid: 'a' }]);
+  const R = C.mixResolve(withLost, courses, folders);
+  ok(R.length === 8 && R[3].ok === false && R[4].ok === false && R[5].ok === false && R[6].ok && R[6].from === 'Zumba › Zumba 1' && R[0].from === 'Pump › Pump 98', 'références retrouvées / introuvables (jamais d\'erreur), « d\'où il vient »');
+  ok(C.mixResolve(null, null, null).length === 0 && C.mixResolve([null, {}], courses).every((x) => !x.ok), 'références vides ou cassées : pas d\'erreur');
+  const musics = { mu1: { id: 'mu1', duration: 250.5 } };
+  ok(C.morceauDur(P98.morceaux[1], musics) === 250.5 && C.morceauDur(P98.morceaux[0], musics) === 300 && C.morceauDur(P98.morceaux[1], {}) === 300, 'durée d\'un morceau : musique liée, sinon fin − début');
+  ok(C.mixDuration(R, musics) === 300 + 250.5 + 300 + 200 + 300, 'durée totale du mix (introuvables comptés 0, doublons comptés 2 fois)');
+  // navigation : jouables = a (validé), b (musique), f (validé), a (doublon) ; c pas validé, introuvables ignorés
+  ok(JSON.stringify(C.mixNav(R, 0)) === '{"prev":null,"next":1}', 'navigation : du 1er au 2e');
+  ok(JSON.stringify(C.mixNav(R, 1)) === '{"prev":0,"next":6}', 'navigation : saute le morceau non validé et les introuvables, passe à une autre édition');
+  ok(JSON.stringify(C.mixNav(R, 6)) === '{"prev":1,"next":7}' && JSON.stringify(C.mixNav(R, 7)) === '{"prev":6,"next":null}', 'navigation par position : le doublon (même morceau 2 fois) a sa propre place');
+  ok(C.mixMove(['a', 'b', 'c'], 0, 1).join() === 'b,a,c' && C.mixMove(['a', 'b', 'c'], 2, 1).join() === 'a,b,c' && C.mixMove(['a', 'b', 'c'], 0, -1).join() === 'a,b,c', 'monter / descendre (bords sans effet)');
+  const same = C.mixSameNumber(courses, 'p98', 'b');
+  ok(same.length === 2 && same[0].c.id === 'p99' && same[0].m.id === 'e' && same[1].m.id === 'g', 'même numéro dans les autres éditions (même dossier en premier)');
+  ok(C.mixSameNumber(courses, 'p98', 'zz').length === 0 && C.mixSameNumber(null, 'a', 'b').length === 0, 'même numéro : morceau introuvable → liste vide');
+  const merged = C.mixMerge([{ id: 'm1', name: 'A', items: [] }, { id: 'm2', name: 'B', items: [] }], [{ id: 'm2', name: 'B2', items: [{ cid: 'p98', mid: 'a' }, { bad: 1 }] }, { id: 'm3', name: 'C', items: [] }, { name: 'sans id' }]);
+  ok(merged.length === 3 && merged[1].name === 'B2' && merged[1].items.length === 1 && merged[2].id === 'm3', 'restauration des mix : remplace les mêmes, garde les autres');
+  ok(JSON.stringify(courses) === snap, 'les fonctions des mix ne modifient jamais les éditions ni les scripts');
+}
+
 section('Livret : page par défaut, « régler les suivants », sauvegarde');
 (async () => {
   ok(C.lvDefaultPage(1, 20) === 2 && C.lvDefaultPage(3, 20) === 4, 'proposition : numéro du morceau + 1 (sommaire en page 1)');

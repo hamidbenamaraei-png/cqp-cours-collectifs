@@ -73,6 +73,7 @@
     S.customMoves = (await dget('kv', 'customMoves')) || {};
     S.favs = (await dget('kv', 'favs')) || {};
     S.folders = (await dget('kv', 'folders')) || [];
+    S.mixes = (await dget('kv', 'mixes')) || []; // 🔀 mes mix (01/11) : des références vers les morceaux, rien n'est recopié
     // 31/10 : nouveaux noms de mouvements dans les listes personnelles (une seule fois)
     if (!(await dget('kv', 'movesV4'))) {
       const k = { vocab: S.vocab, prints: S.prints, customMoves: S.customMoves, favs: S.favs };
@@ -162,6 +163,10 @@
   });
   window.addEventListener('pagehide', () => { if (S.flushWrite) S.flushWrite(); });
   const folderOf = (id) => S.folders.find((f) => f.id === id) || null;
+  /* 🔀 Mes mix : S.mixBack = { id, pos } quand on a ouvert un morceau depuis un mix (le retour revient au mix) */
+  const mixOf = (id) => (S.mixes || []).find((x) => x.id === id) || null;
+  const goBack = (cid) => { const b = S.mixBack; if (b && mixOf(b.id)) return scrMix(b.id, b.pos); S.mixBack = null; return scrCourse(cid); };
+  const playFrom = (cid, mid) => { const b = S.mixBack, x = b && mixOf(b.id); const r = x && x.items[b.pos]; return r && r.cid === cid && r.mid === mid ? scrPlay(cid, mid, { mix: b.id, pos: b.pos }) : scrPlay(cid, mid); };
   const styleName = (st) => { const f = S.folders.find((x) => x.style === st); return f ? f.name : (STYLE_INFO[st] || { label: st }).label; };
   function movesFor(style) {
     const v = S.vocab[style] || {};
@@ -607,7 +612,7 @@
 
   /* ======================= Accueil : la bibliothèque ======================= */
   async function scrHome() {
-    S.wantAwake = false; keepAwake(false);
+    S.wantAwake = false; keepAwake(false); S.mixBack = null;
     const courses = await dall('courses');
     const info = await storageInfo();
     const count = (fid) => courses.filter((c) => c.folder === fid).length;
@@ -617,6 +622,7 @@
       '<div id="hres"></div>' +
       '<div id="hlib"><h2 style="margin-top:16px">Ma bibliothèque</h2><div class="fgrid">' +
       folders.map((f) => '<button class="fold" data-act="fold" data-id="' + esc(f.id) + '"><span class="fi">📁</span><b>' + esc(f.name) + '</b><span class="mute">' + (count(f.id) ? count(f.id) + ' édition' + (count(f.id) > 1 ? 's' : '') : 'vide') + '</span></button>').join('') +
+      '<button class="fold" data-act="mixes"><span class="fi">🔀</span><b>Mes mix</b><span class="mute">' + (S.mixes.length ? S.mixes.length + ' mix' : 'vide') + '</span></button>' +
       '</div><button class="btn ghost" data-act="newf">➕ Nouveau dossier</button>' +
       (courses.length ? '' : '<div class="card o"><h3>Bienvenue Hamid 👋</h3><p class="soft">Ouvre un dossier (par exemple 📁 Pump), puis « ➕ Nouvelle édition » : choisis la vidéo et tes musiques, l\'appli découpe en morceaux. Ensuite tu écris ton script en regardant la vidéo. Tout reste dans ton téléphone.</p></div>') +
       '<p class="mute">💾 Place utilisée : ' + fmtSize(info.usage) + (info.vids ? ' (dont vidéos ' + fmtSize(info.vids) + ')' : '') + (info.quota ? ' · libre pour l\'appli : ' + fmtSize(Math.max(0, info.quota - info.usage)) : '') + '</p>' +
@@ -629,7 +635,9 @@
         const id = 'f_' + uid(); S.folders.push({ id, name: n, style: id }); await saveKV('folders'); scrFolder(id);
       },
       moves: () => scrMoves(folders[0].id), set: () => scrSettings(), save: () => doBackup(), restore: () => doRestore(),
-      res: (b) => { const d = b.dataset; if (d.mid) scrWrite(d.cid, d.mid); else scrCourse(d.cid); }
+      res: (b) => { const d = b.dataset; if (d.mid) scrWrite(d.cid, d.mid); else scrCourse(d.cid); },
+      mixes: () => scrMixes(),
+      resmix: (b) => scrMix(b.dataset.id)
     });
     const q = $('#hq');
     q.addEventListener('input', () => {
@@ -637,6 +645,7 @@
       $('#hlib').classList.toggle('hide', !!t);
       if (!t) { $('#hres').innerHTML = ''; return; }
       const out = [];
+      for (const x of S.mixes) if (C.norm(x.name).includes(t)) out.push('<button class="seg" data-act="resmix" data-id="' + esc(x.id) + '"><span class="n">🔀</span><span class="t"><b>' + esc(x.name) + '</b><span class="mute">Mes mix · ' + x.items.length + ' morceau' + (x.items.length > 1 ? 'x' : '') + '</span></span></button>');
       for (const c of C.sortEditions(courses)) {
         const fo = folderOf(c.folder);
         if (C.norm(c.name).includes(t)) out.push('<button class="seg" data-act="res" data-cid="' + c.id + '"><span class="n">📁</span><span class="t"><b>' + esc(c.name) + '</b><span class="mute">' + esc(fo ? fo.name : '') + ' · ' + c.morceaux.filter((m) => !m.lost).length + ' morceaux</span></span></button>');
@@ -653,7 +662,7 @@
   /* ======================= Un dossier : ses éditions ======================= */
   const scriptState = (m, nPh) => { const n = C.textCount(C.textOf(m)); return (n ? '<span class="badge ok">✍️ ' + n + ' ligne' + (n > 1 ? 's' : '') + (m.textOk ? ' ✅' : '') + '</span>' : '<span class="badge">✍️ à écrire</span>') + (nPh ? ' <span class="badge" aria-label="' + nPh + ' photo(s)">📷' + (nPh > 1 ? ' ' + nPh : '') + '</span>' : ''); };
   async function scrFolder(fid) {
-    S.wantAwake = false; keepAwake(false);
+    S.wantAwake = false; keepAwake(false); S.mixBack = null;
     const f = folderOf(fid); if (!f) return scrHome();
     const list = C.sortEditions((await dall('courses')).filter((c) => c.folder === fid));
     render('<div class="top"><button class="back" data-act="back">‹</button><h1>📁 ' + esc(f.name) + '</h1><button class="back" data-act="ren" aria-label="Renommer le dossier">✏️</button></div>' +
@@ -1049,7 +1058,7 @@
 
   /* ======================= Page d'une édition ======================= */
   async function scrCourse(cid) {
-    S.wantAwake = false; keepAwake(false);
+    S.wantAwake = false; keepAwake(false); S.mixBack = null;
     const c = await dget('courses', cid); if (!c) return scrHome();
     const musics = {}; for (const m of await dall('musics')) musics[m.id] = m;
     const ph = await photosOfCourse(cid); const nPh = (mid) => ph.filter((p) => p.mid === mid).length;
@@ -1223,7 +1232,7 @@
   async function scrWrite(cid, mid) {
     S.wantAwake = false; keepAwake(false);
     const c = await dget('courses', cid); if (!c) return scrHome();
-    const m = c.morceaux.find((x) => x.id === mid); if (!m) return scrCourse(cid);
+    const m = c.morceaux.find((x) => x.id === mid); if (!m) return goBack(cid);
     if (!Array.isArray(m.lines)) m.lines = [];
     // ancien script (lignes) : converti en texte au premier affichage, l'ancien format reste gardé à côté
     if (typeof m.text !== 'string') { m.text = C.textOf(m); m.textOk = false; await saveCourse(c); }
@@ -1417,7 +1426,7 @@
         '<div id="wedit"></div></div>' +
       '<div id="wbody"></div></div><div id="wfoot"></div>',
     {
-      back: async () => { await leave(); scrCourse(cid); },
+      back: async () => { await leave(); goBack(cid); },
       revid: async () => { await leave(); await giveVideo(c); scrWrite(cid, mid); },
       pp: () => { const x = v(); if (!x) return; if (x.paused) { if (x.currentTime >= m.end - 0.05) x.currentTime = m.start; x.play().catch(() => {}); } else x.pause(); },
       b5: () => { const x = v(); if (x) x.currentTime = Math.max(m.start, x.currentTime - 5); },
@@ -1454,7 +1463,7 @@
       },
       edit: () => { editing = true; paint(); window.scrollTo(0, 0); },
       read: async () => { await leave(); scrRead(cid, mid); },
-      play: async () => { await leave(); scrPlay(cid, mid); },
+      play: async () => { await leave(); playFrom(cid, mid); },
       photo: async () => { await leave(); photoMenu(c, m, () => scrWrite(cid, mid)); },
       lv: () => { if (S.flushWrite) S.flushWrite(); viewLivret(c, lvPageFor(c, m).page); } // par-dessus l'écran : la vidéo et le script ne bougent pas
     });
@@ -1514,12 +1523,13 @@
 
   /* ======================= Script : lecture, texte, PDF ======================= */
   /** Texte à copier : le texte brut de Hamid, morceau par morceau */
-  function scriptText(c, ms) {
-    const all = c.morceaux.filter((m) => !m.lost);
+  /** o (🔀 mix, facultatif) : { title, head(m, i) } à la place du nom de l'édition et du numéro du morceau */
+  function scriptText(c, ms, o) {
+    const all = c ? c.morceaux.filter((m) => !m.lost) : [];
     ms = ms || all;
-    const out = [c.name + ' (' + styleName(c.style) + ')', ''];
-    ms.forEach((m) => {
-      out.push((all.indexOf(m) + 1) + '. ' + m.name);
+    const out = [o ? o.title : c.name + ' (' + styleName(c.style) + ')', ''];
+    ms.forEach((m, i) => {
+      out.push(o ? o.head(m, i) : (all.indexOf(m) + 1) + '. ' + m.name);
       const t = C.textOf(m).replace(/\s+$/, '');
       out.push(t.trim() ? t : '(script pas encore écrit)');
       out.push('');
@@ -1532,18 +1542,20 @@
     try { document.execCommand('copy'); toast('Texte copié ✅'); } catch (e) { toast('Copie impossible'); }
     ta.remove();
   }
-  function printCourse(c, ms) {
-    const all = c.morceaux.filter((m) => !m.lost);
+  /** o (🔀 mix, facultatif) : { title, sub, headHtml(m, i) } */
+  function printCourse(c, ms, o) {
+    const all = c ? c.morceaux.filter((m) => !m.lost) : [];
     ms = ms || all;
-    $('#print').innerHTML = '<h1>' + esc(c.name) + '</h1><p class="sub">' + esc(styleName(c.style)) + ' · ' + fmtDate(c.created) + ' · ScriptMove</p>' +
-      ms.map((m) => '<section><h2>' + (all.indexOf(m) + 1) + '. ' + esc(m.name) + '</h2>' + (tcount(m) ? '<div class="sc">' + scriptHtml(C.textOf(m)) + '</div>' : '<p class="t">(script pas encore écrit)</p>') + '</section>').join('');
-    const old = document.title; document.title = c.name.replace(/[\\/:*?"<>|]/g, '-');
+    const title = o ? o.title : c.name;
+    $('#print').innerHTML = '<h1>' + esc(title) + '</h1><p class="sub">' + (o ? esc(o.sub) : esc(styleName(c.style)) + ' · ' + fmtDate(c.created)) + ' · ScriptMove</p>' +
+      ms.map((m, i) => '<section><h2>' + (o ? o.headHtml(m, i) : (all.indexOf(m) + 1) + '. ' + esc(m.name)) + '</h2>' + (tcount(m) ? '<div class="sc">' + scriptHtml(C.textOf(m)) + '</div>' : '<p class="t">(script pas encore écrit)</p>') + '</section>').join('');
+    const old = document.title; document.title = title.replace(/[\\/:*?"<>|]/g, '-');
     setTimeout(() => { window.print(); document.title = old; }, 50);
     toast('Dans la fenêtre d\'impression, choisis « Enregistrer en PDF ».', 4000);
   }
   const readList = (m) => '<div class="sc">' + scriptHtml(C.textOf(m)) + '</div>';
   async function scrRead(cid, mid) {
-    const c = await dget('courses', cid); const m = c && c.morceaux.find((x) => x.id === mid); if (!m) return scrCourse(cid);
+    const c = await dget('courses', cid); const m = c && c.morceaux.find((x) => x.id === mid); if (!m) return goBack(cid);
     const nPh = (await photosOf(mid)).length;
     render('<div class="top"><button class="back" data-act="back">‹</button><h1>📖 ' + esc(m.name) + '</h1></div><p class="mute">' + esc(c.name) + (tcount(m) ? ' · ' + (m.textOk ? '✅ validé' : 'pas encore validé') : '') + '</p>' +
       '<div class="card">' + readList(m) + '</div>' +
@@ -1551,7 +1563,7 @@
       '<div class="row"><button class="btn sec" data-act="copy">📋 Copier le texte</button><button class="btn sec" data-act="pdf">🖨️ PDF</button></div>' +
       '<button class="btn sec" data-act="photo">📷 ' + (nPh ? 'Photos de ma feuille (' + nPh + ')' : 'Photo de ma feuille') + '</button>' +
       (c.livret ? '<button class="btn sec" data-act="lv">📄 Livret (page ' + lvPageFor(c, m).page + ')</button>' : ''),
-    { back: () => scrCourse(cid), write: () => scrWrite(cid, mid), play: () => scrPlay(cid, mid), copy: () => copyText(scriptText(c, [m])), pdf: () => printCourse(c, [m]), photo: () => photoMenu(c, m, () => scrRead(cid, mid)), lv: () => viewLivret(c, lvPageFor(c, m).page) });
+    { back: () => goBack(cid), write: () => scrWrite(cid, mid), play: () => playFrom(cid, mid), copy: () => copyText(scriptText(c, [m])), pdf: () => printCourse(c, [m]), photo: () => photoMenu(c, m, () => scrRead(cid, mid)), lv: () => viewLivret(c, lvPageFor(c, m).page) });
   }
   async function scrCourseScript(cid) {
     const c = await dget('courses', cid);
@@ -1565,23 +1577,33 @@
 
   /* ======================= Jeu de danse (texte validé, ligne par ligne) ======================= */
   async function scrPlay(cid, mid, opt) {
-    const c = await dget('courses', cid); if (!c) return scrHome();
-    const m = c.morceaux.find((x) => x.id === mid); if (!m) return scrCourse(cid);
+    // 🔀 depuis un mix : opt.mix = id du mix, opt.pos = place dans le mix ; ⏮️ / ⏭️ suivent l'ordre du mix (par place : un morceau peut y être 2 fois)
+    const mixId = opt && opt.mix && mixOf(opt.mix) ? opt.mix : null, mixPos = mixId ? (opt.pos | 0) : -1;
+    if (mixId) S.mixBack = { id: mixId, pos: mixPos };
+    const backTo = () => (mixId ? scrMix(mixId, mixPos) : scrCourse(cid));
+    const c = await dget('courses', cid); if (!c) { if (opt && opt.old) opt.old.remove(); return mixId ? backTo() : scrHome(); }
+    const m = c.morceaux.find((x) => x.id === mid); if (!m) { if (opt && opt.old) opt.old.remove(); return backTo(); }
     const musicOnly = !(m.textOk && tcount(m)) && !!m.musicId; // pas encore de script : on écoute juste la musique
     if (!musicOnly && !tcount(m)) { toast('Écris d\'abord ton script (✍️ Mon script).', 3500); return scrWrite(cid, mid); }
     if (!musicOnly && !m.textOk) { toast('Valide d\'abord ton script (✅ Valider mon script).', 3500); return scrWrite(cid, mid); }
-    const ms = c.morceaux.filter((x) => !x.lost && ((x.textOk && tcount(x)) || x.musicId));
-    const nextM = ms[ms.indexOf(m) + 1];
-    const prevM = ms.indexOf(m) > 0 ? ms[ms.indexOf(m) - 1] : null;
+    let nextM, prevM;
+    if (mixId) {
+      const R = C.mixResolve(mixOf(mixId).items, await dall('courses'), S.folders), nv = C.mixNav(R, mixPos);
+      nextM = nv.next != null ? R[nv.next] : null; prevM = nv.prev != null ? R[nv.prev] : null;
+    } else {
+      const ms = c.morceaux.filter((x) => !x.lost && ((x.textOk && tcount(x)) || x.musicId));
+      nextM = ms[ms.indexOf(m) + 1];
+      prevM = ms.indexOf(m) > 0 ? ms[ms.indexOf(m) - 1] : null;
+    }
     const mu = m.musicId ? await dget('musics', m.musicId) : null;
     const photos = await photosOf(mid);
     let keep = opt && opt.choice && (opt.choice !== 'music' || mu) ? opt.choice : null;
     if (musicOnly && mu) keep = 'music';
-    if (musicOnly && !mu) { toast('La musique de ce morceau est introuvable.', 3500); if (opt && opt.old) opt.old.remove(); return scrCourse(cid); }
+    if (musicOnly && !mu) { toast('La musique de ce morceau est introuvable.', 3500); if (opt && opt.old) opt.old.remove(); return backTo(); }
     if (!keep && opt && opt.old) { opt.old.remove(); opt.old = null; } // pas de musique liée : on revient à la question habituelle
     const choice = keep || await ask(m.name, mu ? '🎵 ' + esc(mu.name) : 'Pas de musique liée à ce morceau.', (mu ? [{ label: '▶️ Jouer avec ma musique', value: 'music' }] : [{ label: '🎵 Lier une musique', value: 'link' }])
       .concat([{ label: '🎬 Top départ (la musique joue ailleurs)', value: 'top', cls: 'sec' }, { label: 'Retour', value: null, cls: 'ghost' }]));
-    if (!choice) return scrCourse(cid);
+    if (!choice) return backTo();
     if (choice === 'link') return linkMusic(c, m.id);
     const bpm = (mu && mu.bpm) || m.bpm || null;
     let L = [];
@@ -1594,7 +1616,7 @@
     if (choice === 'music') { P.url = URL.createObjectURL(mu.blob); P.audio = new Audio(P.url); P.audio.preload = 'auto'; }
     S.wantAwake = true; keepAwake(true);
     const el = document.createElement('div'); el.className = 'play';
-    el.innerHTML = '<div class="ph"><h3>' + esc(m.name) + '</h3>' + (photos.length ? '<button data-p="photo" aria-label="Voir la photo de ma feuille">📷</button>' : '') + (c.livret ? '<button data-p="lv" aria-label="Voir mon livret">📄</button>' : '') + '<button data-p="close" aria-label="Fermer">✖</button></div>' +
+    el.innerHTML = '<div class="ph"><h3>' + (mixId ? (mixPos + 1) + '. ' : '') + esc(m.name) + '</h3>' + (photos.length ? '<button data-p="photo" aria-label="Voir la photo de ma feuille">📷</button>' : '') + (c.livret ? '<button data-p="lv" aria-label="Voir mon livret">📄</button>' : '') + '<button data-p="close" aria-label="Fermer">✖</button></div>' +
       '<div class="main" data-p="tap"><div class="nx" id="pbefore"></div><div class="pnum" id="pnum"></div><div class="mv" id="pmv"></div><div class="cnt" id="pcnt"></div><div class="tempo" id="ptp"></div><div class="nx" id="pnote"></div><div class="phint" id="phint"></div></div>' +
       '<div class="nx" id="pnx" style="text-align:center"></div><div class="pseek" id="pseek"><div class="bar"><i id="pbar"></i></div><b class="pknob" id="pknob"></b></div><div class="ptime" id="ptime"></div>' +
       '<div class="ctl"><button data-p="prevm" aria-label="Musique précédente"' + (prevM ? '' : ' disabled style="opacity:.35"') + '>⏮️</button><button class="main" data-p="pp" id="ppp">▶️</button><button data-p="nextm" aria-label="Musique suivante"' + (nextM ? '' : ' disabled style="opacity:.35"') + '>⏭️</button></div>' +
@@ -1675,11 +1697,15 @@
     const adj = (d) => { m.shift = Math.round(((m.shift || 0) + d) * 100) / 100; shiftTxt(); clearTimeout(saveT); saveT = setTimeout(() => saveCourse(c), 600); };
     const stop = () => { cancelAnimationFrame(P.raf); if (P.audio) { P.audio.pause(); URL.revokeObjectURL(P.url); } };
     const close = () => { stop(); el.remove(); S.wantAwake = false; keepAwake(false); };
-    const swap = (m2) => { stop(); el.style.pointerEvents = 'none'; saveCourse(c); scrPlay(cid, m2.id, { choice: P.mode, auto: true, old: el }); };
+    const swap = (m2) => {
+      stop(); el.style.pointerEvents = 'none'; saveCourse(c);
+      if (mixId) scrPlay(m2.cid, m2.mid, { choice: P.mode, auto: true, old: el, mix: mixId, pos: m2.pos });
+      else scrPlay(cid, m2.id, { choice: P.mode, auto: true, old: el });
+    };
     el.addEventListener('click', (e) => {
       const b = e.target.closest('[data-p]'); if (!b) return;
       const a = b.dataset.p;
-      if (a === 'close') { close(); saveCourse(c); scrCourse(cid); }
+      if (a === 'close') { close(); saveCourse(c); backTo(); }
       else if (a === 'pp') { P.paused ? play() : pause(); }
       else if (a === 'tap') { if (musicOnly) { P.paused ? play() : pause(); } else go(1); }
       else if (a === 'early') adj(0.25); else if (a === 'late') adj(-0.25);
@@ -1702,6 +1728,180 @@
     window.SM_PLAY = { P, el, musicT, setMusicT, lines: L, auto }; // pour les tests
     tick();
     if (choice === 'music' && (musicOnly || (keep && opt && opt.auto))) play();
+  }
+
+  /* ======================= 🔀 Mes mix (01/11) =======================
+     Un mix = une liste ordonnée de RÉFÉRENCES { cid, mid } vers des morceaux qui existent déjà (rien n'est recopié).
+     Rangés à part (kv 'mixes') : enlever ou supprimer un mix ne touche jamais aux éditions, scripts, musiques, vidéos ni photos. */
+  const saveMixes = () => saveKV('mixes');
+  const plural = (n, a, b) => n + ' ' + (n > 1 ? b : a);
+  async function newMix() {
+    const name = await askText('Nom du nouveau mix', '', 'ex. Cours mélangé 1 h'); if (!name) return;
+    const how = await ask('Comment commencer ?', '« ' + esc(name) + ' »', [{ label: '📁 Partir d\'une édition', value: 'ed' }, { label: '➕ Mix vide', value: 'empty', cls: 'sec' }, { label: 'Annuler', value: null, cls: 'ghost' }]);
+    if (!how) return;
+    if (how === 'empty') return createMix(name, []);
+    scrPickCourse(name);
+  }
+  async function createMix(name, items) {
+    const x = { id: 'mx_' + uid(), name, created: Date.now(), items };
+    S.mixes.push(x); await saveMixes(); toast('Mix créé ✅'); scrMix(x.id);
+  }
+  /** Écran : choisir l'édition de départ d'un nouveau mix */
+  async function scrPickCourse(name) {
+    const courses = await dall('courses');
+    const groups = S.folders.map((f) => ({ f, list: C.sortEditions(courses.filter((c) => c.folder === f.id)) })).filter((g) => g.list.length);
+    render('<div class="top"><button class="back" data-act="back">‹</button><h1>Partir d\'une édition</h1></div>' +
+      '<p class="soft">Le mix « ' + esc(name) + ' » reprend tous les morceaux de l\'édition choisie, dans l\'ordre. Rien n\'est recopié : ce sont les mêmes morceaux.</p>' +
+      (groups.length ? groups.map((g) => '<h2 style="margin-top:14px">📁 ' + esc(g.f.name) + '</h2>' + g.list.map((c) => {
+        const n = c.morceaux.filter((m) => !m.lost).length;
+        return '<button class="seg" data-act="pick" data-id="' + esc(c.id) + '"><span class="t"><b>' + esc(c.name) + '</b><span class="mute">' + plural(n, 'morceau', 'morceaux') + '</span></span><span style="font-size:24px">›</span></button>';
+      }).join('')).join('') : '<div class="card"><p class="soft">Tu n\'as encore aucune édition.</p></div>'),
+    {
+      back: () => scrMixes(),
+      pick: async (b) => { const c = await dget('courses', b.dataset.id); if (c) createMix(name, C.mixFromCourse(c)); }
+    });
+  }
+  /** Écran « 🔀 Mes mix » : la liste des mix */
+  async function scrMixes() {
+    S.wantAwake = false; keepAwake(false); S.mixBack = null;
+    render('<div class="top"><button class="back" data-act="back">‹</button><h1>🔀 Mes mix</h1></div>' +
+      '<p class="soft small">Un mix, c\'est ton cours à toi : des morceaux pris dans n\'importe quelles éditions, dans l\'ordre que tu veux. Les morceaux gardent leur script, leur musique et leur vidéo.</p>' +
+      '<button class="btn" data-act="new">➕ Nouveau mix</button>' +
+      (S.mixes.length ? S.mixes.map((x) => '<div class="mixrow"><button class="seg" data-act="open" data-id="' + esc(x.id) + '"><span class="n">🔀</span><span class="t"><b>' + esc(x.name) + '</b><span class="mute">' + plural(x.items.length, 'morceau', 'morceaux') + '</span></span></button>' +
+        '<button class="ib" data-act="ren" data-id="' + esc(x.id) + '" aria-label="Renommer ce mix">✏️</button><button class="ib" data-act="del" data-id="' + esc(x.id) + '" aria-label="Supprimer ce mix">🗑️</button></div>').join('')
+        : '<div class="card"><p class="soft">Tu n\'as pas encore de mix.</p><p class="mute">Touche « ➕ Nouveau mix ».</p></div>'),
+    {
+      back: () => scrHome(),
+      new: () => newMix(),
+      open: (b) => scrMix(b.dataset.id),
+      ren: async (b) => { const x = mixOf(b.dataset.id); if (!x) return; const n = await askText('Nom du mix', x.name); if (n) { x.name = n; await saveMixes(); scrMixes(); } },
+      del: async (b) => { if (await delMix(b.dataset.id)) scrMixes(); }
+    });
+  }
+  async function delMix(id) {
+    const x = mixOf(id); if (!x) return false;
+    const r = await ask('Supprimer ce mix ?', '« ' + esc(x.name) + ' »<br><b>Tes morceaux, tes scripts, tes musiques et tes vidéos restent dans leurs éditions.</b> Seule la liste du mix est supprimée.', [{ label: '🗑️ Oui, supprimer le mix', value: 1, cls: 'red' }, { label: 'Non, garder', value: 0, cls: 'sec' }]);
+    if (!r) return false;
+    S.mixes = S.mixes.filter((y) => y.id !== id); await saveMixes(); toast('Mix supprimé'); return true;
+  }
+  /** Les morceaux d'un mix retrouvés dans les éditions (+ les musiques) */
+  async function mixData(x) {
+    const courses = await dall('courses');
+    const musics = {}; for (const m of await dall('musics')) musics[m.id] = { id: m.id, name: m.name, duration: m.duration };
+    return { courses, musics, R: C.mixResolve(x.items, courses, S.folders) };
+  }
+  const mixPrintOpts = (x, okR) => ({
+    title: x.name, sub: '🔀 Mix · ' + plural(okR.length, 'morceau', 'morceaux'),
+    head: (m, i) => (i + 1) + '. ' + m.name + '  (' + okR[i].from + ')',
+    headHtml: (m, i) => (i + 1) + '. ' + esc(m.name) + ' <span class="t">— ' + esc(okR[i].from) + '</span>'
+  });
+  /** Écran d'un mix */
+  async function scrMix(id, pos) {
+    S.wantAwake = false; keepAwake(false); S.mixBack = null;
+    const x = mixOf(id); if (!x) return scrMixes();
+    const { musics, R } = await mixData(x);
+    const okR = R.filter((r) => r.ok);
+    const dur = C.mixDuration(R, musics);
+    const n = x.items.length;
+    const card = (r) => {
+      const i = r.pos, arrows = '<div class="row tight"><button class="btn sec small" data-act="up" data-i="' + i + '"' + (i ? '' : ' disabled') + ' aria-label="Monter">⬆️</button><button class="btn sec small" data-act="down" data-i="' + i + '"' + (i < n - 1 ? '' : ' disabled') + ' aria-label="Descendre">⬇️</button><button class="btn sec small" data-act="rm" data-i="' + i + '">✖ Enlever</button></div>';
+      if (!r.ok) return '<div class="card mrc lost" id="mx' + i + '"><h2>' + (i + 1) + '. Morceau introuvable</h2><p class="mute">Son édition ou ce morceau a été supprimé.</p>' +
+        '<button class="btn sec small" data-act="rep" data-i="' + i + '">🔁 Remplacer</button><button class="btn sec small" data-act="rm" data-i="' + i + '">✖ Enlever</button></div>';
+      const m = r.m, has = tcount(m) > 0, mu = m.musicId && musics[m.musicId];
+      return '<div class="card mrc ' + (has ? 'g' : 'o') + '" id="mx' + i + '"><h2>' + (i + 1) + '. ' + esc(m.name) + '</h2>' +
+        '<p class="mute" style="margin:0 0 6px">📁 ' + esc(r.from) + '</p>' +
+        '<p style="margin:0 0 6px">' + scriptState(m, 0) + '</p>' +
+        '<p class="mute">' + (mu ? '🎵 ' + esc(mu.name) + ' ✅' : 'Pas de musique liée') + ' · ⏱️ ' + fmt(C.morceauDur(m, musics)) + '</p>' +
+        '<button class="btn small" data-act="write" data-i="' + i + '">✍️ Mon script</button>' +
+        '<div class="row tight">' + (C.playableM(m) ? '<button class="btn sec small" data-act="play" data-i="' + i + '">🎮 Jouer</button>' : '') + (has ? '<button class="btn sec small" data-act="read" data-i="' + i + '">📖 Lire</button>' : '') +
+        '<button class="btn sec small" data-act="rep" data-i="' + i + '">🔁 Remplacer</button></div>' + arrows + '</div>';
+    };
+    render('<div class="top"><button class="back" data-act="back">‹</button><h1>🔀 ' + esc(x.name) + '</h1><button class="back" data-act="ren" aria-label="Renommer le mix">✏️</button></div>' +
+      '<div class="card j"><b>⏱️ Durée du cours : ' + fmtDur(dur) + '</b><br><span class="mute">' + plural(n, 'morceau', 'morceaux') + (okR.length < n ? ' · ' + (n - okR.length) + ' introuvable' + (n - okR.length > 1 ? 's' : '') : '') + '</span></div>' +
+      (n ? R.map(card).join('') : '<div class="card"><p class="soft">Ton mix est vide.</p><p class="mute">Touche « ➕ Ajouter un morceau ».</p></div>') +
+      '<button class="btn" data-act="add">➕ Ajouter un morceau</button>' +
+      (okR.length ? '<div class="row"><button class="btn sec" data-act="script">📖 Script du mix</button><button class="btn sec" data-act="pdf">🖨️ PDF</button></div>' : '') +
+      '<button class="btn ghost small" data-act="del">🗑️ Supprimer ce mix</button>',
+    {
+      back: () => scrMixes(),
+      ren: async () => { const v = await askText('Nom du mix', x.name); if (v) { x.name = v; await saveMixes(); scrMix(id); } },
+      write: (b) => { const r = R[+b.dataset.i]; if (!r || !r.ok) return; S.mixBack = { id, pos: r.pos }; scrWrite(r.cid, r.mid); },
+      read: (b) => { const r = R[+b.dataset.i]; if (!r || !r.ok) return; S.mixBack = { id, pos: r.pos }; scrRead(r.cid, r.mid); },
+      play: (b) => { const r = R[+b.dataset.i]; if (!r || !r.ok) return; S.mixBack = { id, pos: r.pos }; scrPlay(r.cid, r.mid, { mix: id, pos: r.pos }); },
+      rep: (b) => scrPickMorceau(id, +b.dataset.i),
+      add: () => scrPickMorceau(id, -1),
+      up: async (b) => { const i = +b.dataset.i; x.items = C.mixMove(x.items, i, -1); await saveMixes(); scrMix(id, i - 1); },
+      down: async (b) => { const i = +b.dataset.i; x.items = C.mixMove(x.items, i, 1); await saveMixes(); scrMix(id, i + 1); },
+      rm: async (b) => {
+        const i = +b.dataset.i, r = R[i]; if (!r) return;
+        const ok = await ask('Enlever du mix ?', r.ok ? '« ' + esc(r.m.name) + ' » reste dans son édition (' + esc(r.from) + '), avec son script et sa musique.' : '', [{ label: '✖ Oui, enlever du mix', value: 1 }, { label: 'Non', value: 0, cls: 'sec' }]);
+        if (!ok) return; x.items.splice(i, 1); await saveMixes(); scrMix(id, Math.min(i, x.items.length - 1));
+      },
+      script: () => scrMixScript(id),
+      pdf: () => printCourse(null, okR.map((r) => r.m), mixPrintOpts(x, okR)),
+      del: async () => { if (await delMix(id)) scrMixes(); }
+    });
+    if (pos != null && pos >= 0) { const e = document.getElementById('mx' + pos); if (e) e.scrollIntoView({ block: 'center' }); }
+  }
+  /** Script complet du mix, dans l'ordre du mix */
+  async function scrMixScript(id) {
+    const x = mixOf(id); if (!x) return scrMixes();
+    const { R } = await mixData(x); const okR = R.filter((r) => r.ok);
+    render('<div class="top"><button class="back" data-act="back">‹</button><h1>Script du mix</h1></div><p class="soft">🔀 ' + esc(x.name) + '</p>' +
+      okR.map((r, i) => '<div class="card ' + (tcount(r.m) ? 'g' : '') + '"><h2>' + (i + 1) + '. ' + esc(r.m.name) + '</h2><p class="mute">📁 ' + esc(r.from) + '</p>' + readList(r.m) +
+        '<button class="btn sec small" style="margin-top:10px" data-act="open" data-i="' + r.pos + '">✍️ ' + (tcount(r.m) ? 'Modifier' : 'Écrire') + '</button></div>').join('') +
+      '<div class="row"><button class="btn sec" data-act="copy">📋 Copier le texte</button><button class="btn" data-act="pdf">🖨️ PDF</button></div>',
+    {
+      back: () => scrMix(id),
+      copy: () => copyText(scriptText(null, okR.map((r) => r.m), mixPrintOpts(x, okR))),
+      pdf: () => printCourse(null, okR.map((r) => r.m), mixPrintOpts(x, okR)),
+      open: (b) => { const r = R[+b.dataset.i]; if (!r || !r.ok) return; S.mixBack = { id, pos: r.pos }; scrWrite(r.cid, r.mid); }
+    });
+  }
+  /** Choisir un morceau : pos ≥ 0 = remplacer celui de cette place, pos = −1 = ajouter à la fin */
+  async function scrPickMorceau(id, pos) {
+    const x = mixOf(id); if (!x) return scrMixes();
+    const courses = await dall('courses');
+    const cur = pos >= 0 ? C.mixResolve([x.items[pos]], courses, S.folders)[0] : null;
+    const same = cur && cur.ok ? C.mixSameNumber(courses, cur.cid, cur.mid) : [];
+    const fo = (c) => folderOf(c.folder);
+    const row = (c, m, extra) => '<button class="seg pkrow" data-act="pick" data-cid="' + esc(c.id) + '" data-mid="' + esc(m.id) + '" data-s="' + esc(C.norm((fo(c) ? fo(c).name : '') + ' ' + c.name + ' ' + m.name)) + '"><span class="n">' + C.numLabel(C.mixNum(c, m)) + '</span><span class="t"><b>' + esc(m.name) + '</b><span class="mute">' + (extra ? esc(extra) + ' · ' : '') + (tcount(m) ? '✍️ ' + plural(tcount(m), 'ligne', 'lignes') + (m.textOk ? ' ✅' : '') : '✍️ à écrire') + (m.musicId ? ' · 🎵' : '') + '</span></span></button>';
+    const total = courses.reduce((a, c) => a + c.morceaux.filter((m) => !m.lost).length, 0);
+    const groups = S.folders.map((f) => ({ f, list: C.sortEditions(courses.filter((c) => c.folder === f.id && c.morceaux.some((m) => !m.lost))) })).filter((g) => g.list.length);
+    render('<div class="top"><button class="back" data-act="back">‹</button><h1>' + (pos >= 0 ? '🔁 Remplacer' : '➕ Ajouter un morceau') + '</h1></div>' +
+      (cur && cur.ok ? '<p class="soft">À la place de : <b>' + (pos + 1) + '. ' + esc(cur.m.name) + '</b><br><span class="mute">📁 ' + esc(cur.from) + '</span></p>' : cur ? '<p class="soft">À la place du morceau introuvable n° ' + (pos + 1) + '.</p>' : '<p class="soft">Il sera ajouté à la fin du mix.</p>') +
+      (same.length ? '<div class="card j" id="pksame"><h3>Même numéro (' + C.numLabel(cur.num) + ') dans tes autres éditions</h3>' + same.map((s) => row(s.c, s.m, (fo(s.c) ? fo(s.c).name + ' › ' : '') + s.c.name)).join('') + '</div>' : '') +
+      '<input type="search" id="pq" placeholder="🔎 Chercher (morceau, édition, dossier)" autocomplete="off" style="margin:0 0 12px">' +
+      '<p class="mute hide" id="pknone">Rien trouvé.</p>' +
+      (groups.length ? groups.map((g) => '<div class="pkf"><h2 style="margin-top:14px">📁 ' + esc(g.f.name) + '</h2>' + g.list.map((c) => {
+        const ms = c.morceaux.filter((m) => !m.lost);
+        return '<details class="pk"' + (total <= 30 || (cur && cur.cid === c.id) ? ' open' : '') + '><summary>' + esc(c.name) + ' <span class="mute">· ' + plural(ms.length, 'morceau', 'morceaux') + '</span></summary>' + ms.map((m) => row(c, m)).join('') + '</details>';
+      }).join('') + '</div>').join('') : '<div class="card"><p class="soft">Aucun morceau pour l\'instant.</p></div>'),
+    {
+      back: () => scrMix(id, pos >= 0 ? pos : undefined),
+      pick: async (b) => {
+        const y = mixOf(id); if (!y) return scrMixes();
+        const ref = { cid: b.dataset.cid, mid: b.dataset.mid };
+        let at;
+        if (pos >= 0 && pos < y.items.length) { y.items[pos] = ref; at = pos; toast('Morceau remplacé ✅'); } else { y.items.push(ref); at = y.items.length - 1; toast('Morceau ajouté ✅'); }
+        await saveMixes(); scrMix(id, at);
+      }
+    });
+    const q = $('#pq');
+    q.addEventListener('input', () => {
+      const t = C.norm(q.value.trim()); let any = false;
+      const sm = $('#pksame'); if (sm) sm.classList.toggle('hide', !!t);
+      app.querySelectorAll('.pkf').forEach((f) => {
+        let fany = false;
+        f.querySelectorAll('details.pk').forEach((d) => {
+          let dany = false;
+          d.querySelectorAll('.pkrow').forEach((r) => { const h = !t || r.dataset.s.includes(t); r.classList.toggle('hide', !h); if (h) dany = true; });
+          d.classList.toggle('hide', !dany); if (t && dany) d.open = true; if (dany) fany = true;
+        });
+        f.classList.toggle('hide', !fany); if (fany) any = true;
+      });
+      $('#pknone').classList.toggle('hide', any || !t);
+    });
   }
 
   /* ======================= Mes mouvements ======================= */
@@ -1761,7 +1961,7 @@
     opts.push({ label: 'Annuler', value: null, cls: 'ghost' });
     const r = await ask('Sauvegarder', 'Un fichier est enregistré dans ton téléphone (dossier Téléchargements). Garde-le précieusement, par exemple sur ton Drive.<br><span class="mute">Les vidéos ne sont pas dans la sauvegarde (trop grosses).</span>', opts);
     if (!r) return;
-    const data = { app: 'ScriptMove', version: 3, date: new Date().toISOString(), courses, folders: S.folders, vocab: S.vocab, prints: S.prints, customMoves: S.customMoves || {}, favs: S.favs || {} };
+    const data = { app: 'ScriptMove', version: 3, date: new Date().toISOString(), courses, mixes: S.mixes || [], folders: S.folders, vocab: S.vocab, prints: S.prints, customMoves: S.customMoves || {}, favs: S.favs || {} };
     data.musicsInfo = musics.map((m) => ({ id: m.id, name: m.name, type: m.type, duration: m.duration, bpm: m.bpm }));
     if (r === 'full') {
       toast('Préparation…');
@@ -1779,7 +1979,7 @@
     const f = (await pickFile('application/json,.json'))[0]; if (!f) return;
     let d; try { d = JSON.parse(await f.text()); } catch (e) { toast('Ce fichier n\'est pas une sauvegarde ScriptMove.'); return; }
     if (!d || d.app !== 'ScriptMove') { toast('Ce fichier n\'est pas une sauvegarde ScriptMove.'); return; }
-    const r = await ask('Restaurer ?', 'Sauvegarde du ' + esc(new Date(d.date).toLocaleDateString('fr-FR')) + ' : ' + (d.courses || []).length + ' édition(s). Celles déjà présentes (les mêmes) seront remplacées, les autres sont gardées.', [{ label: '📂 Restaurer', value: 1 }, { label: 'Annuler', value: 0, cls: 'sec' }]);
+    const r = await ask('Restaurer ?', 'Sauvegarde du ' + esc(new Date(d.date).toLocaleDateString('fr-FR')) + ' : ' + (d.courses || []).length + ' édition(s)' + ((d.mixes || []).length ? ', ' + d.mixes.length + ' mix' : '') + '. Celles déjà présentes (les mêmes) seront remplacées, les autres sont gardées.', [{ label: '📂 Restaurer', value: 1 }, { label: 'Annuler', value: 0, cls: 'sec' }]);
     if (!r) return;
     for (const fo of d.folders || []) if (!S.folders.some((x) => x.id === fo.id)) S.folders.push(fo);
     await saveKV('folders');
@@ -1808,6 +2008,7 @@
     for (const st in d.vocab || {}) S.vocab[st] = Object.assign({}, S.vocab[st] || {}, d.vocab[st]);
     for (const st in d.customMoves || {}) S.customMoves[st] = Array.from(new Set((S.customMoves[st] || []).concat(d.customMoves[st])));
     await saveKV('prints'); await saveKV('vocab'); await saveKV('customMoves'); await saveKV('favs');
+    if (Array.isArray(d.mixes) && d.mixes.length) { S.mixes = C.mixMerge(S.mixes, d.mixes); await saveMixes(); }
     toast('Restauré ✅', 3000); scrHome();
   }
 
@@ -1821,6 +2022,6 @@
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
     try { navigator.serviceWorker.register('sw.js').catch(() => {}); } catch (e) { /* rien */ }
   }
-  S.api = { scrHome, scrFolder, scrCourse, scrWrite, scrRead, scrPlay, scrCourseScript, setVideo, dget, dput, dall, saveCourse, scriptText, storeVideo, videoURL, photosOf, migrateAll, loadKV, getLivret, viewLivret, lvPageFor };
+  S.api = { scrMixes, scrMix, scrPickMorceau, scrMixScript, doBackup, printCourse, scrHome, scrFolder, scrCourse, scrWrite, scrRead, scrPlay, scrCourseScript, setVideo, dget, dput, dall, saveCourse, scriptText, storeVideo, videoURL, photosOf, migrateAll, loadKV, getLivret, viewLivret, lvPageFor };
   scrLock();
 })();

@@ -112,6 +112,16 @@ select{max-width:100%;text-overflow:ellipsis}
 .fgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:0 0 12px}
 .fold{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-height:96px;padding:12px 14px;border-radius:18px;border:2px solid var(--line);background:var(--card2);color:#fff;font:inherit;text-align:left;cursor:pointer}
 .fold .fi{font-size:30px;line-height:1}.fold b{font-size:20px;overflow-wrap:anywhere}
+/* 🔀 mes mix */
+.mixrow{display:flex;gap:8px;align-items:stretch;margin:0 0 10px}
+.mixrow .seg{flex:1;min-width:0;margin:0}
+.mixrow .ib{flex:0 0 52px;width:52px;border-radius:14px;border:2px solid var(--line);background:var(--card2);color:#fff;font-size:22px;cursor:pointer;padding:0}
+.card.lost{opacity:.6;border-style:dashed;background:#191e3a}
+details.pk{margin:0 0 8px}
+details.pk>summary{list-style:none;cursor:pointer;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;font-weight:800;margin:0 0 8px}
+details.pk>summary::-webkit-details-marker{display:none}
+details.pk>summary::before{content:'▸ ';color:var(--or)}
+details.pk[open]>summary::before{content:'▾ '}
 /* ✍️ mon script */
 .wstick{position:sticky;top:0;z-index:20;background:var(--bg);margin:0 -16px 10px;padding:6px 16px 8px;border-bottom:1px solid var(--line)}
 .wstick video{display:block;width:100%;max-height:26vh;background:#000;border-radius:12px;object-fit:contain}
@@ -287,8 +297,8 @@ body.wtyping #wbody{display:none}
 <body>
 <div id="app"><p class="soft" style="margin-top:40px;text-align:center">Chargement…</p></div>
 <div id="print"></div>
-<script src="core.js?v=17"></script>
-<script src="mp4.js?v=17"></script>
-<script src="app.js?v=17"></script>
+<script src="core.js?v=18"></script>
+<script src="mp4.js?v=18"></script>
+<script src="app.js?v=18"></script>
 </body>
 </html>

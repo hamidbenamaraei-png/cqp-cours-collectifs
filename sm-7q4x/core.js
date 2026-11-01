@@ -1082,6 +1082,71 @@
   /** Recherche simple (sans accents ni majuscules) */
   function norm(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
 
+  /* ---- 🔀 Mes mix (01/11) : un mix = une liste ordonnée de RÉFÉRENCES { cid, mid } vers des morceaux existants (rien n'est recopié) ---- */
+  /** Références d'un mix « parti d'une édition » : tous ses morceaux (sauf perdus), dans l'ordre */
+  function mixFromCourse(c) { return ((c && c.morceaux) || []).filter((m) => !m.lost).map((m) => ({ cid: c.id, mid: m.id })); }
+  /** Numéro d'un morceau dans son édition : numéro en tête du titre s'il existe, sinon sa position (01, 02…) */
+  function mixNum(c, m) { return morceauNumber(m, (c && c.morceaux) || []); }
+  /** Références → morceaux retrouvés. courses : liste ou { id: édition }. Une référence perdue donne { ok: false } (jamais d'erreur). */
+  function mixResolve(items, courses, folders) {
+    const byId = Array.isArray(courses) ? Object.fromEntries(courses.filter(Boolean).map((c) => [c.id, c])) : (courses || {});
+    const fo = Object.fromEntries((folders || []).map((f) => [f.id, f]));
+    return (items || []).map((r, pos) => {
+      const c = r && byId[r.cid]; const m = c && (c.morceaux || []).find((x) => x.id === r.mid && !x.lost);
+      if (!c || !m) return { pos, cid: r && r.cid, mid: r && r.mid, ok: false };
+      const f = fo[c.folder];
+      return { pos, cid: c.id, mid: m.id, ok: true, c, m, folderName: f ? f.name : '', num: mixNum(c, m), from: (f ? f.name + ' › ' : '') + c.name };
+    });
+  }
+  /** Durée d'un morceau : durée de sa musique liée si elle est connue, sinon fin − début */
+  function morceauDur(m, musics) {
+    const mu = m && m.musicId && musics ? musics[m.musicId] : null;
+    if (mu && mu.duration > 0) return mu.duration;
+    const d = ((m && m.end) || 0) - ((m && m.start) || 0); return d > 0 ? d : 0;
+  }
+  /** Durée totale du cours (morceaux retrouvés seulement) */
+  function mixDuration(resolved, musics) { return (resolved || []).reduce((a, x) => a + (x && x.ok ? morceauDur(x.m, musics) : 0), 0); }
+  /** Jouable dans le jeu : script validé et non vide, ou musique liée */
+  function playableM(m) { return !!m && !m.lost && ((m.textOk && textCount(textOf(m)) > 0) || !!m.musicId); }
+  /** Navigation dans le jeu par POSITION dans le mix (un même morceau peut y être deux fois) : { prev, next } (positions ou null) */
+  function mixNav(resolved, pos) {
+    let prev = null, next = null;
+    for (const x of resolved || []) {
+      if (!x || !x.ok || !playableM(x.m)) continue;
+      if (x.pos < pos) prev = x.pos; else if (x.pos > pos && next == null) next = x.pos;
+    }
+    return { prev, next };
+  }
+  /** Déplace l'élément i de d (−1 / +1) ; renvoie une nouvelle liste (inchangée si impossible) */
+  function mixMove(items, i, d) {
+    const a = (items || []).slice(), j = i + d;
+    if (i < 0 || i >= a.length || j < 0 || j >= a.length) return a;
+    const t = a[i]; a[i] = a[j]; a[j] = t; return a;
+  }
+  /** « Même numéro dans tes autres éditions » : morceaux qui ont le même numéro (autres éditions ; même dossier en premier) */
+  function mixSameNumber(courses, cid, mid) {
+    const list = courses || []; const c0 = list.find((c) => c.id === cid); const m0 = c0 && (c0.morceaux || []).find((x) => x.id === mid);
+    if (!m0) return [];
+    const n = mixNum(c0, m0); if (n == null) return [];
+    const out = [];
+    for (const c of list) {
+      if (c.id === cid) continue;
+      for (const m of (c.morceaux || []).filter((x) => !x.lost)) if (mixNum(c, m) === n) out.push({ c, m });
+    }
+    return out.sort((a, b) => (a.c.folder === c0.folder ? 0 : 1) - (b.c.folder === c0.folder ? 0 : 1));
+  }
+  /** Restauration : les mix de la sauvegarde remplacent ceux qui ont le même id, les autres sont gardés */
+  function mixMerge(local, incoming) {
+    const out = (local || []).slice();
+    for (const x of incoming || []) {
+      if (!x || !x.id || !Array.isArray(x.items)) continue;
+      const i = out.findIndex((y) => y.id === x.id);
+      const clean = { id: x.id, name: String(x.name || 'Mix'), created: x.created || Date.now(), items: x.items.filter((r) => r && r.cid && r.mid).map((r) => ({ cid: r.cid, mid: r.mid })) };
+      if (i >= 0) out[i] = clean; else out.push(clean);
+    }
+    return out;
+  }
+
   return {
     smooth, quantile, MOVES, STYLES, QUICK, RENAMES, TEMPO_BEATS, OLD_TEMPOS, normTempo, COURSE_VERSION, migrateMoveLists,
     morceauNumber, numLabel, getFavs, setFavs, moveButtons, fft, AudioFeatureStream, audioFeaturesFromPCM, prepareVideo, alignMusic, silenceCuts,
@@ -1091,6 +1156,7 @@
     editionNumber, sortEditions, BASE_FOLDERS, migrateCourse, topMoves, lineText, norm,
     linesToText, textOf, textCount, parseLine, parseScript, textPlayLines,
     SEP, isSep, textToLines, linesToScript, lineNumbers, protectTexts, pushHistory,
-    lvClamp, lvDefaultPage, lvPageOf, lvFillNext, lvMeta, lvPack, lvUnpack
+    lvClamp, lvDefaultPage, lvPageOf, lvFillNext, lvMeta, lvPack, lvUnpack,
+    mixFromCourse, mixNum, mixResolve, morceauDur, mixDuration, playableM, mixNav, mixMove, mixSameNumber, mixMerge
   };
 });
