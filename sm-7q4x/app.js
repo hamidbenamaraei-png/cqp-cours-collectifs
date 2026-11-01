@@ -1589,7 +1589,7 @@
     const el = document.createElement('div'); el.className = 'play';
     el.innerHTML = '<div class="ph"><h3>' + esc(m.name) + '</h3>' + (photos.length ? '<button data-p="photo" aria-label="Voir la photo de ma feuille">📷</button>' : '') + (c.livret ? '<button data-p="lv" aria-label="Voir mon livret">📄</button>' : '') + '<button data-p="close" aria-label="Fermer">✖</button></div>' +
       '<div class="main" data-p="tap"><div class="nx" id="pbefore"></div><div class="pnum" id="pnum"></div><div class="mv" id="pmv"></div><div class="cnt" id="pcnt"></div><div class="tempo" id="ptp"></div><div class="nx" id="pnote"></div><div class="phint" id="phint"></div></div>' +
-      '<div class="nx" id="pnx" style="text-align:center"></div><div class="bar"><i id="pbar"></i></div>' +
+      '<div class="nx" id="pnx" style="text-align:center"></div><div class="bar"><i id="pbar"></i></div><div class="ptime" id="ptime"></div>' +
       '<div class="ctl"><button data-p="prev" aria-label="Ligne précédente">⏮️</button><button class="main" data-p="pp" id="ppp">▶️</button><button data-p="next" aria-label="Ligne suivante">⏭️</button></div>' +
       (auto ? '<div class="adj"><button data-p="early">⏪ un peu avant</button><span id="pshift"></span><button data-p="late">un peu après ⏩</button></div>' : '') +
       '<p class="mute" style="text-align:center;margin:8px 0 0">' + how + '</p>' +
@@ -1608,7 +1608,12 @@
     const shiftTxt = () => { const e = $('#pshift', el); if (!e) return; const s = m.shift || 0; e.textContent = 'réglage ' + (s > 0 ? '+' : s < 0 ? '−' : '') + Math.abs(s).toFixed(2).replace('.', ',') + ' s'; };
     shiftTxt();
     const big = (l) => (l.kind === 'move' && l.name ? l.name : l.raw);
-    let lastKey = '';
+    let lastKey = '', lastTT = '';
+    const totalT = () => {
+      if (P.mode === 'music' && P.audio && isFinite(P.audio.duration) && P.audio.duration > 0) return P.audio.duration;
+      if (mu && mu.duration) return mu.duration;
+      const d = (m.end || 0) - (m.start || 0); return d > 0 ? d : 0;
+    };
     const tick = () => {
       try {
         const t = now();
@@ -1634,7 +1639,12 @@
           lastKey = key; const e = $('#pmv', el); e.textContent = mv; e.classList.toggle('long', mv.length > 22); e.classList.toggle('pz', pz);
           $('#pcnt', el).innerHTML = cnt; $('#ptp', el).textContent = tp; $('#pnx', el).textContent = nx; $('#pbefore', el).textContent = bef; $('#pnote', el).textContent = note ? '📝 ' + note : ''; $('#pnum', el).textContent = num; $('#phint', el).textContent = hint;
         }
-        $('#pbar', el).style.width = (Math.max(0, Math.min(1, 1 - frac)) * 100).toFixed(1) + '%';
+        { // barre : avance avec la musique, du début à la fin du morceau
+          const mt = musicT(); const D = totalT();
+          $('#pbar', el).style.width = (D ? Math.max(0, Math.min(1, mt / D)) * 100 : 0).toFixed(2) + '%';
+          const tt = fmt(mt) + (D ? ' / ' + fmt(D) : '');
+          if (tt !== lastTT) { lastTT = tt; $('#ptime', el).textContent = tt; }
+        }
         if (P.mode === 'music' && P.started && P.audio.ended && !P.paused) { P.paused = true; $('#ppp', el).textContent = '▶️'; }
       } catch (e) { console.warn('jeu', e); }
       P.raf = requestAnimationFrame(tick);
