@@ -1073,7 +1073,7 @@
         (lv ? lvSet(m) : '') +
         '<p class="mute">' + fmt(m.start) + ' → ' + fmt(m.end) + (m.musicId && musics[m.musicId] ? ' · 🎵 ' + esc(musics[m.musicId].name) + (m.alignMode === 'sure' ? ' ✅' : m.alignMode === 'proposed' ? ' ❓' : '') : ' · pas de musique liée') + '</p>' +
         '<button class="btn small" data-act="write" data-id="' + m.id + '">✍️ Mon script</button>' +
-        '<div class="row tight">' + (C.textCount(C.textOf(m)) ? '<button class="btn sec small" data-act="play" data-id="' + m.id + '">🎮 Jouer</button><button class="btn sec small" data-act="read" data-id="' + m.id + '">📖 Lire</button>' : '') +
+        '<div class="row tight">' + (C.textCount(C.textOf(m)) || m.musicId ? '<button class="btn sec small" data-act="play" data-id="' + m.id + '">🎮 Jouer</button>' : '') + (C.textCount(C.textOf(m)) ? '<button class="btn sec small" data-act="read" data-id="' + m.id + '">📖 Lire</button>' : '') +
         '<button class="btn sec small" data-act="photo" data-id="' + m.id + '">📷 ' + (nPh(m.id) ? 'Photos' : 'Photo') + '</button>' +
         '<button class="btn sec small" data-act="link" data-id="' + m.id + '">🎵 ' + (m.musicId ? 'Musique' : 'Lier une musique') + '</button>' +
         (lv ? '<button class="btn sec small" data-act="lv" data-id="' + m.id + '">📄 Livret</button>' : '') + '</div></div>').join('') +
@@ -1567,14 +1567,17 @@
   async function scrPlay(cid, mid, opt) {
     const c = await dget('courses', cid); if (!c) return scrHome();
     const m = c.morceaux.find((x) => x.id === mid); if (!m) return scrCourse(cid);
-    if (!tcount(m)) { toast('Écris d\'abord ton script (✍️ Mon script).', 3500); return scrWrite(cid, mid); }
-    if (!m.textOk) { toast('Valide d\'abord ton script (✅ Valider mon script).', 3500); return scrWrite(cid, mid); }
-    const ms = c.morceaux.filter((x) => !x.lost && x.textOk && tcount(x));
+    const musicOnly = !(m.textOk && tcount(m)) && !!m.musicId; // pas encore de script : on écoute juste la musique
+    if (!musicOnly && !tcount(m)) { toast('Écris d\'abord ton script (✍️ Mon script).', 3500); return scrWrite(cid, mid); }
+    if (!musicOnly && !m.textOk) { toast('Valide d\'abord ton script (✅ Valider mon script).', 3500); return scrWrite(cid, mid); }
+    const ms = c.morceaux.filter((x) => !x.lost && ((x.textOk && tcount(x)) || x.musicId));
     const nextM = ms[ms.indexOf(m) + 1];
     const prevM = ms.indexOf(m) > 0 ? ms[ms.indexOf(m) - 1] : null;
     const mu = m.musicId ? await dget('musics', m.musicId) : null;
     const photos = await photosOf(mid);
-    const keep = opt && opt.choice && (opt.choice !== 'music' || mu) ? opt.choice : null;
+    let keep = opt && opt.choice && (opt.choice !== 'music' || mu) ? opt.choice : null;
+    if (musicOnly && mu) keep = 'music';
+    if (musicOnly && !mu) { toast('La musique de ce morceau est introuvable.', 3500); if (opt && opt.old) opt.old.remove(); return scrCourse(cid); }
     if (!keep && opt && opt.old) { opt.old.remove(); opt.old = null; } // pas de musique liée : on revient à la question habituelle
     const choice = keep || await ask(m.name, mu ? '🎵 ' + esc(mu.name) : 'Pas de musique liée à ce morceau.', (mu ? [{ label: '▶️ Jouer avec ma musique', value: 'music' }] : [{ label: '🎵 Lier une musique', value: 'link' }])
       .concat([{ label: '🎬 Top départ (la musique joue ailleurs)', value: 'top', cls: 'sec' }, { label: 'Retour', value: null, cls: 'ghost' }]));
@@ -1582,10 +1585,11 @@
     if (choice === 'link') return linkMusic(c, m.id);
     const bpm = (mu && mu.bpm) || m.bpm || null;
     let L = [];
-    try { L = C.textPlayLines(C.textOf(m), bpm); } catch (e) { console.warn(e); L = C.textOf(m).split('\n').filter((x) => x.trim()).map((x, i) => ({ n: i + 1, raw: x.trim(), kind: 'text', dur: null })); }
+    if (musicOnly) L = [{ n: 1, raw: '🎵 ' + mu.name, kind: 'music', dur: null }];
+    else try { L = C.textPlayLines(C.textOf(m), bpm); } catch (e) { console.warn(e); L = C.textOf(m).split('\n').filter((x) => x.trim()).map((x, i) => ({ n: i + 1, raw: x.trim(), kind: 'text', dur: null })); }
     if (!L.length) { toast('Écris d\'abord ton script (✍️ Mon script).', 3500); return scrWrite(cid, mid); }
     const auto = L.some((l) => l.dur);
-    const how = auto ? '🥁 Les lignes reconnues avancent au tempo (' + Math.round(bpm) + ' BPM). Les autres : touche l\'écran.' : '👆 Touche l\'écran pour passer à la ligne suivante.';
+    const how = musicOnly ? '🎧 Musique seule : pas encore de script pour ce morceau.' : auto ? '🥁 Les lignes reconnues avancent au tempo (' + Math.round(bpm) + ' BPM). Les autres : touche l\'écran.' : '👆 Touche l\'écran pour passer à la ligne suivante.';
     const P = { mode: choice, started: false, paused: true, ref: 0, pausedAt: 0, audio: null, raf: 0, idx: 0, lineStart: auto && mu ? (mu.attack || 0) : 0 };
     if (choice === 'music') { P.url = URL.createObjectURL(mu.blob); P.audio = new Audio(P.url); P.audio.preload = 'auto'; }
     S.wantAwake = true; keepAwake(true);
@@ -1627,7 +1631,8 @@
         }
         let mv = '', cnt = '', tp = '', nx = '', bef = '', note = '', num = '', hint = '', frac = 0, pz = false;
         const l = L[P.idx], n2 = L[P.idx + 1];
-        if (!P.started) { mv = P.mode === 'top' ? 'Touche ▶️ au début de la musique' : 'Touche ▶️ pour commencer'; nx = 'Première ligne : ' + L[0].raw; }
+        if (musicOnly) { mv = mu.name; hint = P.started ? '' : 'Touche ▶️ pour écouter'; nx = ''; }
+        else if (!P.started) { mv = P.mode === 'top' ? 'Touche ▶️ au début de la musique' : 'Touche ▶️ pour commencer'; nx = 'Première ligne : ' + L[0].raw; }
         else if (!l) { mv = 'Bravo ! 🎉'; nx = 'Morceau terminé'; frac = 1; }
         else {
           num = l.n + ' / ' + L[L.length - 1].n; mv = big(l); tp = l.tempoTxt || ''; pz = l.kind === 'pause';
@@ -1676,7 +1681,7 @@
       const a = b.dataset.p;
       if (a === 'close') { close(); saveCourse(c); scrCourse(cid); }
       else if (a === 'pp') { P.paused ? play() : pause(); }
-      else if (a === 'tap') go(1);
+      else if (a === 'tap') { if (musicOnly) { P.paused ? play() : pause(); } else go(1); }
       else if (a === 'early') adj(0.25); else if (a === 'late') adj(-0.25);
       else if (a === 'photo') viewPhotos(photos.slice(), 0, null);
       else if (a === 'lv') viewLivret(c, lvPageFor(c, m).page);
@@ -1696,7 +1701,7 @@
     }
     window.SM_PLAY = { P, el, musicT, setMusicT, lines: L, auto }; // pour les tests
     tick();
-    if (keep && opt.auto && choice === 'music') play();
+    if (choice === 'music' && (musicOnly || (keep && opt && opt.auto))) play();
   }
 
   /* ======================= Mes mouvements ======================= */
