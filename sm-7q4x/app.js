@@ -46,7 +46,27 @@
   const dput = (st, v, k) => tx(st, 'readwrite', (s) => (k === undefined ? s.put(v) : s.put(v, k)));
   const ddel = (st, k) => tx(st, 'readwrite', (s) => s.delete(k));
   const dall = (st) => tx(st, 'readonly', (s) => s.getAll());
-  const saveCourse = (c) => dput('courses', c);
+  /** Enregistre une édition. v11 : un texte de script non vide n'est jamais remplacé par du vide ni par une copie plus ancienne
+      (C.protectTexts), et l'ancien texte d'un morceau est gardé dans son historique (data 'txh:' + id du morceau) avant chaque changement. */
+  async function saveCourse(c) {
+    const d = await db();
+    return new Promise((res, rej) => {
+      const t = d.transaction(['courses', 'data'], 'readwrite'), s = t.objectStore('courses'), ds = t.objectStore('data');
+      const g = s.get(c.id);
+      g.onsuccess = () => {
+        const old = g.result;
+        const kept = C.protectTexts(c, old);
+        if (kept.length) console.warn('ScriptMove : texte protégé (copie plus ancienne ou vide)', kept);
+        const om = new Map(((old && old.morceaux) || []).map((m) => [m.id, m]));
+        for (const m of c.morceaux || []) {
+          const o = om.get(m.id), was = o && typeof o.text === 'string' ? o.text : '';
+          if (was.trim() && was !== m.text) { const k = 'txh:' + m.id, hg = ds.get(k); hg.onsuccess = () => ds.put(C.pushHistory(hg.result, was, o.textAt || Date.now()), k); }
+        }
+        s.put(c);
+      };
+      t.oncomplete = () => res(); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error || new Error('abandon'));
+    });
+  }
   async function loadKV() {
     S.vocab = (await dget('kv', 'vocab')) || {};
     S.prints = (await dget('kv', 'prints')) || [];
@@ -966,8 +986,10 @@
     if (typeof m.text !== 'string') { m.text = C.textOf(m); m.textOk = false; await saveCourse(c); }
     const url = await videoURL(c);
     const nPh = (await photosOf(m.id)).length;
+    const hist = ((await dget('data', 'txh:' + m.id)) || []).filter((h) => h && String(h.text || '').trim());
     let editing = !(m.textOk && m.text.trim());
     const L = C.textToLines(m.text); // les lignes de la liste (le texte n'est réécrit qu'au premier changement)
+    const fieldName = 'sm' + Math.random().toString(36).slice(2, 10); // nom au hasard : Chrome ne propose rien à remplir
     let mode = { k: 'add' }, menuAt = -1, delAsk = false, wmode = false, savedY = 0, tapT = 0, baseH = 0, kbSeen = false;
     const rel = (t) => fmt(Math.max(0, t - m.start));
     const v = () => $('#wv');
@@ -977,10 +999,17 @@
     let left = false, saveT = null;
     const nums = () => C.lineNumbers(L);
     const lineName = (i) => { const n = nums()[i]; return n ? 'la ligne ' + n : 'le séparateur'; };
-    /** Enregistre le script (tout de suite) */
-    const save = async () => {
+    /** Le texte du script suit la liste. Rien n'est écrit si rien n'a changé ; un script vide n'arrive que si Hamid a supprimé toutes les lignes. */
+    const setText = () => {
       const t = C.linesToScript(L);
-      if (t !== m.text) { m.text = t; m.textOk = false; }
+      if (t === m.text) return false;
+      m.text = t; m.textOk = false; m.textAt = Date.now();
+      if (!t.trim()) m.textCleared = true; else delete m.textCleared;
+      return true;
+    };
+    /** Enregistre le script (tout de suite) */
+    const save = async (force) => {
+      if (!setText() && !force) return;
       await saveCourse(c);
       const s = $('#wsaved'); if (s) { s.textContent = 'Enregistré ✓'; s.classList.add('on'); }
     };
@@ -992,7 +1021,7 @@
       left = true; clearTimeout(saveT); S.flushWrite = null;
       exitType(true); detach();
       const x = v(); if (x) { x.pause(); if (x.readyState >= 1) m.lastT = Math.round(x.currentTime * 10) / 10; }
-      const t = C.linesToScript(L); if (t !== m.text) { m.text = t; m.textOk = false; }
+      setText();
       await saveCourse(c);
     };
     const photoBtn = '<button class="btn sec small wbtn" data-act="photo">📷 ' + (nPh ? 'Photos (' + nPh + ')' : 'Photo de ma feuille') + '</button>';
@@ -1004,7 +1033,8 @@
         '<button data-act="lm" data-op="up"' + (i ? '' : ' disabled') + ' aria-label="Monter la ligne">⬆️</button><button data-act="lm" data-op="down"' + (i < L.length - 1 ? '' : ' disabled') + ' aria-label="Descendre la ligne">⬇️</button>' +
         '<button data-act="lm" data-op="del" class="w2">🗑️ Supprimer</button>') + '</div>';
     const listHtml = () => {
-      if (!L.length) return '<p class="mute wempty">Ton script s\'affiche ici, ligne par ligne.</p>';
+      if (!L.length) return '<p class="mute wempty">Ton script s\'affiche ici, ligne par ligne.</p>' +
+        (hist.length ? '<div class="wrec"><p class="small">Un texte écrit avant est gardé dans l\'appli (' + C.textCount(hist[0].text) + ' lignes, ' + esc(fmtDate(hist[0].at)) + ').</p><button class="btn sec small" data-act="wrestore">↩️ Remettre ce texte</button></div>' : '');
       const N = nums();
       return L.map((l, i) => {
         const cls = 'wl' + (C.isSep(l) ? ' wsep' : '') + (C.parseLine(l).kind === 'pause' ? ' wpz' : '') + (i === menuAt ? ' on' : '') + (mode.k === 'edit' && mode.i === i ? ' ed' : '') + (mode.k === 'ins' && mode.i === i ? ' ins' : '');
@@ -1041,31 +1071,26 @@
       let val = e.value.trim();
       if (!val) return;
       if (C.isSep(val)) val = C.SEP;
-      let show;
-      if (mode.k === 'edit' && mode.i < L.length) { L[mode.i] = val; show = mode.i; mode = { k: 'add' }; }
-      else if (mode.k === 'ins' && mode.i < L.length) { L.splice(mode.i, 0, val); show = mode.i; mode = { k: 'ins', i: mode.i + 1 }; }
-      else { L.push(val); show = L.length - 1; mode = { k: 'add' }; }
+      let show, what;
+      if (mode.k === 'edit' && mode.i < L.length) { L[mode.i] = val; show = mode.i; mode = { k: 'add' }; what = 'modifiée'; }
+      else if (mode.k === 'ins' && mode.i < L.length) { L.splice(mode.i, 0, val); show = mode.i; mode = { k: 'ins', i: mode.i + 1 }; what = 'insérée'; }
+      else { L.push(val); show = L.length - 1; mode = { k: 'add' }; what = 'ajoutée'; }
       e.value = ''; menuAt = -1; delAsk = false;
-      if (quiet) { const t = C.linesToScript(L); if (t !== m.text) { m.text = t; m.textOk = false; } return; }
+      if (quiet) { setText(); return; }
       const s = $('#wsaved'); if (s) { s.textContent = ''; s.classList.remove('on'); }
       paintList(show); paintMode(); save();
+      okMsg(C.isSep(val) ? '✓ Séparateur ' + (what === 'modifiée' ? 'modifié' : what === 'insérée' ? 'inséré' : 'ajouté') : '✓ Ligne ' + nums()[show] + ' ' + what);
     };
+    /** Petite confirmation discrète sous la case (1 seconde) */
+    let okT = null;
+    const okMsg = (t) => { const o = $('#wok'); if (!o) return; o.textContent = t; o.classList.add('on'); clearTimeout(okT); okT = setTimeout(() => { o.classList.remove('on'); }, 1000); };
     /* ---------- mode écriture (clavier ouvert) : tout est fixe en haut, seule la liste défile ---------- */
     const layout = () => {
       const p = pane(); if (!p) return;
       if (!wmode) return;
       const vv = window.visualViewport;
       const H = Math.round(vv ? vv.height : window.innerHeight), top = Math.round(vv ? vv.offsetTop : 0);
-      p.style.top = top + 'px'; p.style.height = H + 'px';
-      const x = v();
-      if (x) {
-        const box = lst(), atEnd = box && box.scrollTop + box.clientHeight >= box.scrollHeight - 2, y = box ? box.scrollTop : 0;
-        const others = p.offsetHeight - (box ? box.offsetHeight : 0) - x.offsetHeight;
-        const row = (box && box.querySelector('.wl:not(.wsep)')) ? box.querySelector('.wl:not(.wsep)').offsetHeight : 38;
-        const room = H - others - Math.round(row * 4.6) - 6; // au moins 4 à 5 lignes du script visibles
-        x.style.height = Math.max(56, Math.min(Math.round(H * 0.35), room, 260)) + 'px';
-        if (box) box.scrollTop = atEnd ? box.scrollHeight : y; // la liste garde sa place (la dernière ligne reste visible)
-      }
+      p.style.top = top + 'px'; p.style.height = H + 'px'; // v11 : la liste est cachée, la vidéo prend toute la place qui reste (CSS)
     };
     const onVV = () => {
       if (!document.contains(pane())) return detach();
@@ -1083,7 +1108,6 @@
       baseH = Math.max(window.visualViewport ? window.visualViewport.height : 0, window.innerHeight);
       document.body.classList.add('wtyping');
       attach(); paintMode(); layout();
-      showLine(mode.k === 'add' ? null : mode.i);
     };
     /** Sortie du mode écriture : l'écran normal revient (titre, photo, Valider) */
     function exitType(noScroll) {
@@ -1091,7 +1115,6 @@
       wmode = false; detach();
       document.body.classList.remove('wtyping');
       const p = pane(); if (p) { p.style.top = ''; p.style.height = ''; }
-      const x = v(); if (x) x.style.height = '';
       const e = inp(); if (e && document.activeElement === e) e.blur();
       paintMode();
       const bx = lst(); if (bx) bx.scrollTop = bx.scrollHeight; // la dernière ligne reste visible
@@ -1101,8 +1124,8 @@
 
     /* ---------- l'écran ---------- */
     const editHtml = () => editing
-      ? '<form id="wform" class="wrow" autocomplete="off" action="#"><input type="text" id="win" class="win" enterkeyhint="enter" autocomplete="off" autocorrect="off" spellcheck="false" autocapitalize="sentences" aria-label="Écris un mouvement" placeholder="Écris un mouvement puis ↵"><button type="submit" class="wadd" aria-label="Ajouter la ligne">➕</button><button type="button" data-act="wclose" class="wclose hide" aria-label="Fermer le clavier"><span>⌨️</span><span>Fermer</span></button></form>' +
-        '<div id="wmode" class="wmode hide"></div>'
+      ? '<form id="wform" class="wrow" autocomplete="off" action="#"><textarea id="win" name="' + fieldName + '" class="win" rows="1" wrap="off" enterkeyhint="enter" inputmode="text" autocomplete="off" autocorrect="off" spellcheck="false" autocapitalize="sentences" data-form-type="other" aria-label="Écris un mouvement" placeholder="Écris un mouvement puis ↵"></textarea><button type="submit" class="wadd" aria-label="Ajouter la ligne">➕</button><button type="button" data-act="wclose" class="wclose hide" aria-label="Fermer le clavier"><span>⌨️</span><span>Fermer</span></button></form>' +
+        '<div id="wmode" class="wmode hide"></div><div id="wok" class="wok" aria-live="polite"></div>'
       : '';
     const footHtml = () => editing
       ? '<div class="wbar">' + photoBtn + '<span id="wsaved" class="wsaved"></span></div>' +
@@ -1117,7 +1140,16 @@
       else b.innerHTML = '<div class="card sc" id="wsc">' + scriptHtml(m.text) + '</div>';
       const e = inp();
       if (e) {
+        // ↵ : la ligne est enregistrée (case d'une ligne : un retour à la ligne n'est jamais écrit dans la case)
         e.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.keyCode === 13) { ev.preventDefault(); setTimeout(() => commit(), 0); } });
+        e.addEventListener('beforeinput', (ev) => { if (ev.inputType === 'insertLineBreak' || ev.inputType === 'insertParagraph') { ev.preventDefault(); setTimeout(() => commit(), 0); } });
+        // filet de sécurité (claviers qui écrivent quand même le retour à la ligne, ou texte collé sur plusieurs lignes) : une ligne par entrée
+        e.addEventListener('input', () => {
+          if (!/[\r\n]/.test(e.value)) return;
+          const parts = e.value.split(/\r?\n|\r/); const rest = parts.pop();
+          for (const p of parts) { e.value = p; commit(); }
+          e.value = rest;
+        });
         $('#wform').addEventListener('submit', (ev) => { ev.preventDefault(); commit(); });
         e.addEventListener('focus', enterType);
         e.addEventListener('pointerdown', () => { if (!wmode) savedY = window.scrollY; });
@@ -1167,9 +1199,10 @@
       },
       wcancel: () => { const was = mode.k; mode = { k: 'add' }; if (was === 'edit') { const e = inp(); if (e) e.value = ''; } paintList(); paintMode(); },
       wclose: () => exitType(),
+      wrestore: () => { if (!hist.length) return; L.splice(0, L.length, ...C.textToLines(hist[0].text)); paintList(); save(); toast('Texte remis ✅'); },
       ok: async () => {
         pending(); exitType(true);
-        await save();
+        await save(true);
         if (!m.text.trim()) { toast('Écris d\'abord ton script.'); return; }
         m.textOk = true; await saveCourse(c);
         editing = false; menuAt = -1; mode = { k: 'add' }; paint(); window.scrollTo(0, 0);

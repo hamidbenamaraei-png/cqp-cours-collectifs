@@ -190,7 +190,13 @@ select{max-width:100%;text-overflow:ellipsis}
 .pvbar span{color:var(--soft);min-width:56px;text-align:center}
 /* ✍️ mon script ligne par ligne (v10) */
 .wrow{display:flex;gap:8px;align-items:stretch;margin:8px 0 0}
-.wrow .win{flex:1;min-width:0;padding:10px 12px;font-size:18px;border-radius:12px;min-height:48px}
+.wrow .win{flex:1;min-width:0;display:block;height:50px;min-height:50px;padding:12px;border-radius:12px;border:2px solid var(--line);background:#11162c;color:#fff;font:inherit;font-size:18px;line-height:22px;resize:none;overflow:hidden;white-space:pre;margin:0}
+.wrow .win:focus{outline:none;border-color:var(--or)}
+.wrow .win::placeholder{color:var(--mute)}
+.wok{font-size:14px;font-weight:800;color:#8ff0bd;height:0;overflow:hidden;opacity:0;transition:opacity .2s;white-space:nowrap}
+.wok.on{opacity:1;height:20px;margin-top:4px}
+body.wtyping .wok{height:20px;margin-top:4px}
+.wrec{margin:4px 12px 10px}.wrec .btn{margin:6px 0 0}
 .wrow .wclose{flex:0 0 58px;width:58px;border-radius:12px;border:2px solid var(--line);background:var(--card2);color:#fff;font:inherit;font-size:13px;font-weight:700;line-height:1.1;cursor:pointer;padding:2px;display:flex;flex-direction:column;align-items:center;justify-content:center}
 .wrow .wclose span{display:block;white-space:nowrap}
 body.wtyping .wrow .wadd{width:46px}
@@ -221,10 +227,11 @@ body.wtyping .wrow .win{padding:10px 8px}
 body.wtyping{overflow:hidden}
 body.wtyping .top,body.wtyping #wfoot{display:none}
 body.wtyping .wpane{position:fixed;left:0;right:0;top:0;height:100vh;margin:0 auto;max-width:640px;display:flex;flex-direction:column;z-index:30;background:var(--bg);padding:0 16px 4px;overflow:hidden}
-body.wtyping .wstick{position:static;flex:0 0 auto;margin:0 -16px 6px;padding-top:6px}
-body.wtyping .wstick video{max-height:none}
-body.wtyping #wbody{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
-body.wtyping .wlist{flex:1 1 auto;min-height:0;max-height:none;margin:0}
+/* v11 : clavier ouvert = seulement la vidéo (grande), ses boutons, la barre de temps et la case, collée au-dessus du clavier */
+body.wtyping .wstick{position:static;flex:1 1 auto;min-height:0;display:flex;flex-direction:column;margin:0 -16px;padding:6px 16px 4px;border-bottom:0}
+body.wtyping .wstick video{flex:1 1 0;height:0;min-height:60px;width:100%;max-height:none;object-fit:contain}
+body.wtyping .wstick>.card{flex:1 1 auto}
+body.wtyping #wbody{display:none}
 .hide{display:none!important}
 #print{display:none}
 @media print{
@@ -254,8 +261,8 @@ body.wtyping .wlist{flex:1 1 auto;min-height:0;max-height:none;margin:0}
 <body>
 <div id="app"><p class="soft" style="margin-top:40px;text-align:center">Chargement…</p></div>
 <div id="print"></div>
-<script src="core.js?v=10"></script>
-<script src="mp4.js?v=10"></script>
-<script src="app.js?v=10"></script>
+<script src="core.js?v=11"></script>
+<script src="mp4.js?v=11"></script>
+<script src="app.js?v=11"></script>
 </body>
 </html>

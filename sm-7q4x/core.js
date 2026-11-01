@@ -935,6 +935,31 @@
   function linesToScript(lines) {
     return textToLines((lines || []).map((l) => (isSep(l) ? '' : String(l).trim())).join('\n')).map((l) => (l === SEP ? '' : l)).join('\n');
   }
+  /** Protection des scripts (v11) : avant d'enregistrer une édition (nc), on la compare à ce qui est déjà dans le téléphone (old).
+      Un texte non vide n'est jamais remplacé par du vide (sauf si Hamid a lui-même tout effacé : textCleared),
+      ni par une copie plus ancienne (textAt plus petit), par exemple un autre onglet resté ouvert sur une ancienne version.
+      Modifie nc sur place. Renvoie les id des morceaux dont le texte a été protégé. */
+  function protectTexts(nc, old) {
+    const kept = [];
+    if (!nc || !old || !Array.isArray(nc.morceaux) || !Array.isArray(old.morceaux)) return kept;
+    const om = new Map(old.morceaux.map((m) => [m.id, m]));
+    for (const m of nc.morceaux) {
+      const o = om.get(m.id);
+      if (!o || typeof o.text !== 'string' || !o.text.trim()) continue;
+      const nt = typeof m.text === 'string' ? m.text : '';
+      if (nt === o.text) continue;
+      const older = (o.textAt || 0) > (m.textAt || 0);
+      const wiped = !nt.trim() && !(m.textCleared && (m.textAt || 0) >= (o.textAt || 0));
+      if (older || wiped) { m.text = o.text; m.textOk = !!o.textOk; m.textAt = o.textAt || 0; delete m.textCleared; kept.push(m.id); }
+    }
+    return kept;
+  }
+  /** Historique des textes d'un morceau : le plus récent en premier, sans doublon, au plus n */
+  function pushHistory(hist, text, at, n) {
+    const h = (Array.isArray(hist) ? hist : []).filter((x) => x && x.text !== text);
+    if (String(text || '').trim()) h.unshift({ at: at || Date.now(), text });
+    return h.slice(0, n || 15);
+  }
   /** Numéro affiché de chaque ligne (les séparateurs n'ont pas de numéro : 0) — même numérotation que la mise en page propre */
   function lineNumbers(lines) { let n = 0; return (lines || []).map((l) => (isSep(l) ? 0 : ++n)); }
 
@@ -1028,6 +1053,6 @@
     TEMPOS, beatsPerRep, insertLine, sortLines, moveLine, dupLine, pasteBlock, lineDur, buildTimeline,
     editionNumber, sortEditions, BASE_FOLDERS, migrateCourse, topMoves, lineText, norm,
     linesToText, textOf, textCount, parseLine, parseScript, textPlayLines,
-    SEP, isSep, textToLines, linesToScript, lineNumbers
+    SEP, isSep, textToLines, linesToScript, lineNumbers, protectTexts, pushHistory
   };
 });

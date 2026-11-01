@@ -381,5 +381,36 @@ section('19. Script ligne par ligne (v10) : texte ↔ lignes');
   ok(JSON.stringify(C.textToLines('a\r\nb')) === '["a","b"]', 'retours à la ligne Windows');
 }
 
+section('20. Protection des scripts (v11) : perte du texte de la v9 reproduite puis empêchée');
+{
+  const V9 = 'Dl 2.2 x4\nTirage manton 3.1 x4\nPause\nDt 22 x 2\nDt 1.1 x 4';
+  const clone = (x) => JSON.parse(JSON.stringify(x));
+  // dans le téléphone : le texte écrit en v9 (sans date)
+  const db = { id: 'c', morceaux: [{ id: 'm1', name: '01 echauffement Strong Ones', text: V9, textOk: false }, { id: 'm2', name: '02', text: '' }] };
+  // un autre écran / onglet resté ouvert AVANT l'écriture garde une copie où le texte est vide, et l'enregistre en partant (v9/v10)
+  const stale = clone(db); stale.morceaux[0].text = '';
+  const sansProtection = clone(stale); // ce que faisait la v10 : la copie remplaçait tout
+  ok(sansProtection.morceaux[0].text === '', 'reproduit : sans protection, la copie ancienne efface le texte de la v9');
+  const kept = C.protectTexts(stale, db);
+  ok(stale.morceaux[0].text === V9 && kept.join() === 'm1', 'v11 : le texte non vide est gardé (vide jamais écrit par-dessus)');
+  // texte effacé exprès par Hamid : accepté
+  const cleared = clone(db); cleared.morceaux[0].text = ''; cleared.morceaux[0].textCleared = true; cleared.morceaux[0].textAt = 5;
+  ok(C.protectTexts(cleared, db).length === 0 && cleared.morceaux[0].text === '', 'effacé exprès par Hamid (toutes les lignes supprimées) : accepté');
+  // copie plus ancienne qu'une modification récente
+  const db2 = clone(db); db2.morceaux[0].text = V9 + '\nSquat × 8'; db2.morceaux[0].textAt = 200;
+  const old2 = clone(db); old2.morceaux[0].textAt = 100;
+  C.protectTexts(old2, db2);
+  ok(old2.morceaux[0].text === V9 + '\nSquat × 8', 'une copie plus ancienne ne remplace pas une modification plus récente');
+  const newer = clone(db2); newer.morceaux[0].text = 'Nouveau'; newer.morceaux[0].textAt = 300;
+  ok(C.protectTexts(newer, db2).length === 0 && newer.morceaux[0].text === 'Nouveau', 'une vraie modification plus récente est bien enregistrée');
+  const und = clone(db); delete und.morceaux[0].text;
+  C.protectTexts(und, db); ok(und.morceaux[0].text === V9, 'champ texte absent dans la copie : texte gardé');
+  ok(C.protectTexts({ id: 'c', morceaux: [] }, db).length === 0 && C.protectTexts(db, null).length === 0, 'cas vides sans erreur');
+  // la conversion de la v10 ne vide jamais un texte non vide
+  ok(C.linesToScript(C.textToLines(V9)) === V9, 'texte v9 → lignes → texte : identique');
+  let h = C.pushHistory([], V9, 1); h = C.pushHistory(h, 'B', 2); h = C.pushHistory(h, V9, 3); h = C.pushHistory(h, '', 4);
+  ok(h.length === 2 && h[0].text === V9 && h[0].at === 3 && h[1].text === 'B', 'historique des textes : récent d\'abord, sans doublon ni vide');
+}
+
 console.log(`\n${passes} réussis, ${fails} échoués`);
 process.exit(fails ? 1 : 0);
