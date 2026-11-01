@@ -77,6 +77,7 @@
   function render(html, actions) {
     const key = ((html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/) || [])[1] || '').replace(/<[^>]+>/g, '').trim();
     const y = window.scrollY, same = key && key === lastScreen;
+    document.documentElement.style.scrollPaddingTop = '';
     app.innerHTML = html; acts = actions || {}; lastScreen = key;
     if (same) { window.scrollTo(0, y); requestAnimationFrame(() => window.scrollTo(0, y)); } else window.scrollTo(0, 0);
   }
@@ -134,7 +135,11 @@
       if (!on && wake) { await wake.release(); wake = null; }
     } catch (e) { /* pas grave */ }
   }
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.wantAwake) keepAwake(true); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && S.wantAwake) keepAwake(true);
+    if (document.visibilityState === 'hidden' && S.flushWrite) S.flushWrite(); // texte de « Mon script » enregistré tout de suite
+  });
+  window.addEventListener('pagehide', () => { if (S.flushWrite) S.flushWrite(); });
   const folderOf = (id) => S.folders.find((f) => f.id === id) || null;
   const styleName = (st) => { const f = S.folders.find((x) => x.style === st); return f ? f.name : (STYLE_INFO[st] || { label: st }).label; };
   function movesFor(style) {
@@ -142,15 +147,6 @@
     const base = (C.MOVES[style] || []).filter((n) => n !== 'Pause').map((n) => v[n] || n);
     const learned = S.prints.filter((p) => p.style === style).map((p) => p.name);
     return Array.from(new Set(base.concat(learned, S.customMoves && S.customMoves[style] || [])));
-  }
-  /** Boutons de « ✍️ Mon script » : favoris du morceau (n°), sinon boutons rapides du style, sinon ses plus utilisés */
-  async function quickMoves(style, num) {
-    const top = C.topMoves(await dall('courses'), style).map((x) => x.name);
-    const v = S.vocab[style] || {};
-    const quick = C.QUICK[style] ? C.QUICK[style].map((n) => v[n] || n) : null;
-    const all = quick ? Array.from(new Set(movesFor(style).concat(top))) : Array.from(new Set(top.concat(movesFor(style))));
-    const favs = num != null ? C.getFavs(S.favs, style, num) : [];
-    return Object.assign({ top: top.slice(0, 8), all }, C.moveButtons({ all, quick, favs, first: Math.max(12, Math.min(15, top.length)) }));
   }
 
   /* ======================= Code d'accès ======================= */
@@ -437,8 +433,8 @@
         if (C.norm(c.name).includes(t)) out.push('<button class="seg" data-act="res" data-cid="' + c.id + '"><span class="n">📁</span><span class="t"><b>' + esc(c.name) + '</b><span class="mute">' + esc(fo ? fo.name : '') + ' · ' + c.morceaux.filter((m) => !m.lost).length + ' morceaux</span></span></button>');
         for (const m of c.morceaux.filter((x) => !x.lost)) {
           const hitName = C.norm(m.name).includes(t);
-          const hits = (m.lines || []).filter((l) => C.norm(l.name).includes(t) || C.norm(l.note).includes(t));
-          if (hitName || hits.length) out.push('<button class="seg" data-act="res" data-cid="' + c.id + '" data-mid="' + m.id + '"><span class="n">🎵</span><span class="t"><b>' + esc(m.name) + '</b><span class="mute">' + esc(c.name) + (hits.length ? ' · ' + esc(Array.from(new Set(hits.map((l) => l.name))).slice(0, 3).join(', ')) + (hits.length > 1 ? ' (' + hits.length + ' fois)' : '') : '') + '</span></span></button>');
+          const hits = C.textOf(m).split('\n').map((x) => x.trim()).filter((x) => x && C.norm(x).includes(t));
+          if (hitName || hits.length) out.push('<button class="seg" data-act="res" data-cid="' + c.id + '" data-mid="' + m.id + '"><span class="n">🎵</span><span class="t"><b>' + esc(m.name) + '</b><span class="mute">' + esc(c.name) + (hits.length ? ' · ' + esc(Array.from(new Set(hits.map((x) => (x.length > 28 ? x.slice(0, 27) + '…' : x)))).slice(0, 3).join(', ')) + (hits.length > 1 ? ' (' + hits.length + ' fois)' : '') : '') + '</span></span></button>');
         }
       }
       $('#hres').innerHTML = out.length ? '<p class="mute" style="margin-top:12px">' + out.length + ' résultat(s)</p>' + out.slice(0, 60).join('') : '<p class="mute" style="margin-top:12px">Rien trouvé.</p>';
@@ -446,7 +442,7 @@
   }
 
   /* ======================= Un dossier : ses éditions ======================= */
-  const scriptState = (m, nPh) => ((m.lines || []).length ? '<span class="badge ok">✍️ ' + m.lines.length + ' ligne' + (m.lines.length > 1 ? 's' : '') + '</span>' : '<span class="badge">✍️ à écrire</span>') + (nPh ? ' <span class="badge">📷 ' + (nPh > 1 ? nPh + ' photos' : 'photo') + '</span>' : '');
+  const scriptState = (m, nPh) => { const n = C.textCount(C.textOf(m)); return (n ? '<span class="badge ok">✍️ ' + n + ' ligne' + (n > 1 ? 's' : '') + (m.textOk ? ' ✅' : '') + '</span>' : '<span class="badge">✍️ à écrire</span>') + (nPh ? ' <span class="badge" aria-label="' + nPh + ' photo(s)">📷' + (nPh > 1 ? ' ' + nPh : '') + '</span>' : ''); };
   async function scrFolder(fid) {
     S.wantAwake = false; keepAwake(false);
     const f = folderOf(fid); if (!f) return scrHome();
@@ -454,7 +450,7 @@
     render('<div class="top"><button class="back" data-act="back">‹</button><h1>📁 ' + esc(f.name) + '</h1><button class="back" data-act="ren" aria-label="Renommer le dossier">✏️</button></div>' +
       '<button class="btn" data-act="new">➕ Nouvelle édition</button>' +
       (list.length ? list.map((c) => {
-        const ms = c.morceaux.filter((m) => !m.lost); const w = ms.filter((m) => (m.lines || []).length).length;
+        const ms = c.morceaux.filter((m) => !m.lost); const w = ms.filter((m) => C.textCount(C.textOf(m))).length;
         return '<button class="seg" data-act="open" data-id="' + c.id + '"><span class="t"><b>' + esc(c.name) + '</b><span class="mute">' + fmtDate(c.created) + ' · ' + ms.length + ' morceau' + (ms.length > 1 ? 'x' : '') + ' · ✍️ ' + w + ' / ' + ms.length + ' écrit' + (w > 1 ? 's' : '') + (c.video && c.video.kept ? ' · 🎬' : '') + '</span></span><span style="font-size:24px">›</span></button>';
       }).join('') : '<div class="card"><p class="soft">Aucune édition dans ce dossier.</p><p class="mute">Touche « ➕ Nouvelle édition » : choisis la vidéo du cours et tes musiques.</p></div>') +
       (!f.builtin && !list.length ? '<button class="btn ghost small" data-act="del">🗑️ Supprimer ce dossier (vide)</button>' : ''),
@@ -691,7 +687,7 @@
     scrCut(c.id);
   }
   function newMorceau(name, start, end, musicId, offset, conf, lost) {
-    return { id: uid(), name, start: Math.round(start * 10) / 10, end: Math.round(end * 10) / 10, musicId: musicId || null, offset: offset == null ? null : offset, alignConf: conf || 0, shift: 0, bpm: null, lines: [], lost: !!lost, sync: null, alignMode: null };
+    return { id: uid(), name, start: Math.round(start * 10) / 10, end: Math.round(end * 10) / 10, musicId: musicId || null, offset: offset == null ? null : offset, alignConf: conf || 0, shift: 0, bpm: null, lines: [], text: '', textOk: false, lost: !!lost, sync: null, alignMode: null };
   }
   /** Musiques du cours (dans l'ordre où elles ont été ajoutées) */
   function courseMusicIds(c) {
@@ -701,7 +697,7 @@
   }
   /** Ancien découpage (musiques placées par l'ancienne méthode) ? */
   const oldCut = (c) => !c.cutVersion && c.morceaux.some((m) => m.musicId);
-  const hasContent = (m, ph) => (m.lines || []).length > 0 || (ph && ph.some((p) => p.mid === m.id));
+  const hasContent = (m, ph) => (m.lines || []).length > 0 || C.textCount(C.textOf(m)) > 0 || (ph && ph.some((p) => p.mid === m.id));
 
   /** Refaire le découpage d'une édition, sans tout recommencer (vidéo, musiques, nom et scripts gardés) */
   async function redoCut(c) {
@@ -733,7 +729,7 @@
       for (const o of old) { if (used.has(o.id)) continue; const ov = Math.min(o.end, n.end) - Math.max(o.start, n.start); if (ov > bo) { bo = ov; best = o; } }
       if (!best || bo < 0.5 * Math.min(best.end - best.start, n.end - n.start)) return n;
       used.add(best.id);
-      return Object.assign({}, n, { id: best.id, lines: best.lines || [], shift: best.shift || 0, segments: best.segments, name: best.renamed ? best.name : n.name, renamed: best.renamed });
+      return Object.assign({}, n, { id: best.id, lines: best.lines || [], text: best.text, textOk: best.textOk, lastT: best.lastT, shift: best.shift || 0, segments: best.segments, name: best.renamed ? best.name : n.name, renamed: best.renamed });
     });
     for (const o of old) if (!used.has(o.id)) {
       if (hasContent(o, ph)) ms.push(o); // jamais perdu : remis tel quel
@@ -776,7 +772,7 @@
         (hasVid ? '<div class="vidbox"><video id="cutvid" src="' + vurl + '" controls playsinline preload="metadata"></video></div><p class="mute">Regarde la vidéo pour vérifier. « ✂️ Couper ici » coupe à l\'endroit où est la vidéo.</p><button class="btn sec" data-act="cut">✂️ Couper ici (' + '<span id="vt">0:00</span>)</button>' : '<div class="card j small">Pour voir la vidéo ici, choisis-la à nouveau (la même) : elle sera gardée dans l\'appli. <button class="btn sec small" data-act="revid" style="margin-top:8px">🎬 Choisir la vidéo</button></div>') +
         ms.map((m, i) => {
           return '<div class="card mrc ' + (m.alignMode === 'proposed' && !m.proposedSure ? 'j' : 'o') + '"><div class="head"><h2>Morceau ' + (i + 1) + '</h2><button class="btn sec small" style="width:auto;flex:0 0 auto;margin:0" data-act="ren" data-id="' + m.id + '">✏️ Nom</button></div>' +
-            '<p style="margin:0 0 6px"><b>' + esc(m.name) + '</b> <span class="mute">(' + fmtDur(m.end - m.start) + ')</span>' + ((m.lines || []).length ? ' <span class="badge ok">✍️ ' + m.lines.length + '</span>' : '') + '</p>' +
+            '<p style="margin:0 0 6px"><b>' + esc(m.name) + '</b> <span class="mute">(' + fmtDur(m.end - m.start) + ')</span>' + (C.textCount(C.textOf(m)) ? ' <span class="badge ok">✍️ ' + C.textCount(C.textOf(m)) + '</span>' : '') + '</p>' +
             musicLine(m) +
             '<p class="tline"><span class="mute">Début</span> <b>' + fmt(m.start) + '</b></p><div class="times"><button data-act="mv" data-id="' + m.id + '" data-w="start" data-d="-5">−5</button><button data-act="mv" data-id="' + m.id + '" data-w="start" data-d="-1">−1</button><button data-act="mv" data-id="' + m.id + '" data-w="start" data-d="1">+1</button><button data-act="mv" data-id="' + m.id + '" data-w="start" data-d="5">+5</button>' + (hasVid ? '<button data-act="see" data-t="' + m.start + '">▶️</button>' : '') + '</div>' +
             '<p class="tline"><span class="mute">Fin</span> <b>' + fmt(m.end) + '</b></p><div class="times"><button data-act="mv" data-id="' + m.id + '" data-w="end" data-d="-5">−5</button><button data-act="mv" data-id="' + m.id + '" data-w="end" data-d="-1">−1</button><button data-act="mv" data-id="' + m.id + '" data-w="end" data-d="1">+1</button><button data-act="mv" data-id="' + m.id + '" data-w="end" data-d="5">+5</button>' + (hasVid ? '<button data-act="see" data-t="' + Math.max(0, m.end - 5) + '">▶️</button>' : '') + '</div>' +
@@ -801,20 +797,22 @@
           const m = c.morceaux.find((x) => !x.lost && t > x.start + 3 && t < x.end - 3);
           if (!m) { toast('Mets la vidéo au milieu d\'un morceau, puis touche « Couper ici ».', 3500); return; }
           const n = newMorceau('Morceau', t, m.end); n.name = m.name + ' (suite)'; m.end = t;
-          // les lignes du script après la coupure vont dans le nouveau morceau
-          n.lines = (m.lines || []).filter((l) => l.t != null && l.t >= t); m.lines = (m.lines || []).filter((l) => !(l.t != null && l.t >= t));
+          // le script (texte libre, sans heures) reste dans le premier morceau ; le nouveau est à écrire
+          n.lines = []; n.text = ''; n.textOk = false;
           c.morceaux.splice(c.morceaux.indexOf(m) + 1, 0, n);
           await saveCourse(c); draw(); toast('Coupé à ' + fmt(t));
         },
         fuse: async (b) => {
           const ms2 = c.morceaux.filter((x) => !x.lost); const i = ms2.findIndex((x) => x.id === b.dataset.id); const A = ms2[i], B = ms2[i + 1]; if (!B) return;
+          const ta = C.textOf(A), tb = C.textOf(B);
+          A.text = [ta, tb].filter((x) => x.trim()).join('\n\n'); A.textOk = !!A.text.trim() && (!ta.trim() || !!A.textOk) && (!tb.trim() || !!B.textOk);
           A.end = B.end; A.lines = C.sortLines((A.lines || []).concat(B.lines || [])); if (!A.musicId && B.musicId) { A.musicId = B.musicId; A.offset = B.offset; A.sync = B.sync; A.alignMode = B.alignMode; }
           for (const p of await photosOf(B.id)) { p.mid = A.id; await dput('photos', p); }
           c.morceaux.splice(c.morceaux.indexOf(B), 1); await saveCourse(c); draw();
         },
         del: async (b) => {
           const m = c.morceaux.find((x) => x.id === b.dataset.id); const ph = await photosOf(m.id);
-          const r = await ask('Retirer ce morceau ?', (m.lines || []).length || ph.length ? '<b>Son script (' + (m.lines || []).length + ' lignes) et ses photos seront effacés.</b> La vidéo n\'est pas touchée.' : 'La vidéo n\'est pas touchée.', [{ label: 'Oui, retirer', value: 1, cls: 'red' }, { label: 'Non', value: 0, cls: 'sec' }]);
+          const r = await ask('Retirer ce morceau ?', C.textCount(C.textOf(m)) || ph.length ? '<b>Son script (' + C.textCount(C.textOf(m)) + ' lignes) et ses photos seront effacés.</b> La vidéo n\'est pas touchée.' : 'La vidéo n\'est pas touchée.', [{ label: 'Oui, retirer', value: 1, cls: 'red' }, { label: 'Non', value: 0, cls: 'sec' }]);
           if (!r) return; for (const p of ph) await ddel('photos', p.id);
           c.morceaux = c.morceaux.filter((x) => x.id !== b.dataset.id); await saveCourse(c); draw();
         },
@@ -854,11 +852,11 @@
       (oldCut(c) ? '<div class="card r"><h3>⚠️ Découpage à refaire</h3><p class="soft small">Cette édition a été découpée avec l\'ancienne méthode : des musiques ont pu être placées n\'importe où. La nouvelle méthode ne place une musique que si elle est sûre. Ta vidéo, tes musiques, le nom et tes scripts sont gardés.</p><button class="btn" data-act="redo">🔁 Refaire le découpage</button></div>' : '') +
       '<div class="card ' + (kept ? 'g' : 'j') + ' small">' + (kept ? '🎬 <b>Vidéo gardée dans l\'appli</b> (' + fmtSize(kept.size) + ')<button class="btn ghost small" style="margin:8px 0 0" data-act="rmvid">🗑️ Retirer la vidéo (garder scripts et musiques)</button>' : '🎬 <b>La vidéo n\'est pas gardée</b> dans l\'appli.' + (c.video ? ' <span class="mute">(' + esc(c.video.name) + ', ' + fmtSize(c.video.size) + ')</span>' : '') + '<button class="btn sec small" style="margin:8px 0 0" data-act="addvid">🎬 Remettre la vidéo</button>') + '</div>' +
       '<div class="row"><button class="btn sec" data-act="script">📖 Script de l\'édition</button><button class="btn sec" data-act="pdf">🖨️ PDF</button></div>' +
-      ms.map((m, i) => '<div class="card mrc ' + ((m.lines || []).length ? 'g' : 'o') + '"><div class="head"><button class="btn sec small" style="width:auto;flex:0 0 auto;margin:0 8px 0 0;padding:6px 10px" data-act="renm" data-id="' + m.id + '" aria-label="Renommer ce morceau">✏️</button><h2 style="flex:1 1 auto;min-width:0">' + (i + 1) + '. ' + esc(m.name) + '</h2></div>' +
+      ms.map((m, i) => '<div class="card mrc ' + (C.textCount(C.textOf(m)) ? 'g' : 'o') + '"><div class="head"><button class="btn sec small" style="width:auto;flex:0 0 auto;margin:0 8px 0 0;padding:6px 10px" data-act="renm" data-id="' + m.id + '" aria-label="Renommer ce morceau">✏️</button><h2 style="flex:1 1 auto;min-width:0">' + (i + 1) + '. ' + esc(m.name) + '</h2></div>' +
         '<p style="margin:0 0 6px">' + scriptState(m, nPh(m.id)) + '</p>' +
         '<p class="mute">' + fmt(m.start) + ' → ' + fmt(m.end) + (m.musicId && musics[m.musicId] ? ' · 🎵 ' + esc(musics[m.musicId].name) + (m.alignMode === 'sure' ? ' ✅' : m.alignMode === 'proposed' ? ' ❓' : '') : ' · pas de musique liée') + '</p>' +
         '<button class="btn small" data-act="write" data-id="' + m.id + '">✍️ Mon script</button>' +
-        '<div class="row tight">' + ((m.lines || []).length ? '<button class="btn sec small" data-act="play" data-id="' + m.id + '">🎮 Jouer</button><button class="btn sec small" data-act="read" data-id="' + m.id + '">📖 Lire</button>' : '') +
+        '<div class="row tight">' + (C.textCount(C.textOf(m)) ? '<button class="btn sec small" data-act="play" data-id="' + m.id + '">🎮 Jouer</button><button class="btn sec small" data-act="read" data-id="' + m.id + '">📖 Lire</button>' : '') +
         '<button class="btn sec small" data-act="photo" data-id="' + m.id + '">📷 ' + (nPh(m.id) ? 'Photos' : 'Photo') + '</button>' +
         '<button class="btn sec small" data-act="link" data-id="' + m.id + '">🎵 ' + (m.musicId ? 'Musique' : 'Lier une musique') + '</button></div></div>').join('') +
       '<div class="row"><button class="btn sec" data-act="cut">✂️ Modifier le découpage</button><button class="btn sec" data-act="mvf">📁 Changer de dossier</button></div>' +
@@ -936,81 +934,80 @@
     await saveCourse(c); scrCourse(c.id);
   }
 
-  /* ======================= ✍️ Mon script ======================= */
-  const TEMPO_BTNS = C.TEMPOS.concat(['—']);
-  const lineLabel = (l) => (l.kind === 'pause' ? '⏸️ ' + (l.name || 'Pause') : l.kind === 'trans' ? '🔀 ' + (l.name || 'Transition') : esc(l.name)) + (l.reps ? ' × ' + l.reps : '') + (C.normTempo(l.tempo) ? ' <span class="badge">' + esc(C.normTempo(l.tempo)) + '</span>' : '');
+  /* ======================= ✍️ Mon script (texte libre, 01/11) ======================= */
+  const tcount = (m) => C.textCount(C.textOf(m));
+  /** Mise en page propre d'un script (texte de Hamid) : lignes numérotées, nom en gras, répétitions en pastille, tempos en couleur */
+  function scriptHtml(text) {
+    const blocks = C.parseScript(text);
+    if (!blocks.length) return '<p class="mute">Script pas encore écrit.</p>';
+    const line = (p) => {
+      let b;
+      if (p.kind === 'move') {
+        b = p.parts.map((x, i) => {
+          const pre = i && x.t === 'tempo' ? '<span class="sdot"> · </span>' : i ? ' ' : '';
+          return pre + (x.t === 'name' ? '<b class="snm">' + esc(x.s) + '</b>' : x.t === 'reps' ? '<span class="srep">' + esc(x.s) + '</span>' : x.t === 'tempo' ? '<span class="stp">' + esc(x.s) + '</span>' : '<span class="stx">' + esc(x.s) + '</span>');
+        }).join('');
+      } else b = esc(p.raw.trim());
+      return '<div class="sl' + (p.kind === 'pause' ? ' pz' : '') + '"><span class="sn">' + p.n + '.</span><span class="sb">' + b + '</span></div>';
+    };
+    return blocks.map((bl) => '<div class="sblk">' + bl.map(line).join('') + '</div>').join('');
+  }
   async function scrWrite(cid, mid) {
     S.wantAwake = false; keepAwake(false);
     const c = await dget('courses', cid); if (!c) return scrHome();
     const m = c.morceaux.find((x) => x.id === mid); if (!m) return scrCourse(cid);
     if (!Array.isArray(m.lines)) m.lines = [];
-    const mu = m.musicId ? await dget('musics', m.musicId) : null;
-    const bpm = (mu && mu.bpm) || m.bpm || null;
+    // ancien script (lignes) : converti en texte au premier affichage, l'ancien format reste gardé à côté
+    if (typeof m.text !== 'string') { m.text = C.textOf(m); m.textOk = false; await saveCourse(c); }
     const url = await videoURL(c);
-    // favoris : par style et par numéro de morceau (le même numéro dans toutes les éditions du style)
-    const num = C.morceauNumber(m, c.morceaux), numTxt = C.numLabel(num);
-    let qm = await quickMoves(c.style, num);
-    let cur = m.lines.length ? m.lines[m.lines.length - 1].id : null, showAll = false, selMode = false, favMode = false; const sel = new Set(), favSel = new Set();
-    const undo = [];
     const nPh = (await photosOf(m.id)).length;
+    let editing = !(m.textOk && m.text.trim());
     const rel = (t) => fmt(Math.max(0, t - m.start));
     const v = () => $('#wv');
-    const now = () => { const x = v(); return x && x.readyState >= 1 ? Math.round(x.currentTime * 10) / 10 : null; };
-    const save = async () => { await saveCourse(c); };
-    const change = async (fn) => { undo.push(JSON.stringify(m.lines)); if (undo.length > 60) undo.shift(); fn(); await save(); paint(); };
-    const curLine = () => m.lines.find((l) => l.id === cur) || null;
-    let left = false, saveT = null;
-    /** Quitter l'écran : la vidéo s'arrête, sa position est enregistrée tout de suite */
-    const leave = async () => { left = true; clearTimeout(saveT); const x = v(); if (x) { x.pause(); if (x.readyState >= 1) m.lastT = Math.round(x.currentTime * 10) / 10; } await save(); };
-
-    const movesHtml = () => {
-      if (favMode) {
-        const list = qm.main.concat(qm.rest);
-        return '<div class="card o small favhelp">⭐ Choisis les favoris du morceau ' + numTxt + ' (toutes les éditions ' + esc(styleName(c.style)) + ')</div>' +
-          '<div class="mvchips favpick">' + list.map((n) => '<button data-act="favt" data-n="' + esc(n) + '" class="' + (favSel.has(n) ? 'fav' : '') + '" aria-pressed="' + favSel.has(n) + '"><span class="st">' + (favSel.has(n) ? '⭐' : '☆') + '</span>&nbsp;' + esc(n) + '</button>').join('') + '</div>' +
-          '<div class="row tight"><button class="btn small" data-act="favok">✅ Valider (' + favSel.size + ')</button><button class="btn sec small" data-act="favno">Annuler</button></div>';
-      }
-      const list = showAll ? qm.main.concat(qm.rest) : qm.main;
-      return '<p class="favline">' + (qm.fav ? '⭐ Tes favoris du morceau ' + numTxt + ' (toutes les éditions ' + esc(styleName(c.style)) + ')' : '☆ Morceau ' + numTxt + ' : pas encore de favoris') + '</p>' +
-        '<div class="mvchips">' + list.map((n) => '<button data-act="add" data-n="' + esc(n) + '">' + esc(n) + '</button>').join('') + '</div>' +
-        '<div class="mvchips small4"><button data-act="addp">⏸️ Pause</button><button data-act="addt">🔀 Transi&shy;tion</button><button data-act="other">➕ Autre</button><button data-act="fav">⭐ Favoris</button>' +
-        (qm.rest.length || showAll ? '<button data-act="all" class="wide">' + (showAll ? '▲ Moins' : '▼ Tous (' + qm.total + ')') + '</button>' : '') + '</div>';
+    const ta = () => $('#wta');
+    let left = false, saveT = null, textT = null;
+    /** Enregistre le texte tapé (tout de suite) */
+    const flush = async () => {
+      clearTimeout(textT); textT = null;
+      const t = ta(); if (!t) return;
+      if (t.value !== m.text) { m.text = t.value; m.textOk = false; }
+      await saveCourse(c);
+      const s = $('#wsaved'); if (s && document.contains(t)) { s.textContent = 'Enregistré ✓'; s.classList.add('on'); }
     };
-    const curHtml = () => {
-      const l = curLine();
-      if (!l) return '<div class="card o small">👉 Lance la vidéo et <b>touche un mouvement</b> quand il commence : une ligne s\'ajoute à l\'heure de la vidéo.</div>';
-      const i = m.lines.indexOf(l);
-      return '<div class="card o wcur"><div class="whead"><b>Ligne ' + (i + 1) + ' · ' + lineLabel(l) + '</b><span class="mute">' + (l.t != null ? 'à ' + rel(l.t) : 'sans heure') + '</span></div><p class="klab">Répétitions</p>' +
-        '<div class="kgrid k8">' + [4, 8, 16, 32].map((n) => '<button data-act="reps" data-n="' + n + '" class="' + (l.reps === n ? 'on' : '') + '">' + n + '</button>').join('') +
-        '<button data-act="rm1" aria-label="Une répétition de moins">−</button><button data-act="rset" class="val" aria-label="Écrire le nombre de répétitions">' + (l.reps || '–') + '</button><button data-act="rp1" aria-label="Une répétition de plus">+</button><button data-act="rset" aria-label="Écrire le nombre de répétitions">✏️</button></div>' +
-        '<p class="klab">Tempo</p><div class="kgrid ktempo">' + TEMPO_BTNS.map((t) => '<button data-act="tempo" data-t="' + esc(t) + '" class="' + ((C.normTempo(l.tempo) || '—') === t ? 'on' : '') + (t.length > 9 ? ' wide' : '') + '">' + esc(t) + '</button>').join('') + '<button data-act="note" class="note">📝 Note</button></div>' +
-        (l.note ? '<p class="small soft" style="margin:4px 0 0">📝 ' + esc(l.note) + ' <button class="lx" data-act="noteno" aria-label="Effacer la note">✖</button></p>' : '') + '</div>';
+    /** Quitter l'écran : la vidéo s'arrête, le texte et la position sont enregistrés tout de suite */
+    const leave = async () => {
+      left = true; clearTimeout(saveT); S.flushWrite = null;
+      if (ta()) { const t = ta(); if (t.value !== m.text) { m.text = t.value; m.textOk = false; } }
+      clearTimeout(textT);
+      const x = v(); if (x) { x.pause(); if (x.readyState >= 1) m.lastT = Math.round(x.currentTime * 10) / 10; }
+      await saveCourse(c);
     };
-    const listHtml = () => {
-      const tools = (l) => '<div class="ltools"><button data-act="up" aria-label="Monter">⬆️</button><button data-act="down" aria-label="Descendre">⬇️</button><button data-act="here">⏱️ Caler ici</button><button data-act="dup">⧉ Dupliquer</button><button data-act="rename">✏️ Nom</button><button data-act="rmline" aria-label="Supprimer">🗑️</button></div>';
-      return '<div class="whead" style="margin-top:6px"><h2 style="margin:0">Mon script <span class="mute">(' + m.lines.length + ')</span></h2><button class="btn sec small wbtn" data-act="undo" ' + (undo.length ? '' : 'disabled') + '>↩️ Annuler</button></div>' +
-        (selMode ? '<div class="card j small">Touche les lignes à copier.<div class="row tight" style="margin-top:8px"><button class="btn small" data-act="copyb" ' + (sel.size ? '' : 'disabled') + '>📋 Copier (' + sel.size + ')</button><button class="btn sec small" data-act="selno">Annuler</button></div></div>' : '') +
-        (m.lines.length ? m.lines.map((l, i) => '<div class="lrow' + (l.id === cur && !selMode ? ' on' : '') + (selMode && sel.has(l.id) ? ' pick' : '') + (l.kind === 'pause' || l.kind === 'trans' ? ' pz' : '') + '" data-act="sel" data-id="' + l.id + '">' +
-          '<div class="lmain">' + (selMode ? '<span class="ck">' + (sel.has(l.id) ? '☑️' : '⬜') + '</span>' : '') + '<span class="ln">' + (i + 1) + '</span><span class="lt">' + lineLabel(l) + (l.note ? '<br><span class="mute">📝 ' + esc(l.note) + '</span>' : '') + '</span>' +
-          (l.t != null ? '<button class="ltime" data-act="seekl" data-id="' + l.id + '">▶ ' + rel(l.t) + '</button>' : '<span class="mute">—</span>') + '</div>' +
-          (l.id === cur && !selMode ? tools(l) : '') + '</div>').join('') : '<p class="mute">Pas encore de ligne.</p>') +
-        (!selMode && m.lines.length > 1 ? '<button class="btn sec small" data-act="selb">📋 Copier un bloc de lignes</button>' : '') +
-        (S.clip && S.clip.length && !selMode ? '<button class="btn small" data-act="paste">📌 Coller ' + S.clip.length + ' ligne(s) ici' + (now() != null ? ' (à ' + rel(now()) + ')' : '') + '</button><button class="btn ghost small" data-act="clipno">Oublier le bloc copié</button>' : '');
+    const photoBtn = '<button class="btn sec small wbtn" data-act="photo">📷 ' + (nPh ? 'Photos (' + nPh + ')' : 'Photo de ma feuille') + '</button>';
+    const bodyHtml = () => editing
+      ? '<div class="wbar">' + photoBtn + '<span id="wsaved" class="wsaved"></span></div>' +
+        '<textarea id="wta" class="wta" rows="12" autocomplete="off" autocorrect="off" spellcheck="false" autocapitalize="sentences" aria-label="Mon script" placeholder="Une ligne par mouvement, par exemple :&#10;Squat × 8 (2-2)&#10;Squat × 16 1-1&#10;3 pulses × 4&#10;Pause">' + esc(m.text) + '</textarea>' +
+        '<button class="btn green" data-act="ok">✅ Valider mon script</button>'
+      : '<div class="wbar"><span class="badge ok">✅ Script validé · ' + tcount(m) + ' ligne' + (tcount(m) > 1 ? 's' : '') + '</span>' + photoBtn + '</div>' +
+        '<div class="card sc" id="wsc">' + scriptHtml(m.text) + '</div>' +
+        '<button class="btn" data-act="edit">✏️ Modifier</button>' +
+        '<div class="row"><button class="btn sec small" data-act="play">🎮 Jouer</button><button class="btn sec small" data-act="read">📖 Lire</button></div>';
+    const paint = () => {
+      const b = $('#wbody'); if (!b) return;
+      b.innerHTML = bodyHtml();
+      const t = ta();
+      if (t) t.addEventListener('input', () => {
+        const s = $('#wsaved'); if (s) { s.textContent = ''; s.classList.remove('on'); }
+        clearTimeout(textT); textT = setTimeout(() => { if (!left) flush(); }, 500);
+      });
     };
-    const paint = () => { const a = $('#wcur'), b = $('#wlist'), d = $('#wmoves'); if (a) a.innerHTML = curHtml(); if (b) b.innerHTML = listHtml(); if (d) d.innerHTML = movesHtml(); };
-    const addLine = (o) => change(() => { const l = Object.assign({ id: uid(), kind: 'move', name: '', reps: 0, tempo: '', note: '', t: now() }, o); m.lines = C.insertLine(m.lines, l); cur = l.id; flash(l); });
-    const flash = (l) => { const t = $('#wflash'); if (t) { t.textContent = '+ ' + (l.kind === 'pause' ? 'Pause' : l.kind === 'trans' ? 'Transition' : l.name) + (l.t != null ? ' à ' + rel(l.t) : ''); t.classList.remove('go'); void t.offsetWidth; t.classList.add('go'); } };
-
     render('<div class="top"><button class="back" data-act="back">‹</button><h1>✍️ ' + esc(m.name) + '</h1></div>' +
-      '<div class="wstick">' + (url ? '<video id="wv" src="' + url + '" playsinline preload="auto"></video>' +
+      '<div class="wstick" id="wstick">' + (url ? '<video id="wv" src="' + url + '" playsinline preload="auto"></video>' +
         '<div class="vctl"><button data-act="b5" aria-label="Reculer de 5 secondes">⏪ 5</button><button data-act="pp" id="wpp" class="main" aria-label="Lecture ou pause">▶️</button><button data-act="f5" aria-label="Avancer de 5 secondes">5 ⏩</button>' +
         '<button data-act="spd" data-s="0.5">0,5×</button><button data-act="spd" data-s="0.75">0,75×</button><button data-act="spd" data-s="1" class="on">1×</button></div>' +
         '<div class="vtime"><b id="wt">0:00</b><input type="range" id="wr" min="0" max="' + Math.max(1, Math.round((m.end - m.start) * 10) / 10) + '" step="0.1" value="0" aria-label="Position dans le morceau"><span class="mute">' + fmt(m.end - m.start) + '</span></div>' :
         '<div class="card j small" style="margin:0">🎬 La vidéo n\'est pas gardée dans l\'appli. Rechoisis-la pour écrire en la regardant (elle sera gardée).<button class="btn sec small" style="margin:8px 0 0" data-act="revid">🎬 Choisir la vidéo</button></div>') +
-        '<div id="wflash" class="wflash"></div></div>' +
-      '<div id="wmoves"></div><div id="wcur"></div><div id="wlist"></div>' +
-      '<div class="row" style="margin-top:12px"><button class="btn sec small" data-act="read">📖 Lire</button><button class="btn sec small" data-act="play">🎮 Jouer</button><button class="btn sec small" data-act="photo">📷 ' + (nPh ? 'Photos (' + nPh + ')' : 'Photo de ma feuille') + '</button></div>' +
-      '<p class="mute">✅ Tout est enregistré à chaque toucher.</p>',
+        '</div>' +
+      '<div id="wbody"></div>',
     {
       back: async () => { await leave(); scrCourse(cid); },
       revid: async () => { await leave(); await giveVideo(c); scrWrite(cid, mid); },
@@ -1018,65 +1015,34 @@
       b5: () => { const x = v(); if (x) x.currentTime = Math.max(m.start, x.currentTime - 5); },
       f5: () => { const x = v(); if (x) x.currentTime = Math.min(m.end, x.currentTime + 5); },
       spd: (b) => { const x = v(); if (!x) return; x.playbackRate = +b.dataset.s; app.querySelectorAll('[data-act="spd"]').forEach((e) => e.classList.toggle('on', e === b)); },
-      add: (b) => addLine({ name: b.dataset.n }),
-      addp: () => addLine({ kind: 'pause', name: 'Pause' }),
-      addt: () => addLine({ kind: 'trans', name: 'Transition' }),
-      other: async () => {
-        const t = now();
-        const n = await askText('Nom du mouvement', '', 'ex. Descente tirage'); if (!n) return;
-        S.customMoves[c.style] = S.customMoves[c.style] || []; if (!S.customMoves[c.style].includes(n)) { S.customMoves[c.style].push(n); await saveKV('customMoves'); }
-        qm = await quickMoves(c.style, num);
-        addLine({ name: n, t });
+      ok: async () => {
+        await flush();
+        if (!m.text.trim()) { toast('Écris d\'abord ton script.'); return; }
+        m.textOk = true; await saveCourse(c);
+        editing = false; paint(); window.scrollTo(0, 0);
+        toast('Script validé ✅');
       },
-      all: () => { showAll = !showAll; paint(); },
-      fav: () => { favMode = true; favSel.clear(); for (const n of C.getFavs(S.favs, c.style, num)) favSel.add(n); paint(); },
-      favt: (b) => { const n = b.dataset.n; if (favSel.has(n)) favSel.delete(n); else favSel.add(n); paint(); },
-      favno: () => { favMode = false; favSel.clear(); paint(); },
-      favok: async () => {
-        const order = qm.main.concat(qm.rest);
-        C.setFavs(S.favs, c.style, num, order.filter((n) => favSel.has(n)));
-        await saveKV('favs');
-        favMode = false; favSel.clear(); showAll = false;
-        qm = await quickMoves(c.style, num); paint();
-        toast(qm.fav ? '⭐ Favoris du morceau ' + numTxt + ' enregistrés' : 'Plus de favoris pour le morceau ' + numTxt);
+      edit: () => {
+        editing = true; paint();
+        const t = ta(); if (t) { try { t.focus({ preventScroll: true }); t.setSelectionRange(t.value.length, t.value.length); } catch (e) { /* rien */ } }
       },
-      reps: (b) => change(() => { const l = curLine(); if (l) l.reps = +b.dataset.n; }),
-      rm1: () => change(() => { const l = curLine(); if (l) l.reps = Math.max(0, (l.reps || 0) - 1); }),
-      rp1: () => change(() => { const l = curLine(); if (l) l.reps = (l.reps || 0) + 1; }),
-      rset: async () => { const l = curLine(); if (!l) return; const n = await askText('Combien de répétitions ?', l.reps ? String(l.reps) : '', 'ex. 24'); if (n == null) return; const k = parseInt(n, 10); if (!(k >= 0)) { toast('Écris un nombre.'); return; } change(() => { l.reps = k; }); },
-      tempo: (b) => change(() => { const l = curLine(); if (l) l.tempo = C.normTempo(b.dataset.t); }),
-      note: async () => { const l = curLine(); if (!l) return; const n = await askText('Note (facultatif)', l.note || '', 'ex. jambe droite devant'); if (n === null) return; change(() => { l.note = n; }); },
-      noteno: () => change(() => { const l = curLine(); if (l) l.note = ''; }),
-      sel: (b) => { const id = b.dataset.id; if (selMode) { if (sel.has(id)) sel.delete(id); else sel.add(id); } else cur = id; paint(); },
-      seekl: (b) => { const l = m.lines.find((x) => x.id === b.dataset.id); const x = v(); cur = l.id; if (x && l && l.t != null) { x.currentTime = Math.max(m.start, l.t - 0.5); } paint(); },
-      up: () => change(() => { const r = C.moveLine(m.lines, cur, -1); m.lines = r.lines; }),
-      down: () => change(() => { const r = C.moveLine(m.lines, cur, 1); m.lines = r.lines; }),
-      here: () => { const t = now(); if (t == null) { toast('Il faut la vidéo pour caler une ligne.'); return; } change(() => { const l = curLine(); if (!l) return; l.t = t; m.lines = C.sortLines(m.lines); }); toast('Calée à ' + rel(t)); },
-      dup: () => change(() => { const nid = uid(); m.lines = C.dupLine(m.lines, cur, now(), bpm, nid); cur = nid; }),
-      rename: async () => { const l = curLine(); if (!l) return; const n = await pickMoveName(c.style, l.name); if (!n) return; if (n.everywhere) await renameEverywhere(c.style, l.name, n.name, c); change(() => { l.name = n.name; if (l.kind !== 'move' && !/pause|transition/i.test(n.name)) l.kind = 'move'; }); },
-      rmline: () => change(() => { const i = m.lines.findIndex((l) => l.id === cur); m.lines = m.lines.filter((l) => l.id !== cur); const nx = m.lines[Math.min(i, m.lines.length - 1)]; cur = nx ? nx.id : null; }),
-      undo: async () => { if (!undo.length) return; m.lines = JSON.parse(undo.pop()); if (!m.lines.some((l) => l.id === cur)) cur = m.lines.length ? m.lines[m.lines.length - 1].id : null; await save(); paint(); toast('Annulé ↩️'); },
-      selb: () => { selMode = true; sel.clear(); paint(); },
-      selno: () => { selMode = false; sel.clear(); paint(); },
-      copyb: () => { S.clip = m.lines.filter((l) => sel.has(l.id)).map((l) => Object.assign({}, l)); selMode = false; sel.clear(); paint(); toast(S.clip.length + ' ligne(s) copiée(s). Mets la vidéo où tu veux, puis « 📌 Coller ».', 3500); },
-      paste: () => change(() => { const before = new Set(m.lines.map((l) => l.id)); m.lines = C.pasteBlock(m.lines, S.clip, now(), uid, bpm); const added = m.lines.filter((l) => !before.has(l.id)); if (added.length) cur = added[0].id; toast(added.length + ' ligne(s) collée(s) ✅'); }),
-      clipno: () => { S.clip = null; paint(); },
       read: async () => { await leave(); scrRead(cid, mid); },
       play: async () => { await leave(); scrPlay(cid, mid); },
       photo: async () => { await leave(); photoMenu(c, m, () => scrWrite(cid, mid)); }
     });
     paint();
+    S.flushWrite = () => { if (!left && ta()) return flush(); };
+    // le curseur ne se cache pas derrière la vidéo collée en haut
+    const st = $('#wstick'); if (st) document.documentElement.style.scrollPaddingTop = (st.offsetHeight + 8) + 'px';
     const x = v();
     if (x) {
       const startAt = m.lastT != null && m.lastT >= m.start && m.lastT < m.end ? m.lastT : m.start;
-      x.addEventListener('loadedmetadata', () => { x.currentTime = startAt; }, { once: true });
-      let lastPaste = null;
+      x.addEventListener('loadedmetadata', () => { x.currentTime = startAt; const s2 = $('#wstick'); if (s2) document.documentElement.style.scrollPaddingTop = (s2.offsetHeight + 8) + 'px'; }, { once: true });
       x.addEventListener('timeupdate', () => {
         if (x.currentTime > m.end) { x.pause(); x.currentTime = m.end; }
         else if (x.currentTime < m.start - 0.3) x.currentTime = m.start;
         const t = $('#wt'); if (t) t.textContent = rel(x.currentTime);
         const r = $('#wr'); if (r && !r.dragging) r.value = Math.max(0, x.currentTime - m.start);
-        const pb = $('[data-act="paste"]'); const lab = rel(x.currentTime); if (pb && lab !== lastPaste) { lastPaste = lab; pb.textContent = '📌 Coller ' + S.clip.length + ' ligne(s) ici (à ' + lab + ')'; }
         clearTimeout(saveT); saveT = setTimeout(() => {
           if (left || !document.contains(x)) return; // on a quitté l'écran : ne rien écraser
           m.lastT = Math.round(x.currentTime * 10) / 10; saveCourse(c);
@@ -1088,30 +1054,7 @@
       r.addEventListener('input', () => { r.dragging = true; x.currentTime = m.start + (+r.value); const t = $('#wt'); if (t) t.textContent = rel(m.start + (+r.value)); });
       r.addEventListener('change', () => { r.dragging = false; });
     }
-    window.SM_WRITE = { c, m, video: x, now };
-  }
-
-  /** Choix d'un nom de mouvement. Renvoie {name, everywhere} */
-  function pickMoveName(style, current) {
-    return new Promise((res) => {
-      let q = '', done = false;
-      const list = () => movesFor(style).filter((n) => !q || C.norm(n).includes(C.norm(q)));
-      const grid = () => list().map((n) => '<button data-sact="pick" data-n="' + esc(n) + '" class="' + (n === current ? 'on' : '') + '">' + esc(n) + '</button>').join('') || '<p class="mute">Aucun mouvement ne correspond.</p>';
-      const s = sheet('<h2>Quel mouvement ?</h2><input type="search" id="mq" placeholder="🔎 Chercher…"><div class="namegrid" id="mg">' + grid() + '</div>' +
-        '<button class="btn sec" data-sact="new">➕ Nouveau mouvement</button>' +
-        '<label style="display:flex;gap:10px;align-items:center;margin:8px 0 14px"><input type="checkbox" id="mev" style="width:26px;height:26px"> <span class="small">Renommer aussi <b>' + esc(current) + '</b> partout (tous mes scripts et pour la suite)</span></label>' +
-        '<button class="btn ghost small" data-sact="no">Annuler</button>', {
-        pick: (b, e, close) => { done = true; const ev = $('#mev', s.el).checked; close(); res({ name: b.dataset.n, everywhere: ev }); },
-        new: async (b, e, close) => {
-          const ev = $('#mev', s.el).checked; done = true; close();
-          const n = await askText('Nom du nouveau mouvement', q, 'ex. Descente tirage');
-          if (n) { S.customMoves[style] = S.customMoves[style] || []; if (!S.customMoves[style].includes(n)) S.customMoves[style].push(n); await saveKV('customMoves'); }
-          res(n ? { name: n, everywhere: ev } : null);
-        },
-        no: (b, e, close) => { done = true; close(); res(null); }
-      }, () => { if (!done) res(null); });
-      $('#mq', s.el).addEventListener('input', (e) => { q = e.target.value; $('#mg', s.el).innerHTML = grid(); });
-    });
+    window.SM_WRITE = { c, m, video: x, flush };
   }
 
   /** Renommer un mouvement partout (scripts, vocabulaire) */
@@ -1140,16 +1083,15 @@
   }
 
   /* ======================= Script : lecture, texte, PDF ======================= */
-  const visible = (m) => m.lines || [];
+  /** Texte à copier : le texte brut de Hamid, morceau par morceau */
   function scriptText(c, ms) {
     const all = c.morceaux.filter((m) => !m.lost);
     ms = ms || all;
     const out = [c.name + ' (' + styleName(c.style) + ')', ''];
     ms.forEach((m) => {
       out.push((all.indexOf(m) + 1) + '. ' + m.name);
-      const L = visible(m);
-      if (!L.length) out.push('   (script pas encore écrit)');
-      L.forEach((l, i) => out.push('   ' + C.lineText(l, i)));
+      const t = C.textOf(m).replace(/\s+$/, '');
+      out.push(t.trim() ? t : '(script pas encore écrit)');
       out.push('');
     });
     return out.join('\n');
@@ -1164,22 +1106,16 @@
     const all = c.morceaux.filter((m) => !m.lost);
     ms = ms || all;
     $('#print').innerHTML = '<h1>' + esc(c.name) + '</h1><p class="sub">' + esc(styleName(c.style)) + ' · ' + fmtDate(c.created) + ' · ScriptMove</p>' +
-      ms.map((m) => {
-        const L = visible(m);
-        return '<section><h2>' + (all.indexOf(m) + 1) + '. ' + esc(m.name) + '</h2>' + (L.length ? '<ol>' + L.map((l) => '<li>' + esc(C.lineText(l, 0).replace(/^1\. /, '')) + '</li>').join('') + '</ol>' : '<p class="t">(script pas encore écrit)</p>') + '</section>';
-      }).join('');
+      ms.map((m) => '<section><h2>' + (all.indexOf(m) + 1) + '. ' + esc(m.name) + '</h2>' + (tcount(m) ? '<div class="sc">' + scriptHtml(C.textOf(m)) + '</div>' : '<p class="t">(script pas encore écrit)</p>') + '</section>').join('');
     const old = document.title; document.title = c.name.replace(/[\\/:*?"<>|]/g, '-');
     setTimeout(() => { window.print(); document.title = old; }, 50);
     toast('Dans la fenêtre d\'impression, choisis « Enregistrer en PDF ».', 4000);
   }
-  const readList = (m) => {
-    const L = visible(m);
-    return L.length ? '<ol class="rlist">' + L.map((l) => '<li><span><b>' + esc(C.lineText(l, 0).replace(/^1\. /, '')) + '</b></span>' + (l.t != null ? '<span class="mute">' + fmt(l.t - m.start) + '</span>' : '') + '</li>').join('') + '</ol>' : '<p class="mute">Script pas encore écrit.</p>';
-  };
+  const readList = (m) => '<div class="sc">' + scriptHtml(C.textOf(m)) + '</div>';
   async function scrRead(cid, mid) {
     const c = await dget('courses', cid); const m = c && c.morceaux.find((x) => x.id === mid); if (!m) return scrCourse(cid);
     const nPh = (await photosOf(mid)).length;
-    render('<div class="top"><button class="back" data-act="back">‹</button><h1>📖 ' + esc(m.name) + '</h1></div><p class="mute">' + esc(c.name) + '</p>' +
+    render('<div class="top"><button class="back" data-act="back">‹</button><h1>📖 ' + esc(m.name) + '</h1></div><p class="mute">' + esc(c.name) + (tcount(m) ? ' · ' + (m.textOk ? '✅ validé' : 'pas encore validé') : '') + '</p>' +
       '<div class="card">' + readList(m) + '</div>' +
       '<div class="row"><button class="btn" data-act="write">✍️ Modifier</button><button class="btn sec" data-act="play">🎮 Jouer</button></div>' +
       '<div class="row"><button class="btn sec" data-act="copy">📋 Copier le texte</button><button class="btn sec" data-act="pdf">🖨️ PDF</button></div>' +
@@ -1190,41 +1126,41 @@
     const c = await dget('courses', cid);
     const ms = c.morceaux.filter((m) => !m.lost);
     render('<div class="top"><button class="back" data-act="back">‹</button><h1>Script de l\'édition</h1></div><p class="soft">' + esc(c.name) + '</p>' +
-      ms.map((m, i) => '<div class="card ' + (visible(m).length ? 'g' : '') + '"><h2>' + (i + 1) + '. ' + esc(m.name) + '</h2>' + readList(m) +
-        '<button class="btn sec small" style="margin-top:10px" data-act="open" data-id="' + m.id + '">✍️ ' + (visible(m).length ? 'Modifier' : 'Écrire') + '</button></div>').join('') +
+      ms.map((m, i) => '<div class="card ' + (tcount(m) ? 'g' : '') + '"><h2>' + (i + 1) + '. ' + esc(m.name) + '</h2>' + readList(m) +
+        '<button class="btn sec small" style="margin-top:10px" data-act="open" data-id="' + m.id + '">✍️ ' + (tcount(m) ? 'Modifier' : 'Écrire') + '</button></div>').join('') +
       '<div class="row"><button class="btn sec" data-act="copy">📋 Copier le texte</button><button class="btn" data-act="pdf">🖨️ PDF</button></div>',
     { back: () => scrCourse(cid), copy: () => copyText(scriptText(c)), pdf: () => printCourse(c), open: (b) => scrWrite(cid, b.dataset.id) });
   }
 
-  /* ======================= Jeu de danse ======================= */
+  /* ======================= Jeu de danse (texte validé, ligne par ligne) ======================= */
   async function scrPlay(cid, mid) {
-    const c = await dget('courses', cid); const ms = c.morceaux.filter((x) => !x.lost && (x.lines || []).length);
+    const c = await dget('courses', cid); if (!c) return scrHome();
     const m = c.morceaux.find((x) => x.id === mid); if (!m) return scrCourse(cid);
-    const mu = m.musicId ? await dget('musics', m.musicId) : null;
-    if (!(m.lines || []).length) { toast('Écris d\'abord ton script (✍️ Mon script).', 3500); return scrWrite(cid, mid); }
+    if (!tcount(m)) { toast('Écris d\'abord ton script (✍️ Mon script).', 3500); return scrWrite(cid, mid); }
+    if (!m.textOk) { toast('Valide d\'abord ton script (✅ Valider mon script).', 3500); return scrWrite(cid, mid); }
+    const ms = c.morceaux.filter((x) => !x.lost && x.textOk && tcount(x));
     const nextM = ms[ms.indexOf(m) + 1];
+    const mu = m.musicId ? await dget('musics', m.musicId) : null;
     const photos = await photosOf(mid);
     const choice = await ask(m.name, mu ? '🎵 ' + esc(mu.name) : 'Pas de musique liée à ce morceau.', (mu ? [{ label: '▶️ Jouer avec ma musique', value: 'music' }] : [{ label: '🎵 Lier une musique', value: 'link' }])
       .concat([{ label: '🎬 Top départ (la musique joue ailleurs)', value: 'top', cls: 'sec' }, { label: 'Retour', value: null, cls: 'ghost' }]));
     if (!choice) return scrCourse(cid);
     if (choice === 'link') return linkMusic(c, m.id);
-    // lien temps vidéo → temps de ta musique (recalage trouvé), sinon calcul au tempo
-    let sy = mu ? syncOf(m) : null;
-    if (mu && !sy) { const af = await dget('data', 'af:' + cid); sy = tempoSync(af, m, mu); m.sync = sy; await saveCourse(c); }
-    const sure = !!(sy && sy.mode === 'sure');
     const bpm = (mu && mu.bpm) || m.bpm || null;
-    const tl = C.buildTimeline(m.lines, { sync: sy, sure, bpm, attack: mu ? (mu.attack || 0) : 0, startV: m.start, endV: m.end });
-    const segs = tl.items;
-    const how = tl.mode === 'video' ? '🎯 Calé sur la vidéo (musique retrouvée)' : tl.mode === 'bpm' ? '🥁 Calculé au tempo de ta musique (' + Math.round(bpm) + ' BPM)' : '⏱️ D\'après les heures de la vidéo';
-    const P = { mode: choice, started: false, paused: true, ref: 0, pausedAt: 0, audio: null, raf: 0 };
+    let L = [];
+    try { L = C.textPlayLines(C.textOf(m), bpm); } catch (e) { console.warn(e); L = C.textOf(m).split('\n').filter((x) => x.trim()).map((x, i) => ({ n: i + 1, raw: x.trim(), kind: 'text', dur: null })); }
+    if (!L.length) { toast('Écris d\'abord ton script (✍️ Mon script).', 3500); return scrWrite(cid, mid); }
+    const auto = L.some((l) => l.dur);
+    const how = auto ? '🥁 Les lignes reconnues avancent au tempo (' + Math.round(bpm) + ' BPM). Les autres : touche l\'écran.' : '👆 Touche l\'écran pour passer à la ligne suivante.';
+    const P = { mode: choice, started: false, paused: true, ref: 0, pausedAt: 0, audio: null, raf: 0, idx: 0, lineStart: auto && mu ? (mu.attack || 0) : 0 };
     if (choice === 'music') { P.url = URL.createObjectURL(mu.blob); P.audio = new Audio(P.url); P.audio.preload = 'auto'; }
     S.wantAwake = true; keepAwake(true);
     const el = document.createElement('div'); el.className = 'play';
     el.innerHTML = '<div class="ph"><h3>' + esc(m.name) + '</h3>' + (photos.length ? '<button data-p="photo" aria-label="Voir la photo de ma feuille">📷</button>' : '') + '<button data-p="close" aria-label="Fermer">✖</button></div>' +
-      '<div class="main"><div class="nx" id="pbefore"></div><div class="mv" id="pmv"></div><div class="cnt" id="pcnt"></div><div class="tempo" id="ptp"></div><div class="nx" id="pnote"></div></div>' +
+      '<div class="main" data-p="tap"><div class="nx" id="pbefore"></div><div class="pnum" id="pnum"></div><div class="mv" id="pmv"></div><div class="cnt" id="pcnt"></div><div class="tempo" id="ptp"></div><div class="nx" id="pnote"></div><div class="phint" id="phint"></div></div>' +
       '<div class="nx" id="pnx" style="text-align:center"></div><div class="bar"><i id="pbar"></i></div>' +
-      '<div class="ctl"><button data-p="prev" aria-label="Mouvement précédent">⏮️</button><button class="main" data-p="pp" id="ppp">▶️</button><button data-p="next" aria-label="Mouvement suivant">⏭️</button></div>' +
-      '<div class="adj"><button data-p="early">⏪ un peu avant</button><span id="pshift"></span><button data-p="late">un peu après ⏩</button></div>' +
+      '<div class="ctl"><button data-p="prev" aria-label="Ligne précédente">⏮️</button><button class="main" data-p="pp" id="ppp">▶️</button><button data-p="next" aria-label="Ligne suivante">⏭️</button></div>' +
+      (auto ? '<div class="adj"><button data-p="early">⏪ un peu avant</button><span id="pshift"></span><button data-p="late">un peu après ⏩</button></div>' : '') +
       '<p class="mute" style="text-align:center;margin:8px 0 0">' + how + '</p>' +
       (nextM ? '<button class="btn sec small" style="margin:10px 0 0" data-p="nextm">Morceau suivant ➡️</button>' : '');
     document.body.appendChild(el);
@@ -1237,47 +1173,52 @@
       if (P.mode === 'music') P.audio.currentTime = t;
       else if (P.paused) P.pausedAt = t; else P.ref = performance.now() - t * 1000;
     };
-    const shiftTxt = () => { const s = m.shift || 0; $('#pshift', el).textContent = 'réglage ' + (s > 0 ? '+' : s < 0 ? '−' : '') + Math.abs(s).toFixed(2).replace('.', ',') + ' s'; };
+    const now = () => musicT() + (auto ? (m.shift || 0) : 0);
+    const shiftTxt = () => { const e = $('#pshift', el); if (!e) return; const s = m.shift || 0; e.textContent = 'réglage ' + (s > 0 ? '+' : s < 0 ? '−' : '') + Math.abs(s).toFixed(2).replace('.', ',') + ' s'; };
     shiftTxt();
-    const nm = (s) => s.name + (s.reps ? ' × ' + s.reps : '');
+    const big = (l) => (l.kind === 'move' && l.name ? l.name : l.raw);
     let lastKey = '';
     const tick = () => {
-      const t = musicT() + (m.shift || 0);
-      const ps = C.playState(segs, t);
-      let mv = '', cnt = '', tp = '', nx = '', bef = '', note = '', frac = 0;
-      if (!P.started) { mv = P.mode === 'top' ? 'Touche ▶️ au début de la musique' : 'Touche ▶️ pour commencer'; nx = 'Premier : ' + nm(segs[0]); }
-      else if (!ps || ps.after) { mv = 'Bravo ! 🎉'; nx = 'Morceau terminé'; frac = 1; }
-      else if (ps.before || ps.gap) { bef = 'Prépare-toi'; mv = ps.next.name; cnt = Math.ceil(ps.remain) + '<small> s</small>'; nx = ps.next.reps ? '× ' + ps.next.reps : ''; }
-      else {
-        const s = ps.seg; mv = s.name; tp = s.tempo || ''; note = s.note || '';
-        if (s.reps) cnt = s.counted ? Math.max(1, ps.rep) + '<small> / ' + s.reps + '</small>' : '<small>× </small>' + s.reps;
-        else if (s.kind !== 'move') cnt = Math.ceil(ps.remain) + '<small> s</small>';
-        nx = ps.next ? 'Ensuite : ' + nm(ps.next) + ' · dans ' + Math.ceil(ps.remain) + ' s' : 'Dernier mouvement · ' + Math.ceil(ps.remain) + ' s';
-        frac = ps.frac;
-      }
-      const key = mv + '|' + cnt + '|' + tp + '|' + nx + '|' + bef + '|' + note;
-      if (key !== lastKey) { lastKey = key; $('#pmv', el).textContent = mv; $('#pcnt', el).innerHTML = cnt; $('#ptp', el).textContent = tp; $('#pnx', el).textContent = nx; $('#pbefore', el).textContent = bef; $('#pnote', el).textContent = note ? '📝 ' + note : ''; }
-      $('#pbar', el).style.width = (Math.max(0, Math.min(1, 1 - frac)) * 100).toFixed(1) + '%';
-      if (P.mode === 'music' && P.started && P.audio.ended && !P.paused) { P.paused = true; $('#ppp', el).textContent = '▶️'; }
+      try {
+        const t = now();
+        if (P.started && !P.paused) {
+          // au tempo : on passe à la ligne suivante quand la durée estimée est finie (jamais sur une ligne « au toucher »)
+          while (P.idx < L.length && L[P.idx].dur && t >= P.lineStart + L[P.idx].dur) { P.lineStart += L[P.idx].dur; P.idx++; }
+        }
+        let mv = '', cnt = '', tp = '', nx = '', bef = '', note = '', num = '', hint = '', frac = 0, pz = false;
+        const l = L[P.idx], n2 = L[P.idx + 1];
+        if (!P.started) { mv = P.mode === 'top' ? 'Touche ▶️ au début de la musique' : 'Touche ▶️ pour commencer'; nx = 'Première ligne : ' + L[0].raw; }
+        else if (!l) { mv = 'Bravo ! 🎉'; nx = 'Morceau terminé'; frac = 1; }
+        else {
+          num = l.n + ' / ' + L[L.length - 1].n; mv = big(l); tp = l.tempoTxt || ''; pz = l.kind === 'pause';
+          note = (l.parts || []).filter((x) => x.t === 'txt').map((x) => x.s).join(' · ');
+          if (l.kind !== 'move') note = '';
+          if (l.dur && t < P.lineStart) { bef = 'Prépare-toi'; cnt = Math.ceil(P.lineStart - t) + '<small> s</small>'; }
+          else if (l.dur) { const k = Math.min(l.reps, Math.floor((t - P.lineStart) / l.repDur) + 1); cnt = Math.max(1, k) + '<small> / ' + l.reps + '</small>'; frac = (t - P.lineStart) / l.dur; }
+          else { if (l.reps) cnt = '<small>× </small>' + l.reps; hint = '👆 Touche l\'écran pour la suite'; }
+          nx = n2 ? 'Ensuite : ' + n2.raw + (l.dur && t >= P.lineStart ? ' · dans ' + Math.max(0, Math.ceil(P.lineStart + l.dur - t)) + ' s' : '') : 'Dernière ligne';
+        }
+        const key = [mv, cnt, tp, nx, bef, note, num, hint, pz].join('|');
+        if (key !== lastKey) {
+          lastKey = key; const e = $('#pmv', el); e.textContent = mv; e.classList.toggle('long', mv.length > 22); e.classList.toggle('pz', pz);
+          $('#pcnt', el).innerHTML = cnt; $('#ptp', el).textContent = tp; $('#pnx', el).textContent = nx; $('#pbefore', el).textContent = bef; $('#pnote', el).textContent = note ? '📝 ' + note : ''; $('#pnum', el).textContent = num; $('#phint', el).textContent = hint;
+        }
+        $('#pbar', el).style.width = (Math.max(0, Math.min(1, 1 - frac)) * 100).toFixed(1) + '%';
+        if (P.mode === 'music' && P.started && P.audio.ended && !P.paused) { P.paused = true; $('#ppp', el).textContent = '▶️'; }
+      } catch (e) { console.warn('jeu', e); }
       P.raf = requestAnimationFrame(tick);
     };
     const play = async () => {
       if (P.mode === 'music') { try { await P.audio.play(); } catch (e) { toast('Le son ne peut pas démarrer.'); return; } }
       else P.ref = performance.now() - P.pausedAt * 1000;
+      if (!P.started && !L[0].dur) P.lineStart = now();
       P.paused = false; P.started = true; $('#ppp', el).textContent = '⏸️';
     };
     const pause = () => { if (P.mode === 'music') P.audio.pause(); else P.pausedAt = musicT(); P.paused = true; $('#ppp', el).textContent = '▶️'; };
-    if (P.mode === 'music') {
-      // commencer un peu avant le premier mouvement (pas au tout début s'il y a une longue intro)
-      P.audio.addEventListener('loadedmetadata', () => { const t0 = Math.max(0, segs[0].start - 4); if (t0 > 0) setMusicT(t0); }, { once: true });
-    }
-    const jump = (dir) => {
-      const t = musicT() + (m.shift || 0);
-      let i = segs.findIndex((s) => t >= s.start && t < s.end);
-      if (i < 0) i = dir > 0 ? segs.findIndex((s) => s.start > t) - 1 : segs.findIndex((s) => s.start > t);
-      let j = dir > 0 ? i + 1 : (i >= 0 && t - segs[i].start > 2 ? i : i - 1);
-      j = Math.max(0, Math.min(segs.length - 1, j));
-      setMusicT(segs[j].start - (m.shift || 0) + 0.02); P.started = true;
+    /** Ligne suivante / précédente (au toucher) */
+    const go = (d) => {
+      if (!P.started) { play(); return; }
+      P.idx = Math.max(0, Math.min(L.length, P.idx + d)); P.lineStart = now();
     };
     let saveT = null;
     const adj = (d) => { m.shift = Math.round(((m.shift || 0) + d) * 100) / 100; shiftTxt(); clearTimeout(saveT); saveT = setTimeout(() => saveCourse(c), 600); };
@@ -1287,12 +1228,12 @@
       const a = b.dataset.p;
       if (a === 'close') { close(); saveCourse(c); scrCourse(cid); }
       else if (a === 'pp') { P.paused ? play() : pause(); }
-      else if (a === 'prev') jump(-1); else if (a === 'next') jump(1);
+      else if (a === 'prev') go(-1); else if (a === 'next' || a === 'tap') go(1);
       else if (a === 'early') adj(0.25); else if (a === 'late') adj(-0.25);
       else if (a === 'photo') viewPhotos(photos.slice(), 0, null);
       else if (a === 'nextm') { close(); saveCourse(c); scrPlay(cid, nextM.id); }
     });
-    window.SM_PLAY = { P, el, musicT, setMusicT, segs, mode: tl.mode, sync: sy }; // pour les tests
+    window.SM_PLAY = { P, el, musicT, setMusicT, lines: L, auto }; // pour les tests
     tick();
   }
 

@@ -824,6 +824,10 @@
       }
       c.version = COURSE_VERSION; ch = true;
     }
+    // 01/11 : le script s'écrit en texte libre ; l'ancien script (lignes) remplit le texte une seule fois et reste gardé à côté
+    for (const m of c.morceaux || []) {
+      if (typeof m.text !== 'string' && Array.isArray(m.lines) && m.lines.length) { m.text = linesToText(m.lines); m.textOk = false; ch = true; }
+    }
     return ch;
   }
   const COURSE_VERSION = 4;
@@ -896,6 +900,103 @@
     const nm = l.kind === 'pause' ? (l.name || 'Pause') : l.kind === 'trans' ? (l.name || 'Transition') : l.name;
     return segLine({ name: nm, reps: l.reps, tempo: normTempo(l.tempo), note: l.note }, i);
   }
+  /* ======================= 12. Script en texte libre (01/11) ======================= */
+  /** Ancien script (lignes structurées) → texte libre, une ligne par mouvement, sans heure : « Squat × 16 (2-2) » */
+  function linesToText(lines) {
+    return (lines || []).filter((l) => l && (l.name || l.kind)).map((l) => {
+      const nm = l.kind === 'pause' ? (l.name || 'Pause') : l.kind === 'trans' ? (l.name || 'Transition') : String(l.name || '');
+      const tp = normTempo(l.tempo);
+      return nm + (l.reps > 0 ? ' × ' + l.reps : '') + (tp ? ' (' + tp + ')' : '') + (l.note ? ' – ' + l.note : '');
+    }).join('\n');
+  }
+  /** Texte du script d'un morceau (le texte libre, sinon l'ancien script converti) */
+  function textOf(m) {
+    if (!m) return '';
+    if (typeof m.text === 'string') return m.text;
+    return linesToText(m.lines);
+  }
+  /** Nombre de lignes écrites (lignes vides non comptées) */
+  function textCount(t) { return String(t || '').split('\n').filter((x) => x.trim()).length; }
+
+  const LET = 'a-zA-ZÀ-ÖØ-öø-ÿ'; // lettres (sans × ni ÷)
+  // ordre = priorité (un morceau de texte déjà reconnu n'est plus repris)
+  const TOKS = [
+    { type: 'tempo', re: new RegExp('(?<![' + LET + '\\d])bb\\s*([1-4])\\s*[-/ ]\\s*([1-4])(?![\\d])', 'gi'), key: (m) => 'BB ' + m[1] + '-' + m[2], beats: (m) => +m[1] + +m[2] },
+    { type: 'tempo', re: new RegExp('(?<![' + LET + '\\d])(\\d{1,2})\\s*pulses?(?![' + LET + '])', 'gi'), key: (m) => m[1] + ' pulses', beats: (m) => TEMPO_BEATS[m[1] + ' pulses'] || Math.max(1, +m[1]) },
+    { type: 'tempo', re: new RegExp('(?<![' + LET + '])pulses?(?![' + LET + '])', 'gi'), key: () => 'pulses', beats: () => 1 },
+    { type: 'tempo', re: new RegExp('(?<![' + LET + '])enroulez?r?\\s+les\\s+[ée]paules(?![' + LET + '])', 'gi'), key: () => 'Enroule les épaules', beats: () => 4 },
+    { type: 'tempo', re: /\(\s*pause\s*\)/gi, key: () => 'Pause', beats: () => 4, inner: true },
+    { type: 'reps', re: new RegExp('(?<![' + LET + '\\d])[x×*]\\s*(\\d{1,3})(?![\\d])', 'gi'), n: (m) => +m[1] },
+    { type: 'reps', re: new RegExp('(?<![' + LET + '\\d])(\\d{1,3})\\s*(?:[x×]|fois|reps?|r[ée]p[ée]titions?|r[ée]p\\.?)(?![' + LET + '\\d])', 'gi'), n: (m) => +m[1] },
+    { type: 'tempo', re: new RegExp('(?<![' + LET + '\\d/-])([1-4])\\s*[-/]\\s*([1-4])(?![\\d/-])', 'g'), key: (m) => m[1] + '-' + m[2], beats: (m) => +m[1] + +m[2] },
+    { type: 'tempo', re: new RegExp('(?<![' + LET + '\\d])([1-4]) ([1-4])(?![\\d])', 'g'), key: (m) => m[1] + '-' + m[2], beats: (m) => +m[1] + +m[2] }
+  ];
+  const SEP_ONLY = /^[\s()[\],;:·.\-–—/+]*$/;
+  /** Nettoie un bout de texte entre deux éléments reconnus (séparateurs et parenthèses orphelines seulement) */
+  function tidy(s) {
+    s = s.replace(/^[\s,;:·\-–—/+]+|[\s,;:·\-–—/+]+$/g, '');
+    const o = (s.match(/\(/g) || []).length, c = (s.match(/\)/g) || []).length;
+    if (c > o) s = s.replace(/^\)+\s*/, '').replace(/\s*\)+$/, '');
+    if (o > c) s = s.replace(/^\(+\s*/, '').replace(/\s*\(+$/, '');
+    return s.replace(/^[\s,;:·\-–—/+]+|[\s,;:·\-–—/+]+$/g, '');
+  }
+  /** Analyse d'une ligne écrite par Hamid. Rien n'est inventé : chaque morceau de texte est gardé.
+      Renvoie { raw, kind: 'blank' | 'pause' | 'move' | 'text', parts: [{ t: 'name'|'reps'|'tempo'|'txt', s }], name, reps, tempo, beats } */
+  function parseLine(raw) {
+    raw = String(raw == null ? '' : raw).replace(/\s+$/, '');
+    const out = { raw, kind: 'text', parts: [], name: '', reps: 0, tempo: '', beats: null };
+    const s = raw.trim();
+    if (!s) { out.kind = 'blank'; return out; }
+    if (/^[\s\u23F8\uFE0F\u{1F500}]*(pause|transition)(?![a-z])/iu.test(norm(s))) { out.kind = 'pause'; out.name = s; out.parts = [{ t: 'txt', s }]; return out; }
+    const toks = [];
+    const free = (a, b) => toks.every((k) => b <= k.a || a >= k.b);
+    for (const T of TOKS) {
+      T.re.lastIndex = 0; let m;
+      while ((m = T.re.exec(s))) {
+        const a = m.index, b = a + m[0].length;
+        if (!m[0].length) { T.re.lastIndex++; continue; }
+        if (!free(a, b)) continue;
+        const k = { a, b, type: T.type, s: m[0].trim() };
+        if (T.inner) k.s = m[0].replace(/^\(\s*|\s*\)$/g, '');
+        if (T.type === 'reps') k.n = T.n(m); else { k.key = T.key(m); k.beats = T.beats(m); }
+        toks.push(k);
+      }
+    }
+    if (!toks.length) { out.parts = [{ t: 'txt', s }]; return out; }
+    toks.sort((x, y) => x.a - y.a);
+    let pos = 0;
+    const gap = (g) => { if (!SEP_ONLY.test(g)) { const t = tidy(g); if (t) out.parts.push({ t: 'txt', s: t }); } };
+    for (const k of toks) { gap(s.slice(pos, k.a)); out.parts.push({ t: k.type, s: k.s, k }); pos = k.b; }
+    gap(s.slice(pos));
+    const first = out.parts.find((p) => p.t === 'txt');
+    if (first) { first.t = 'name'; out.name = first.s; }
+    const r = toks.find((k) => k.type === 'reps'), tp = toks.find((k) => k.type === 'tempo');
+    if (r) out.reps = r.n;
+    if (tp) { out.tempo = tp.key; out.beats = tp.beats; }
+    out.kind = 'move';
+    return out;
+  }
+  /** Texte → blocs de lignes (les lignes vides séparent les blocs). Chaque ligne a son numéro (n). */
+  function parseScript(text) {
+    const blocks = []; let cur = null, n = 0;
+    for (const raw of String(text || '').split('\n')) {
+      const p = parseLine(raw);
+      if (p.kind === 'blank') { cur = null; continue; }
+      if (!cur) { cur = []; blocks.push(cur); }
+      p.n = ++n; cur.push(p);
+    }
+    return blocks;
+  }
+  /** Lignes du jeu de danse : durée estimée (secondes) seulement si BPM, tempo et répétitions sont reconnus, sinon null (= au toucher) */
+  function textPlayLines(text, bpm) {
+    const L = [];
+    for (const b of parseScript(text)) for (const p of b) {
+      const dur = p.kind === 'move' && bpm > 0 && p.reps > 0 && p.beats > 0 ? p.beats * p.reps * 60 / bpm : null;
+      L.push({ n: p.n, raw: p.raw.trim(), kind: p.kind, name: p.name, reps: p.reps, tempo: p.tempo, tempoTxt: (p.parts.find((x) => x.t === 'tempo') || {}).s || '', parts: p.parts, dur, repDur: dur ? dur / p.reps : null });
+    }
+    return L;
+  }
+
   /** Recherche simple (sans accents ni majuscules) */
   function norm(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
 
@@ -905,6 +1006,7 @@
     prepareVideo2, findMusic, placeMusics, verifyChunks, sliceFeat, cutSongs, trackNumber, proposeMusics,
     firstBeat, makeSync, musicToVideo, videoToMusic, trimSilence, estimateBPM, segLine, fmtTime, playState, ASR, AHOP,
     TEMPOS, beatsPerRep, insertLine, sortLines, moveLine, dupLine, pasteBlock, lineDur, buildTimeline,
-    editionNumber, sortEditions, BASE_FOLDERS, migrateCourse, topMoves, lineText, norm
+    editionNumber, sortEditions, BASE_FOLDERS, migrateCourse, topMoves, lineText, norm,
+    linesToText, textOf, textCount, parseLine, parseScript, textPlayLines
   };
 });

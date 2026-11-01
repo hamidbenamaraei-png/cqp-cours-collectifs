@@ -308,5 +308,60 @@ section('17. Favoris par style et numéro de morceau (partagés entre éditions)
   ok(JSON.parse(JSON.stringify({ favs: C.setFavs({}, 'pump', 2, ['Squat']) })).favs.pump['2'][0] === 'Squat', 'favoris enregistrables dans la sauvegarde (JSON)');
 }
 
+/* ---------- 18. Script en texte libre ---------- */
+section('18. Script en texte libre : analyse d\'une ligne, migration, jeu');
+{
+  const P = (t) => C.parseLine(t);
+  const sig = (p) => p.parts.map((x) => x.t + ':' + x.s).join(' | ');
+  const cases = [
+    ['Squat × 8 (2-2)', 8, '2-2', 'Squat'], ['Squat x8 2/2', 8, '2-2', 'Squat'], ['Squat X 8 2 2', 8, '2-2', 'Squat'],
+    ['Squat 8x (1-1)', 8, '1-1', 'Squat'], ['Squat 8 fois 3-1', 8, '3-1', 'Squat'], ['Squat × 16 1-1', 16, '1-1', 'Squat'],
+    ['Fentes ×4 1/3', 4, '1-3', 'Fentes'], ['Pompes × 8 4-4', 8, '4-4', 'Pompes'], ['Squat × 8 BB 2-2', 8, 'BB 2-2', 'Squat'],
+    ['Squat ×8 bb 2/2', 8, 'BB 2-2', 'Squat'], ['3 pulses × 4', 4, '3 pulses', ''], ['Squat × 2 8 pulses', 2, '8 pulses', 'Squat'],
+    ['Squat pulses × 16', 16, 'pulses', 'Squat'], ['Enroule les épaules × 4', 4, 'Enroule les épaules', ''], ['Descente tirage × 8 (Pause)', 8, 'Pause', 'Descente tirage']
+  ];
+  const bad = cases.filter(([t, r, tp, n]) => { const p = P(t); return !(p.kind === 'move' && p.reps === r && p.tempo === tp && p.name === n); });
+  ok(!bad.length, cases.length + ' écritures de répétitions et tempos reconnues' + (bad.length ? ' — ratées : ' + bad.map((b) => b[0] + ' → ' + sig(P(b[0]))).join(' / ') : ''));
+  ok(sig(P('Squat × 8 (2-2)')) === 'name:Squat | reps:× 8 | tempo:2-2', 'parenthèses rangées, texte gardé tel qu\'écrit (« × 8 », « 2-2 »)');
+  ok(P('Squat × 8 (2-2)').beats === 4 && P('Squat × 8 1-1').beats === 2 && P('Squat × 8 4-4').beats === 8 && P('3 pulses × 4').beats === 4 && P('x 8 pulses ×2').beats === 8, 'temps par répétition : 2-2 = 4, 1-1 = 2, 4-4 = 8, 3 pulses = 4, 8 pulses = 8');
+  ok(P('Pause').kind === 'pause' && P('pause 30 s').kind === 'pause' && P('Transition vers fentes').kind === 'pause' && P('Transition').raw === 'Transition', '« Pause » et « Transition » : lignes à part');
+  const keep = ['Attention garder le dos droit', 'Squat', 'Bras en haut, on respire', 'Squat 16 1:30', '🔥 Le final !!'];
+  ok(keep.every((t) => { const p = P(t); return p.kind === 'text' && p.parts.length === 1 && p.parts[0].s === t && !p.reps && !p.tempo; }), 'lignes non reconnues gardées telles quelles (rien inventé)');
+  const lt = P('Descente lever × 16 (2-2) – dos droit');
+  ok(lt.name === 'Descente lever' && lt.parts.some((x) => x.t === 'txt' && x.s === 'dos droit'), 'note après le tempo gardée (« dos droit »)');
+  ok(P('Squat 16 2-2').name === 'Squat 16' && P('Squat 16 2-2').reps === 0, '« 16 » sans × ni « fois » : pas pris pour des répétitions (gardé dans le texte)');
+  ok(P('Développé 2-2-1').tempo === '' && P('Rang 12-12').tempo === '', 'pas de faux tempo dans « 2-2-1 » ou « 12-12 »');
+  ok(P('   ').kind === 'blank' && P('').kind === 'blank' && P(null).kind === 'blank', 'ligne vide = séparation de blocs');
+  const bl = C.parseScript('Squat × 8 (2-2)\nSquat × 16 1-1\n\n\nPause\n3 pulses × 4\n');
+  ok(bl.length === 2 && bl[0].length === 2 && bl[1].length === 2 && bl[1][1].n === 4, 'lignes vides → 2 blocs, numéros continus 1 à 4');
+  ok(C.textCount('a\n\n b \n\n') === 2 && C.textCount('') === 0, 'compte des lignes écrites (sans les vides)');
+  // migration
+  const old = [
+    { id: 'l1', kind: 'move', name: 'Squat', reps: 16, tempo: '2-2', note: '', t: 310 },
+    { id: 'l2', kind: 'pause', name: 'Pause', reps: 0, tempo: '', note: '', t: 340 },
+    { id: 'l3', kind: 'move', name: 'Descente lever', reps: 8, tempo: '8 pulses', note: 'dos droit', t: 352 },
+    { id: 'l4', kind: 'trans', name: '', reps: 0, tempo: '', t: null },
+    { id: 'l5', kind: 'move', name: 'Fentes', reps: 0, tempo: '—', t: null }];
+  const txt = C.linesToText(old);
+  ok(txt === 'Squat × 16 (2-2)\nPause\nDescente lever × 8 (8 pulses) – dos droit\nTransition\nFentes', 'ancien format → texte, une ligne par mouvement, sans heure :\n      ' + txt.split('\n').join('\n      '));
+  const re = C.parseLine(txt.split('\n')[0]);
+  ok(re.name === 'Squat' && re.reps === 16 && re.tempo === '2-2', 'le texte migré se relit (Squat × 16, 2-2)');
+  const cm = { id: 'c', name: 'Pump 97', style: 'pump', folder: 'pump', version: 3, morceaux: [{ id: 'a', name: '01', lines: old.map((l) => Object.assign({}, l)) }, { id: 'b', name: '02', lines: [] }, { id: 'd', name: '03', text: 'Mon texte', lines: [{ id: 'z', kind: 'move', name: 'Squat', reps: 4, tempo: '1-1' }] }, { id: 'e', name: '04', segments: [{ name: 'Rowing', reps: 8, tempo: '2/2', start: 3 }] }] };
+  ok(C.migrateCourse(cm, C.BASE_FOLDERS, () => 'id') === true, 'migration du cours faite');
+  ok(cm.morceaux[0].text === txt && cm.morceaux[0].textOk === false && cm.morceaux[0].lines.length === 5 && cm.morceaux[0].lines[0].t === 310, 'texte rempli, ancien format gardé à côté (5 lignes, heures)');
+  ok(cm.morceaux[1].text === undefined && C.textOf(cm.morceaux[1]) === '', 'morceau vide : rien à écrire');
+  ok(cm.morceaux[2].text === 'Mon texte', 'texte déjà écrit : jamais écrasé');
+  ok(cm.morceaux[3].text === 'Descente tirage × 8 (2-2)', 'très ancien script (analyse) : renommé puis converti (« ' + cm.morceaux[3].text + ' »)');
+  const again = JSON.stringify(cm); C.migrateCourse(cm, C.BASE_FOLDERS, () => 'id');
+  ok(JSON.stringify(cm) === again, 'la migration ne se refait pas');
+  ok(C.textOf({ lines: old }) === txt && C.textOf({ text: '', lines: old }) === '', 'textOf : texte libre d\'abord (même vide), sinon l\'ancien format');
+  // jeu
+  const pl = C.textPlayLines('Squat × 8 (2-2)\nBras en haut\n\nPause\nFentes × 4 1-1\n3 pulses × 4', 120);
+  ok(pl.length === 5 && pl[0].dur === 16 && pl[0].repDur === 2 && pl[1].dur === null && pl[2].dur === null && pl[3].dur === 4 && pl[4].dur === 8, 'jeu à 120 BPM : 8 × 2-2 = 16 s, 4 × 1-1 = 4 s, 4 × 3 pulses = 8 s ; texte et pause : au toucher');
+  ok(C.textPlayLines('Squat × 8 (2-2)', null)[0].dur === null && C.textPlayLines('Squat (2-2)', 120)[0].dur === null && C.textPlayLines('Squat × 8', 120)[0].dur === null, 'sans BPM, sans répétitions ou sans tempo : au toucher');
+  let crash = null; try { for (const t of ['', '\n\n', '×××', '((((', '2-2-2-2', 'x', '0 fois', '999x 4/4 bb', '💪🔥', 'a'.repeat(5000), 'Pause\u0000', undefined]) C.textPlayLines(t, 128); } catch (e) { crash = e; }
+  ok(!crash && C.textPlayLines('0 fois 2-2', 120)[0].dur === null, 'texte libre bizarre : jamais d\'erreur' + (crash ? ' (' + crash.message + ')' : ''));
+}
+
 console.log(`\n${passes} réussis, ${fails} échoués`);
 process.exit(fails ? 1 : 0);

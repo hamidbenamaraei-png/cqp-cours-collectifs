@@ -159,6 +159,28 @@ select{max-width:100%;text-overflow:ellipsis}
 .ltools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:8px}
 .ltools button{min-height:44px;border-radius:11px;border:2px solid var(--line);background:#11162c;color:#fff;font:inherit;font-size:15px;font-weight:700;cursor:pointer;padding:2px;white-space:nowrap}
 .rlist{margin:0;padding-left:28px}.rlist li{margin:4px 0}.rlist li span:first-child{margin-right:8px}
+/* ✍️ mon script en texte libre (01/11) */
+.wbar{display:flex;align-items:center;gap:10px;justify-content:space-between;flex-wrap:wrap;margin:0 0 8px}
+.wsaved{font-size:14px;color:var(--mute);min-height:20px;opacity:0;transition:opacity .3s}.wsaved.on{opacity:1}
+.wta{display:block;width:100%;min-height:300px;height:46vh;resize:vertical;padding:14px;border-radius:14px;border:2px solid var(--line);background:#11162c;color:#fff;font:inherit;font-size:18px;line-height:1.55;margin:0 0 12px;white-space:pre-wrap;overflow-wrap:break-word}
+.wta:focus{outline:none;border-color:var(--or)}
+.wta::placeholder{color:var(--mute)}
+.sc{font-size:18px;line-height:1.45}
+.sc .sblk+.sblk{border-top:1px dashed var(--line);margin-top:10px;padding-top:10px}
+.sl{display:flex;gap:8px;align-items:baseline;padding:4px 0}
+.sl .sn{flex:0 0 auto;min-width:30px;text-align:right;color:var(--or);font-weight:900;font-variant-numeric:tabular-nums}
+.sl .sb{flex:1;min-width:0;overflow-wrap:break-word}
+.sl .snm{font-weight:800}
+.sl .srep{display:inline-block;padding:0 9px;border-radius:999px;background:#3a2a22;border:1px solid var(--or);color:var(--or2);font-weight:800;font-size:16px;white-space:nowrap}
+.sl .stp{color:var(--ja);font-weight:800}
+.sl .stx{color:var(--soft)}
+.sl .sdot{color:var(--mute)}
+.sl.pz{background:#1a2040;border-radius:10px;padding:4px 8px;margin:2px 0;color:var(--mute);font-style:italic}.sl.pz .sn{color:var(--mute)}
+.play .main{cursor:pointer}
+.play .pnum{font-size:16px;color:var(--mute);min-height:22px;font-weight:700}
+.play .mv.long{font-size:clamp(26px,8vw,46px);overflow-wrap:break-word}
+.play .mv.pz{color:var(--mute)}
+.play .phint{font-size:17px;color:var(--soft);min-height:24px}
 /* photo plein écran */
 .pv{position:fixed;inset:0;background:#000;z-index:45;display:flex;flex-direction:column}
 .pvimg{flex:1;overflow:hidden;touch-action:none;display:flex;align-items:center;justify-content:center;min-height:0}
@@ -178,14 +200,25 @@ select{max-width:100%;text-overflow:ellipsis}
   #print li{break-inside:avoid}
   #print .t{color:#666;font-size:10pt}
   #print section{break-inside:avoid}
+  #print .sc{font-size:13pt;line-height:1.45}
+  #print .sblk+.sblk{border-top:1pt dashed #bbb;margin-top:6pt;padding-top:6pt}
+  #print .sl{display:flex;gap:6pt;align-items:baseline;padding:1.5pt 0;break-inside:avoid}
+  #print .sl .sn{min-width:20pt;text-align:right;color:#c25400;font-weight:700}
+  #print .sl .sb{flex:1}
+  #print .snm{font-weight:700}
+  #print .srep{background:#fff1e6;border:1pt solid #e07a2e;border-radius:9pt;padding:0 5pt;color:#8a3d00;font-weight:700;font-size:12pt;white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  #print .stp{color:#a35a00;font-weight:700}
+  #print .stx,#print .sdot{color:#555}
+  #print .sl.pz{color:#666;font-style:italic;background:#eee;-webkit-print-color-adjust:exact;print-color-adjust:exact;padding:1.5pt 4pt}
+  #print .sl.pz .sn{color:#666}
 }
 </style>
 </head>
 <body>
 <div id="app"><p class="soft" style="margin-top:40px;text-align:center">Chargement…</p></div>
 <div id="print"></div>
-<script src="core.js?v=8"></script>
-<script src="mp4.js?v=8"></script>
-<script src="app.js?v=8"></script>
+<script src="core.js?v=9"></script>
+<script src="mp4.js?v=9"></script>
+<script src="app.js?v=9"></script>
 </body>
 </html>

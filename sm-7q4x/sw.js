@@ -1,6 +1,6 @@
 /* ScriptMove – fonctionne sans Internet après la 1re visite.
    Ne met en cache que les fichiers de l'appli (jamais tes vidéos, tes musiques ni tes photos : elles restent dans l'appli). */
-const V = 'sm-app-v8';
+const V = 'sm-app-v9';
 const CORE = ['./', './index.html', './core.js', './mp4.js', './app.js', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(V).then((c) => c.addAll(CORE.map((x) => new Request(x, { cache: 'reload' })))).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => {
