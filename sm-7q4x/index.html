@@ -129,6 +129,11 @@ details.pk[open]>summary::before{content:'▾ '}
 .vctl button{min-height:46px;border-radius:12px;border:2px solid var(--line);background:var(--card2);color:#fff;font:inherit;font-weight:800;font-size:15px;cursor:pointer;padding:2px;white-space:nowrap}
 .vctl button.main{background:var(--or);border-color:var(--or);color:#1b1206;font-size:20px}
 .vctl button.on{border-color:var(--ja);color:var(--ja)}
+.wnav{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}
+.wnav button{min-height:44px;border-radius:12px;border:2px solid var(--line);background:var(--card2);color:#fff;font:inherit;font-weight:800;font-size:15px;cursor:pointer;padding:4px 6px;line-height:1.2}
+.wnav button:disabled{opacity:.35;cursor:default}
+.wnav .wvoix{grid-column:1/-1}
+.wnav .wvoix.on{border-color:var(--ja);color:var(--ja)}
 .vtime{display:flex;align-items:center;gap:10px;margin-top:6px}.vtime b{font-variant-numeric:tabular-nums;min-width:46px}
 .vtime input{flex:1;min-width:0;accent-color:var(--or);height:28px}
 .wflash{position:absolute;left:50%;top:10px;transform:translateX(-50%);background:var(--ok);color:#06210f;font-weight:900;padding:6px 14px;border-radius:999px;opacity:0;pointer-events:none;white-space:nowrap;max-width:90%;overflow:hidden;text-overflow:ellipsis}
@@ -297,9 +302,9 @@ body.wtyping #wbody{display:none}
 <body>
 <div id="app"><p class="soft" style="margin-top:40px;text-align:center">Chargement…</p></div>
 <div id="print"></div>
-<script src="core.js?v=22"></script>
-<script src="mp4.js?v=22"></script>
-<script src="pc-commun.js?v=22"></script>
-<script src="app.js?v=22"></script>
+<script src="core.js?v=23"></script>
+<script src="mp4.js?v=23"></script>
+<script src="pc-commun.js?v=23"></script>
+<script src="app.js?v=23"></script>
 </body>
 </html>

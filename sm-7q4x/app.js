@@ -1253,10 +1253,18 @@
      Le script se construit ligne par ligne dans une liste qui défile seule. Pendant l'écriture (clavier ouvert),
      la vidéo, ses boutons et la case restent fixes en haut de la partie visible de l'écran : la page ne bouge plus.
      Stockage inchangé : le texte libre du morceau (m.text), une ligne par entrée ; un séparateur « — » = une ligne vide. */
-  async function scrWrite(cid, mid) {
+  async function scrWrite(cid, mid, opt) {
     S.wantAwake = false; keepAwake(false);
     const c = await dget('courses', cid); if (!c) return scrHome();
     const m = c.morceaux.find((x) => x.id === mid); if (!m) return goBack(cid);
+    // v23 : ⏮ / ⏭ pour passer d'un morceau à l'autre de l'édition sans quitter l'écran
+    const msAll = c.morceaux.filter((x) => !x.lost), mIdx = msAll.indexOf(m);
+    const prevM = mIdx > 0 ? msAll[mIdx - 1] : null, nextM = mIdx >= 0 && mIdx < msAll.length - 1 ? msAll[mIdx + 1] : null;
+    // v23 : « 🔇 Couper la voix du coach » : la vidéo se tait et la musique liée au morceau joue, calée sur la vidéo
+    let mu = null; try { mu = m.musicId ? await dget('musics', m.musicId) : null; } catch (e) { mu = null; }
+    if (mu && !mu.blob) mu = null;
+    const sy = mu ? syncOf(m) : null;
+    let au = null, auURL = null, auTick = null;
     if (!Array.isArray(m.lines)) m.lines = [];
     // ancien script (lignes) : converti en texte au premier affichage, l'ancien format reste gardé à côté
     if (typeof m.text !== 'string') { m.text = C.textOf(m); m.textOk = false; await saveCourse(c); }
@@ -1295,11 +1303,44 @@
     const leave = async () => {
       pending();
       left = true; clearTimeout(saveT); S.flushWrite = null;
-      exitType(true); detach();
+      exitType(true); detach(); voixStop();
       const x = v(); if (x) { x.pause(); if (x.readyState >= 1) m.lastT = Math.round(x.currentTime * 10) / 10; }
       setText();
       await saveCourse(c);
     };
+    /* ---------- 🔇 voix du coach coupée : musique du morceau calée sur la vidéo ---------- */
+    function voixLabel() { return S.wMute && mu ? '🔊 Remettre la voix du coach' : '🔇 Couper la voix du coach'; }
+    /** Temps de la musique qui correspond au temps de la vidéo (calage de « 🎮 Jouer » ; sans calage : la musique commence au début du morceau) */
+    const musicAt = (vt) => (sy ? C.videoToMusic(sy, vt) : vt - m.start);
+    function voixSync(force) {
+      const x = v(); if (!au) return;
+      if (!x || !document.contains(x)) return voixStop();
+      au.playbackRate = x.playbackRate / ((sy && sy.ratio) || 1);
+      const mt = musicAt(x.currentTime);
+      if (mt < 0 || (au.duration && mt >= au.duration - 0.05)) { if (!au.paused) au.pause(); return; }
+      if (force || Math.abs(au.currentTime - mt) > 0.3) { try { au.currentTime = mt; } catch (e) { /* pas encore prête */ } }
+      if (x.paused || x.seeking) { if (!au.paused) au.pause(); } else if (au.paused) au.play().catch(() => {});
+    }
+    function voixStop() {
+      clearInterval(auTick); auTick = null;
+      if (au) { try { au.pause(); au.removeAttribute('src'); au.load(); } catch (e) { /* rien */ } au = null; }
+      if (auURL) { URL.revokeObjectURL(auURL); auURL = null; }
+      const x = v(); if (x) x.muted = false;
+    }
+    function voixApply() {
+      const x = v(), b = $('#wvoix');
+      if (b) { b.textContent = voixLabel(); b.classList.toggle('on', !!(S.wMute && mu)); }
+      if (!x) return;
+      if (S.wMute && mu) {
+        x.muted = true;
+        if (!au) {
+          auURL = URL.createObjectURL(mu.blob); au = new Audio(auURL); au.preload = 'auto';
+          au.addEventListener('loadedmetadata', () => voixSync(true));
+          auTick = setInterval(() => voixSync(false), 1000);
+        }
+        voixSync(true);
+      } else voixStop();
+    }
     const photoBtn = '<button class="btn sec small wbtn" data-act="photo">📷 ' + (nPh ? 'Photos (' + nPh + ')' : 'Photo de ma feuille') + '</button>' +
       (c.livret ? '<button class="btn sec small wbtn" data-act="lv">📄 Livret</button>' : ''); // (la barre est cachée pendant l'écriture, clavier ouvert)
 
@@ -1445,12 +1486,17 @@
       '<div class="wpane" id="wpane"><div class="wstick" id="wstick">' + (url ? '<video id="wv" src="' + url + '" playsinline preload="auto"></video>' +
         '<div class="vctl"><button data-act="b5" aria-label="Reculer de 5 secondes">⏪ 5</button><button data-act="pp" id="wpp" class="main" aria-label="Lecture ou pause">▶️</button><button data-act="f5" aria-label="Avancer de 5 secondes">5 ⏩</button>' +
         '<button data-act="spd" data-s="0.5">0,5×</button><button data-act="spd" data-s="0.75">0,75×</button><button data-act="spd" data-s="1" class="on">1×</button></div>' +
-        '<div class="vtime"><b id="wt">0:00</b><input type="range" id="wr" min="0" max="' + Math.max(1, Math.round((m.end - m.start) * 10) / 10) + '" step="0.1" value="0" aria-label="Position dans le morceau"><span class="mute">' + fmt(m.end - m.start) + '</span></div>' :
+        '<div class="vtime"><b id="wt">0:00</b><input type="range" id="wr" min="0" max="' + Math.max(1, Math.round((m.end - m.start) * 10) / 10) + '" step="0.1" value="0" aria-label="Position dans le morceau"><span class="mute">' + fmt(m.end - m.start) + '</span></div>' +
+        '<div class="wnav"><button data-act="prevm"' + (prevM ? '' : ' disabled') + '>⏮ Morceau précédent</button><button data-act="nextm"' + (nextM ? '' : ' disabled') + '>Morceau suivant ⏭</button>' +
+        '<button data-act="voix" id="wvoix" class="wvoix">' + voixLabel() + '</button></div>' :
         '<div class="card j small" style="margin:0">🎬 La vidéo n\'est pas gardée dans l\'appli. Rechoisis-la pour écrire en la regardant (elle sera gardée).<button class="btn sec small" style="margin:8px 0 0" data-act="revid">🎬 Choisir la vidéo</button></div>') +
         '<div id="wedit"></div></div>' +
       '<div id="wbody"></div></div><div id="wfoot"></div>',
     {
       back: async () => { await leave(); goBack(cid); },
+      prevm: async () => { if (!prevM) return; const x = v(), on = !!(x && !x.paused); await leave(); scrWrite(cid, prevM.id, { fromStart: true, play: on }); },
+      nextm: async () => { if (!nextM) return; const x = v(), on = !!(x && !x.paused); await leave(); scrWrite(cid, nextM.id, { fromStart: true, play: on }); },
+      voix: () => { if (!mu) { toast('Pas de musique liée à ce morceau'); return; } S.wMute = !S.wMute; voixApply(); },
       revid: async () => { await leave(); await giveVideo(c); scrWrite(cid, mid); },
       pp: () => { const x = v(); if (!x) return; if (x.paused) { if (x.currentTime >= m.end - 0.05) x.currentTime = m.start; x.play().catch(() => {}); } else x.pause(); },
       b5: () => { const x = v(); if (x) x.currentTime = Math.max(m.start, x.currentTime - 5); },
@@ -1499,8 +1545,11 @@
     S.flushWrite = () => { if (!left) return save(); };
     const x = v();
     if (x) {
-      const startAt = m.lastT != null && m.lastT >= m.start && m.lastT < m.end ? m.lastT : m.start;
-      x.addEventListener('loadedmetadata', () => { x.currentTime = startAt; layout(); }, { once: true });
+      const startAt = !(opt && opt.fromStart) && m.lastT != null && m.lastT >= m.start && m.lastT < m.end ? m.lastT : m.start;
+      x.addEventListener('loadedmetadata', () => { x.currentTime = startAt; layout(); if (opt && opt.play) x.play().catch(() => {}); voixApply(); }, { once: true });
+      for (const ev of ['play', 'pause', 'seeked', 'ratechange']) x.addEventListener(ev, () => voixSync(true));
+      x.addEventListener('seeking', () => { if (au) au.pause(); });
+      x.addEventListener('timeupdate', () => voixSync(false));
       x.addEventListener('timeupdate', () => {
         if (x.currentTime > m.end) { x.pause(); x.currentTime = m.end; }
         else if (x.currentTime < m.start - 0.3) x.currentTime = m.start;
