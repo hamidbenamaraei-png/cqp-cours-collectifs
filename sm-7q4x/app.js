@@ -327,6 +327,15 @@
     }
     return null;
   }
+  /** Regarder la vidéo d'une édition, même sans musiques ni script */
+  async function scrWatch(c) {
+    const url = await videoURL(c);
+    if (!url) { await ask('Vidéo introuvable', 'La vidéo n\'est plus dans l\'appli : rechoisis-la avec « 🎬 Remettre la vidéo ».', [{ label: 'OK', value: 1 }]); scrCourse(c.id); return; }
+    render('<div class="top"><button class="back" data-act="back">‹</button><h1>' + esc(c.name) + '</h1></div>' +
+      '<div class="vidbox"><video id="smwatch" src="' + url + '" controls playsinline preload="metadata"></video></div>' +
+      '<p class="mute small">Touche ⛶ en bas de la vidéo pour la mettre en plein écran.</p>',
+      { back: () => { const v = $('#smwatch'); if (v) v.pause(); scrCourse(c.id); } });
+  }
   /** Rechoisir la vidéo d'une édition, et la garder dans l'appli */
   async function giveVideo(c, given, sure) {
     const f = given || (await pickFile('video/*'))[0]; if (!f) return false;
@@ -1075,7 +1084,7 @@
     render('<div class="top"><button class="back" data-act="back">‹</button><h1>' + esc(c.name) + '</h1><button class="back" data-act="ren" aria-label="Renommer l\'édition">✏️</button></div>' +
       '<p class="mute">📁 ' + esc(fo ? fo.name : '') + ' · ' + fmtDate(c.created) + ' · ' + (c.video ? fmt(c.video.duration) : '') + '</p>' +
       (oldCut(c) ? '<div class="card r"><h3>⚠️ Découpage à refaire</h3><p class="soft small">Cette édition a été découpée avec l\'ancienne méthode : des musiques ont pu être placées n\'importe où. La nouvelle méthode ne place une musique que si elle est sûre. Ta vidéo, tes musiques, le nom et tes scripts sont gardés.</p><button class="btn" data-act="redo">🔁 Refaire le découpage</button></div>' : '') +
-      '<div class="card ' + (kept ? 'g' : 'j') + ' small">' + (kept ? '🎬 <b>Vidéo gardée dans l\'appli</b> (' + fmtSize(kept.size) + ')<button class="btn ghost small" style="margin:8px 0 0" data-act="rmvid">🗑️ Retirer la vidéo (garder scripts et musiques)</button>' : '🎬 <b>La vidéo n\'est pas gardée</b> dans l\'appli.' + (c.video ? ' <span class="mute">(' + esc(c.video.name) + ', ' + fmtSize(c.video.size) + ')</span>' : '') + '<button class="btn sec small" style="margin:8px 0 0" data-act="addvid">🎬 Remettre la vidéo</button>') + '</div>' +
+      '<div class="card ' + (kept ? 'g' : 'j') + ' small">' + (kept ? '🎬 <b>Vidéo gardée dans l\'appli</b> (' + fmtSize(kept.size) + ')<button class="btn small" style="margin:8px 0 0" data-act="watch">▶️ Regarder la vidéo</button><button class="btn ghost small" style="margin:8px 0 0" data-act="rmvid">🗑️ Retirer la vidéo (garder scripts et musiques)</button>' : '🎬 <b>La vidéo n\'est pas gardée</b> dans l\'appli.' + (c.video ? ' <span class="mute">(' + esc(c.video.name) + ', ' + fmtSize(c.video.size) + ')</span>' : '') + '<button class="btn sec small" style="margin:8px 0 0" data-act="addvid">🎬 Remettre la vidéo</button>') + '</div>' +
       (lv ? '<div class="card g small lvcard">📄 <b>Mon livret</b> · <span id="lvinfo">' + lvPages(lv.pages) + ' · ' + lvSize(lv.size) + '</span>' +
         '<button class="btn small" style="margin:8px 0 8px" data-act="lvsee">📄 Voir mon livret</button><div class="row tight"><button class="btn sec small" style="margin:0" data-act="lvadd">🔁 Remplacer</button><button class="btn sec small" style="margin:0" data-act="lvrm">🗑️ Retirer</button></div></div>'
         : '<button class="btn sec" data-act="lvadd">📄 Ajouter mon livret</button>') +
@@ -1120,6 +1129,7 @@
       cut: () => scrCut(c.id),
       redo: () => redoCut(c),
       addvid: async () => { await giveVideo(c); scrCourse(cid); },
+      watch: () => scrWatch(c),
       rmvid: async () => {
         const r = await ask('Retirer la vidéo ?', 'La vidéo est retirée de l\'appli pour libérer ' + fmtSize(kept.size) + '. <b>Tes scripts, tes musiques et tes photos sont gardés.</b> Pour la revoir, tu devras la rechoisir.', [{ label: '🗑️ Oui, retirer la vidéo', value: 1, cls: 'red' }, { label: 'Non, la garder', value: 0, cls: 'sec' }]);
         if (!r) return; await deleteVideo(c.id); c.video.kept = null; if (S.videoFor === c.id) S.videoFor = null; await saveCourse(c); toast('Vidéo retirée ✅'); scrCourse(cid);
