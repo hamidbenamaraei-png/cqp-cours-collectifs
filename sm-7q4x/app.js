@@ -74,7 +74,8 @@
     S.favs = (await dget('kv', 'favs')) || {};
     S.folders = (await dget('kv', 'folders')) || [];
     S.mixes = (await dget('kv', 'mixes')) || [];
-    S.grids = (await dget('kv', 'grids')) || {}; // v24 : rythme de chaque musique (BPM, 1er temps, pont) // 🔀 mes mix (01/11) : des références vers les morceaux, rien n'est recopié
+    // v25 : les anciens « mix de musiques » (v24, retirés) sont ignorés mais gardés tels quels
+    S.mixesOld = S.mixes.filter((x) => x && x.kind === 'music'); S.mixes = S.mixes.filter((x) => !(x && x.kind === 'music')); // 🔀 mes mix (01/11) : des références vers les morceaux, rien n'est recopié
     // 31/10 : nouveaux noms de mouvements dans les listes personnelles (une seule fois)
     if (!(await dget('kv', 'movesV4'))) {
       const k = { vocab: S.vocab, prints: S.prints, customMoves: S.customMoves, favs: S.favs };
@@ -1807,14 +1808,13 @@
   /* ======================= 🔀 Mes mix (01/11) =======================
      Un mix = une liste ordonnée de RÉFÉRENCES { cid, mid } vers des morceaux qui existent déjà (rien n'est recopié).
      Rangés à part (kv 'mixes') : enlever ou supprimer un mix ne touche jamais aux éditions, scripts, musiques, vidéos ni photos. */
-  const saveMixes = () => saveKV('mixes');
+  const saveMixes = () => dput('kv', S.mixes.concat(S.mixesOld || []), 'mixes');
   const plural = (n, a, b) => n + ' ' + (n > 1 ? b : a);
   async function newMix() {
     const name = await askText('Nom du nouveau mix', '', 'ex. Cours mélangé 1 h'); if (!name) return;
-    const how = await ask('Comment commencer ?', '« ' + esc(name) + ' »', [{ label: '🎵 Mix de musiques (enchaînées, même BPM)', value: 'music' }, { label: '📁 Morceaux : partir d\'une édition', value: 'ed', cls: 'sec' }, { label: '➕ Morceaux : mix vide', value: 'empty', cls: 'sec' }, { label: 'Annuler', value: null, cls: 'ghost' }]);
+    const how = await ask('Comment commencer ?', '« ' + esc(name) + ' »', [{ label: '📁 Partir d\'une édition', value: 'ed' }, { label: '➕ Mix vide', value: 'empty', cls: 'sec' }, { label: 'Annuler', value: null, cls: 'ghost' }]);
     if (!how) return;
     if (how === 'empty') return createMix(name, []);
-    if (how === 'music') { const x = { id: 'mx_' + uid(), name, created: Date.now(), items: [], kind: 'music', bpm: 130, keep: false, tracks: [] }; S.mixes.push(x); await saveMixes(); toast('Mix créé ✅'); return scrPickMusic(x.id); }
     scrPickCourse(name);
   }
   async function createMix(name, items) {
@@ -1841,9 +1841,8 @@
     S.wantAwake = false; keepAwake(false); S.mixBack = null;
     render('<div class="top"><button class="back" data-act="back">‹</button><h1>🔀 Mes mix</h1></div>' +
       '<p class="soft small">Un mix, c\'est ton cours à toi : des morceaux pris dans n\'importe quelles éditions, dans l\'ordre que tu veux. Les morceaux gardent leur script, leur musique et leur vidéo.</p>' +
-      '<p class="soft small">🎵 Nouveau : un <b>mix de musiques</b> enchaîne tes musiques au même BPM (ex. 130 pour du step), sans blanc, comme une playlist de cours toute prête.</p>' +
       '<button class="btn" data-act="new">➕ Nouveau mix</button>' +
-      (S.mixes.length ? S.mixes.map((x) => '<div class="mixrow"><button class="seg" data-act="open" data-id="' + esc(x.id) + '"><span class="n">' + (x.kind === 'music' ? '🎵' : '🔀') + '</span><span class="t"><b>' + esc(x.name) + '</b><span class="mute">' + (x.kind === 'music' ? plural(x.tracks.length, 'musique', 'musiques') + ' · ' + (x.keep ? 'BPM de chaque musique' : x.bpm + ' BPM') : plural(x.items.length, 'morceau', 'morceaux')) + '</span></span></button>' +
+      (S.mixes.length ? S.mixes.map((x) => '<div class="mixrow"><button class="seg" data-act="open" data-id="' + esc(x.id) + '"><span class="n">🔀</span><span class="t"><b>' + esc(x.name) + '</b><span class="mute">' + plural(x.items.length, 'morceau', 'morceaux') + '</span></span></button>' +
         '<button class="ib" data-act="ren" data-id="' + esc(x.id) + '" aria-label="Renommer ce mix">✏️</button><button class="ib" data-act="del" data-id="' + esc(x.id) + '" aria-label="Supprimer ce mix">🗑️</button></div>').join('')
         : '<div class="card"><p class="soft">Tu n\'as pas encore de mix.</p><p class="mute">Touche « ➕ Nouveau mix ».</p></div>'),
     {
@@ -1875,7 +1874,6 @@
   async function scrMix(id, pos) {
     S.wantAwake = false; keepAwake(false); S.mixBack = null;
     const x = mixOf(id); if (!x) return scrMixes();
-    if (x.kind === 'music') return scrMusicMix(id, pos);
     const { musics, R } = await mixData(x);
     const okR = R.filter((r) => r.ok);
     const dur = C.mixDuration(R, musics);
@@ -2041,7 +2039,7 @@
     opts.push({ label: 'Annuler', value: null, cls: 'ghost' });
     const r = await ask('Sauvegarder', 'Un fichier est enregistré dans ton téléphone (dossier Téléchargements). Garde-le précieusement, par exemple sur ton Drive.<br><span class="mute">Les vidéos ne sont pas dans la sauvegarde (trop grosses).</span>', opts);
     if (!r) return;
-    const data = { app: 'ScriptMove', version: 3, date: new Date().toISOString(), courses, mixes: S.mixes || [], grids: S.grids || {}, folders: S.folders, vocab: S.vocab, prints: S.prints, customMoves: S.customMoves || {}, favs: S.favs || {} };
+    const data = { app: 'ScriptMove', version: 3, date: new Date().toISOString(), courses, mixes: S.mixes || [], folders: S.folders, vocab: S.vocab, prints: S.prints, customMoves: S.customMoves || {}, favs: S.favs || {} };
     data.musicsInfo = musics.map((m) => ({ id: m.id, name: m.name, type: m.type, duration: m.duration, bpm: m.bpm }));
     if (r === 'full') {
       toast('Préparation…');
@@ -2089,7 +2087,6 @@
     for (const st in d.customMoves || {}) S.customMoves[st] = Array.from(new Set((S.customMoves[st] || []).concat(d.customMoves[st])));
     await saveKV('prints'); await saveKV('vocab'); await saveKV('customMoves'); await saveKV('favs');
     if (Array.isArray(d.mixes) && d.mixes.length) { S.mixes = C.mixMerge(S.mixes, d.mixes); await saveMixes(); }
-    if (d.grids && typeof d.grids === 'object') { S.grids = Object.assign({}, d.grids, S.grids || {}); await saveKV('grids'); }
     toast('Restauré ✅', 3000); scrHome();
   }
 
@@ -2218,473 +2215,6 @@
         shareDone(x, where + ' › ' + m.name, () => scrCourse(c.id));
       }
     }, common));
-  }
-
-  /* ======================= 🎵 Mix de musiques (v24) =======================
-     Un « mix de musiques » (kind 'music') : des musiques de l'appli enchaînées comme un vrai mix de cours, sans blanc ni fondu audible.
-     - Chaque musique a sa grille (S.grids[id] = { bpm, t1 = 1er temps, dur, pont }), calculée une fois (C.firstBeat / C.estimateBPM), réglable.
-     - Toutes les musiques sont mises au BPM du mix sans changer leur son (preservesPitch), sauf « garder le BPM de chaque musique ».
-     - Une musique entre pile sur le 1er temps d'un bloc de 32 temps, au moment exact où la précédente finit son bloc (micro-fondu de 40 ms
-       programmé à l'horloge audio : inaudible, juste pour éviter un « clic »). Le son passe par Web Audio → MediaStream → <audio>,
-       avec la Media Session (écran verrouillé) et une horloge dans un Worker : la musique ne s'arrête pas si le téléphone se met en veille. */
-  const mmOf = (id) => { const x = mixOf(id); return x && x.kind === 'music' ? x : null; };
-  const huitTxt = (n) => (n === 1 ? '1er' : n + 'e') + ' huit';
-  const bpmTxt = (v) => String(Math.round(v * 10) / 10).replace('.', ',');
-  const gridErr = {};
-  async function gridOf(muId, force) {
-    S.grids = S.grids || {};
-    if (S.grids[muId] && !force) return S.grids[muId];
-    const mu = await dget('musics', muId); if (!mu || !mu.blob) return null;
-    let bpm = mu.bpm, t1 = mu.attack, dur = mu.duration;
-    if (force || !(bpm > 0) || t1 == null || !(dur > 0)) { const r = await musicFeatures(mu); bpm = r.bpm || 128; t1 = r.attack; dur = r.duration; }
-    const old = S.grids[muId];
-    const g = { bpm: Math.round(bpm * 100) / 100, t1: Math.max(0, Math.round((+t1 || 0) * 1000) / 1000), dur, auto: { bpm: Math.round(bpm * 100) / 100, t1: Math.max(0, +t1 || 0) }, pont: old ? old.pont : null };
-    S.grids[muId] = g; await saveKV('grids'); return g;
-  }
-  const stepper = (label, value, key, i, minus, plus) => '<div class="mmstep"><span>' + label + '</span><button data-act="' + key + '-"' + (i != null ? ' data-i="' + i + '"' : '') + (minus === false ? ' disabled' : '') + ' aria-label="Moins">−</button><b>' + value + '</b><button data-act="' + key + '+"' + (i != null ? ' data-i="' + i + '"' : '') + (plus === false ? ' disabled' : '') + ' aria-label="Plus">+</button></div>';
-
-  /** Écran d'un mix de musiques */
-  async function scrMusicMix(id, pos) {
-    S.wantAwake = false; keepAwake(false); mmStop(); gridStop();
-    const x = mmOf(id); if (!x) return scrMixes();
-    const musics = {}; for (const m of await dall('musics')) musics[m.id] = m;
-    const G = S.grids || (S.grids = {});
-    const missing = x.tracks.filter((t) => musics[t.mu] && !G[t.mu] && !gridErr[t.mu]).map((t) => t.mu);
-    const segs = C.mgSegments(x.tracks.filter((t) => musics[t.mu]), G, x), dur = C.mgDur(segs, G), n = x.tracks.length;
-    const card = (t, i) => {
-      const mu = musics[t.mu], g = G[t.mu];
-      const arrows = '<div class="row tight"><button class="btn sec small" data-act="up" data-i="' + i + '"' + (i ? '' : ' disabled') + ' aria-label="Monter">⬆️</button><button class="btn sec small" data-act="down" data-i="' + i + '"' + (i < n - 1 ? '' : ' disabled') + ' aria-label="Descendre">⬇️</button><button class="btn sec small" data-act="rm" data-i="' + i + '">✖ Enlever</button></div>';
-      if (!mu) return '<div class="card mrc lost" id="mx' + i + '"><h2>' + (i + 1) + '. Musique introuvable</h2><p class="mute">Elle a été supprimée de l\'appli.</p>' + arrows + '</div>';
-      if (!g) return '<div class="card mrc o" id="mx' + i + '"><h2>' + (i + 1) + '. ' + esc(mu.name) + '</h2><p class="soft">' + (gridErr[t.mu] ? '⚠️ Je n\'arrive pas à lire cette musique : elle sera sautée.' : '⏳ Je cherche le rythme…') + '</p>' + arrows + '</div>';
-      const nb = C.mgBlocks(g), from = Math.min(nb, Math.max(1, t.from || 1)), rate = x.keep ? 1 : x.bpm / g.bpm;
-      const pct = Math.round((rate - 1) * 100);
-      return '<div class="card mrc g" id="mx' + i + '"><h2>' + (i + 1) + '. ' + esc(mu.name) + '</h2>' +
-        '<p class="mute">🥁 ' + bpmTxt(g.bpm) + ' BPM' + (x.keep ? '' : ' → ' + x.bpm + ' BPM' + (pct ? ' (' + (pct > 0 ? '+' : '−') + Math.abs(pct) + ' %)' : '')) + ' · ' + nb + ' blocs de 32 temps' + (g.pont ? ' · 🌉 pont sauté (blocs ' + g.pont.a + ' à ' + g.pont.b + ')' : '') + '</p>' +
-        (Math.abs(rate - 1) > 0.2 ? '<p class="small" style="color:var(--ja)">⚠️ Grosse différence de vitesse : vérifie le BPM dans « 🥁 Régler le rythme » (×2 ou ÷2).</p>' : '') +
-        stepper('Entre au bloc', from, 'from', i, from > 1, from < nb) +
-        (t.blocks ? stepper('Joue', plural(t.blocks, 'bloc', 'blocs'), 'nb', i, t.blocks > 1, from + t.blocks - 1 < nb) : '<p class="small" style="margin:0 0 10px"><b>Joue jusqu\'à la fin</b> <span class="mute">(' + plural(Math.max(0, nb - from + 1), 'bloc', 'blocs') + ')</span></p>') +
-        '<button class="btn sec small" data-act="end" data-i="' + i + '">' + (t.blocks ? '➡️ Jouer jusqu\'à la fin' : '✂️ Choisir le nombre de blocs') + '</button>' +
-        '<button class="btn sec small" data-act="grid" data-i="' + i + '">🥁 Régler le rythme</button>' + arrows + '</div>';
-    };
-    const tempo = '<div class="card j"><h2>🥁 Tempo du mix</h2>' + (x.keep ? '<p class="soft">Chaque musique garde son BPM d\'origine (le tempo change d\'une musique à l\'autre).</p>'
-      : '<div class="mmbpm"><button data-act="bpm-" aria-label="Moins vite">−</button><button class="mmv" data-act="bpmset"><b>' + x.bpm + '</b><span class="mute">BPM · touche pour l\'écrire</span></button><button data-act="bpm+" aria-label="Plus vite">+</button></div>' +
-        '<p class="mute">Toutes les musiques passent à ce tempo, sans changer leur son. Le tempo ne bouge jamais d\'une musique à l\'autre.</p>') +
-      '<button class="btn sec small" data-act="keep">' + (x.keep ? '🎚️ Toutes les musiques au même BPM' : '🎵 Garder le BPM de chaque musique') + '</button></div>';
-    render('<div class="top"><button class="back" data-act="back">‹</button><h1>🎵 ' + esc(x.name) + '</h1><button class="back" data-act="ren" aria-label="Renommer le mix">✏️</button></div>' + tempo +
-      '<div class="card"><h2>🎨 Thème du mix</h2><div class="chips">' + SMTheme.THEMES.map(([k, l]) => '<button class="chip' + ((x.theme || '') === k ? ' on' : '') + '" data-act="theme" data-k="' + k + '">' + l + '</button>').join('') + '</div>' +
-        '<button class="btn sec small" data-act="sfx">' + (x.sfx ? '🔔 Bruitages : oui' : '🔕 Bruitages : non') + '</button>' +
-        (x.theme || x.sfx ? '<label class="lab" for="thv">Volume du thème</label><input type="range" id="thv" min="0" max="100" step="5" value="' + Math.round((x.themeVol >= 0 ? x.themeVol : 0.5) * 100) + '" style="width:100%">' : '') +
-        '<p class="mute">Une batterie et des bruitages fabriqués par l\'appli, calés sur tes blocs de 32 temps. Tes musiques, elles, ne changent pas (seulement leur tempo).</p></div>' +
-      '<div class="card"><b>⏱️ Durée : ' + fmtDur(dur) + '</b><br><span class="mute">' + plural(n, 'musique', 'musiques') + ' · une musique entre pile sur le 1er temps d\'un bloc de 32 temps, sans blanc</span></div>' +
-      (segs.length ? '<button class="btn green" data-act="play">▶️ Lancer le mix</button><button class="btn sec" data-act="mp3">⬇️ Télécharger mon mix (MP3)</button>' : '') +
-      (n ? x.tracks.map(card).join('') : '<div class="card"><p class="soft">Ton mix est vide.</p><p class="mute">Touche « ➕ Ajouter une musique ».</p></div>') +
-      '<button class="btn" data-act="add">➕ Ajouter une musique</button>' +
-      '<button class="btn ghost small" data-act="del">🗑️ Supprimer ce mix</button>',
-    (() => {
-      const T = (b) => x.tracks[+b.dataset.i], nbOf = (t) => C.mgBlocks(G[t.mu]);
-      const sv = async (i) => { await saveMixes(); scrMusicMix(id, i); };
-      return {
-        back: () => scrMixes(),
-        ren: async () => { const v = await askText('Nom du mix', x.name); if (v) { x.name = v; sv(); } },
-        play: () => scrMixPlay(id),
-        mp3: () => scrMixRender(id),
-        add: () => scrPickMusic(id),
-        del: async () => { if (await delMix(id)) scrMixes(); },
-        up: (b) => { const i = +b.dataset.i; x.tracks = C.mixMove(x.tracks, i, -1); sv(i - 1); },
-        down: (b) => { const i = +b.dataset.i; x.tracks = C.mixMove(x.tracks, i, 1); sv(i + 1); },
-        rm: async (b) => { const i = +b.dataset.i; const ok = await ask('Enlever cette musique du mix ?', 'Elle reste dans l\'appli.', [{ label: '✖ Oui, enlever', value: 1 }, { label: 'Non', value: 0, cls: 'sec' }]); if (ok) { x.tracks.splice(i, 1); sv(Math.min(i, x.tracks.length - 1)); } },
-        'from-': (b) => { const t = T(b); t.from = Math.max(1, (t.from || 1) - 1); sv(+b.dataset.i); },
-        'from+': (b) => { const t = T(b); t.from = Math.min(nbOf(t), (t.from || 1) + 1); if (t.blocks) t.blocks = Math.max(1, Math.min(t.blocks, nbOf(t) - t.from + 1)); sv(+b.dataset.i); },
-        'nb-': (b) => { const t = T(b); t.blocks = Math.max(1, (t.blocks || 1) - 1); sv(+b.dataset.i); },
-        'nb+': (b) => { const t = T(b); t.blocks = Math.min(nbOf(t) - (t.from || 1) + 1, (t.blocks || 1) + 1); sv(+b.dataset.i); },
-        end: (b) => { const t = T(b); t.blocks = t.blocks ? null : Math.max(1, Math.min(4, nbOf(t) - (t.from || 1) + 1)); sv(+b.dataset.i); },
-        grid: (b) => { const i = +b.dataset.i; scrGrid(T(b).mu, () => scrMusicMix(id, i)); },
-        'bpm-': () => { x.bpm = Math.max(60, Math.round(x.bpm) - 2); sv(); },
-        'bpm+': () => { x.bpm = Math.min(200, Math.round(x.bpm) + 2); sv(); },
-        bpmset: async () => { const v = await askText('BPM du mix (ex. 130 pour du step)', String(x.bpm)); const n2 = Math.round(+String(v || '').replace(',', '.')); if (n2 >= 60 && n2 <= 200) { x.bpm = n2; sv(); } else if (v) toast('Écris un nombre entre 60 et 200.'); },
-        keep: () => { x.keep = !x.keep; sv(); },
-        theme: (b) => { x.theme = b.dataset.k; sv(); },
-        sfx: () => { x.sfx = !x.sfx; sv(); }
-      };
-    })());
-    S.where = 'mm:' + id;
-    const thv = $('#thv'); if (thv) thv.addEventListener('change', () => { x.themeVol = Math.max(0, Math.min(1, +thv.value / 100)); saveMixes(); });
-    if (pos != null && pos >= 0) { const e = document.getElementById('mx' + pos); if (e) e.scrollIntoView({ block: 'center' }); }
-    if (missing.length) {
-      for (const mid of missing) { try { if (!(await gridOf(mid))) gridErr[mid] = 1; } catch (e) { gridErr[mid] = 1; } }
-      if (S.where === 'mm:' + id) scrMusicMix(id);
-    }
-  }
-  /** Choisir une musique à ajouter au mix (toutes les musiques de l'appli, ou une du téléphone) */
-  async function scrPickMusic(id) {
-    const x = mmOf(id); if (!x) return scrMixes();
-    const musics = (await dall('musics')).filter((m) => m && m.blob), courses = await dall('courses');
-    const where = {};
-    for (const c of courses) for (const m of c.morceaux || []) if (!m.lost && m.musicId) { const f = folderOf(c.folder); (where[m.musicId] = where[m.musicId] || []).push((f ? f.name + ' › ' : '') + c.name + ' › ' + m.name); }
-    musics.sort((a, b) => String(a.name).localeCompare(String(b.name), 'fr'));
-    render('<div class="top"><button class="back" data-act="back">‹</button><h1>➕ Ajouter une musique</h1></div>' +
-      '<button class="btn sec" data-act="file">📂 Une musique du téléphone</button>' +
-      '<input type="search" id="pq" placeholder="🔎 Chercher (musique, édition, morceau)" autocomplete="off" style="margin:0 0 12px">' +
-      (musics.length ? musics.map((m) => '<button class="seg pkrow" data-act="pick" data-id="' + esc(m.id) + '" data-s="' + esc(C.norm(m.name + ' ' + (where[m.id] || []).join(' '))) + '"><span class="n">🎵</span><span class="t"><b>' + esc(m.name) + '</b><span class="mute">' + esc((where[m.id] || ['Pas liée à un morceau'])[0]) + '</span></span><span style="font-size:22px">➕</span></button>').join('')
-        : '<div class="card"><p class="soft">Aucune musique dans l\'appli pour l\'instant.</p></div>'),
-    {
-      back: () => scrMusicMix(id),
-      pick: async (b) => { x.tracks.push({ mu: b.dataset.id, from: 1, blocks: null }); await saveMixes(); toast('Musique ajoutée ✅'); scrMusicMix(id, x.tracks.length - 1); },
-      file: async () => {
-        const fs = await pickFile('audio/*,.mp3,.m4a,.wav,.aac,.ogg,.flac', true); if (!fs.length) return;
-        for (const f of fs) { const mid = uid(); await dput('musics', { id: mid, name: f.name.replace(/\.[^.]+$/, ''), type: f.type, blob: f }); x.tracks.push({ mu: mid, from: 1, blocks: null }); }
-        await saveMixes(); toast(fs.length > 1 ? fs.length + ' musiques ajoutées ✅' : 'Musique ajoutée ✅'); scrMusicMix(id, x.tracks.length - 1);
-      }
-    });
-    const q = $('#pq');
-    q.addEventListener('input', () => { const t = C.norm(q.value.trim()); app.querySelectorAll('.pkrow').forEach((r) => r.classList.toggle('hide', !!t && !r.dataset.s.includes(t))); });
-  }
-
-  /* ---------- 🥁 Régler le rythme d'une musique (BPM, 1er temps, pont) ---------- */
-  const GR = { au: null, url: null, mu: null, t: null };
-  function gridStop() { clearInterval(GR.t); GR.t = null; if (GR.au) { try { GR.au.pause(); } catch (e) { /* rien */ } GR.au = null; } if (GR.url) { URL.revokeObjectURL(GR.url); GR.url = null; } GR.mu = null; }
-  async function scrGrid(muId, back) {
-    const mu = await dget('musics', muId); if (!mu) return back();
-    let g = S.grids && S.grids[muId];
-    if (!g) {
-      render('<div class="card o"><h2>Je cherche le rythme…</h2><p class="soft">Quelques secondes.</p></div>');
-      try { g = await gridOf(muId); } catch (e) { g = null; }
-      if (!g) { gridErr[muId] = 1; toast('Je n\'arrive pas à lire cette musique.'); return back(); }
-    }
-    if (GR.mu && GR.mu !== muId) gridStop();
-    const nb = C.mgBlocks(g), bl = 60 / g.bpm;
-    const save = async () => { if (g.t1 < 0) g.t1 += 8 * 60 / g.bpm; g.t1 = Math.round(g.t1 * 1000) / 1000; if (g.pont) { const n2 = C.mgBlocks(g); g.pont.a = Math.max(1, Math.min(n2, g.pont.a)); g.pont.b = Math.max(g.pont.a, Math.min(n2, g.pont.b)); } await saveKV('grids'); scrGrid(muId, back); };
-    const changed = g.auto && (Math.abs(g.bpm - g.auto.bpm) > 0.01 || Math.abs(g.t1 - g.auto.t1) > 0.001);
-    const blocks = Array.from({ length: nb }, (_, k) => '<button data-act="blk" data-k="' + (k + 1) + '" class="' + (g.pont && k + 1 >= g.pont.a && k + 1 <= g.pont.b ? 'pz' : '') + '">' + (k + 1) + '</button>').join('');
-    render('<div class="top"><button class="back" data-act="back">‹</button><h1>🥁 Régler le rythme</h1></div>' +
-      '<div class="card"><p style="margin:0 0 8px"><b>🎵 ' + esc(mu.name) + '</b></p><div class="mmbpm"><button data-act="d2" aria-label="Diviser par deux">÷ 2</button><button class="mmv" data-act="bset"><b>' + bpmTxt(g.bpm) + '</b><span class="mute">BPM d\'origine · touche pour l\'écrire</span></button><button data-act="x2" aria-label="Multiplier par deux">× 2</button></div>' +
-        '<p class="mute">Si le BPM trouvé est deux fois trop petit ou trop grand, touche ×2 ou ÷2.</p>' + (changed ? '<button class="btn sec small" data-act="auto">↩️ Revenir au calcul automatique</button>' : '') + '</div>' +
-      '<div class="card o"><div id="gcnt" class="mmcnt">Écoute pour vérifier</div><button class="btn" data-act="lis">' + (GR.au && !GR.au.paused ? '⏸️ Pause' : '▶️ Écouter avec le compte') + '</button>' +
-        '<p class="mute">Le « temps 1 » doit tomber sur le temps fort, et le « 1er huit » sur le début d\'une phrase de la musique.</p>' +
-        '<h3>Décaler le 1er temps</h3>' + stepper('1 temps', '', 't') + stepper('1 huit', '', 'h') + stepper('Un tout petit peu', '', 'f') + '</div>' +
-      '<div class="card"><h3>Écouter à partir du bloc</h3><div class="mmblocks">' + blocks + '</div><p class="mute">' + plural(nb, 'bloc', 'blocs') + ' de 32 temps' + (g.pont ? ' · en jaune : le pont sauté' : '') + '</p></div>' +
-      '<div class="card"><h3>🌉 Pont à sauter</h3>' + (g.pont ? stepper('Du bloc', g.pont.a, 'pa', null, g.pont.a > 1, g.pont.a < nb) + stepper('Au bloc', g.pont.b, 'pb', null, g.pont.b > g.pont.a, g.pont.b < nb) + '<button class="btn sec small" data-act="poff">✖ Pas de pont</button>'
-        : '<p class="soft small">Un passage calme au milieu de la musique ? Marque-le : il sera sauté dans tes mix.</p><button class="btn sec small" data-act="pon"' + (nb ? '' : ' disabled') + '>🌉 Marquer un pont</button>') + '</div>' +
-      '<button class="btn green" data-act="ok">✅ C\'est bon</button>',
-    {
-      back: () => { gridStop(); back(); }, ok: () => { gridStop(); back(); },
-      x2: () => { g.bpm = Math.min(240, Math.round(g.bpm * 200) / 100); save(); },
-      d2: () => { g.bpm = Math.max(40, Math.round(g.bpm * 50) / 100); save(); },
-      bset: async () => { const v = await askText('BPM d\'origine de la musique', bpmTxt(g.bpm)); const n2 = +String(v || '').replace(',', '.'); if (n2 >= 40 && n2 <= 240) { g.bpm = Math.round(n2 * 100) / 100; save(); } else if (v) toast('Écris un nombre entre 40 et 240.'); },
-      auto: () => { g.bpm = g.auto.bpm; g.t1 = g.auto.t1; save(); },
-      't-': () => { g.t1 -= bl; save(); }, 't+': () => { g.t1 += bl; save(); },
-      'h-': () => { g.t1 -= 8 * bl; save(); }, 'h+': () => { g.t1 += 8 * bl; save(); },
-      'f-': () => { g.t1 -= 0.03; save(); }, 'f+': () => { g.t1 += 0.03; save(); },
-      pon: () => { const a = Math.min(nb, Math.max(1, Math.round(nb / 2))); g.pont = { a, b: a }; save(); },
-      poff: () => { g.pont = null; save(); },
-      'pa-': () => { g.pont.a--; save(); }, 'pa+': () => { g.pont.a++; if (g.pont.b < g.pont.a) g.pont.b = g.pont.a; save(); },
-      'pb-': () => { g.pont.b--; save(); }, 'pb+': () => { g.pont.b++; save(); },
-      lis: () => { if (GR.au && !GR.au.paused) { GR.au.pause(); scrGrid(muId, back); } else gridPlay(mu, null, () => scrGrid(muId, back)); },
-      blk: (b) => gridPlay(mu, +b.dataset.k, () => scrGrid(muId, back))
-    });
-    S.where = 'grid';
-  }
-  function gridPlay(mu, k, redraw) {
-    if (!GR.au || GR.mu !== mu.id) { gridStop(); GR.url = URL.createObjectURL(mu.blob); GR.au = new Audio(GR.url); GR.mu = mu.id; }
-    const a = GR.au, g = () => S.grids[mu.id];
-    const go = () => { if (k) a.currentTime = Math.max(0, C.mgStart(g(), k)); a.play().catch(() => {}); };
-    if (a.readyState >= 1) go(); else a.addEventListener('loadedmetadata', go, { once: true });
-    clearInterval(GR.t);
-    GR.t = setInterval(() => {
-      const e = document.getElementById('gcnt'); if (!e) return gridStop();
-      const c = C.mgCount(g(), a.currentTime);
-      e.innerHTML = c.intro ? '<span>Intro</span>' : '<span>Bloc <b>' + c.block + '</b></span><span>' + huitTxt(c.huit) + '</span><span>temps <b>' + c.temps + '</b></span>';
-      e.classList.toggle('t1', !c.intro && c.temps === 1);
-    }, 50);
-    setTimeout(redraw, 60);
-  }
-
-  /* ---------- ⬇️ Télécharger mon mix (MP3) : fabriqué sur le téléphone, sans internet (mix-render.js) ---------- */
-  const mixFileName = (x) => (x.name + ' – ' + (x.keep ? 'BPM d\'origine' : x.bpm + ' BPM')).replace(/[\\/:*?"<>|]+/g, '-').slice(0, 100) + '.mp3';
-  const MEM_TXT = 'Pas assez de mémoire sur ton téléphone pour fabriquer ce mix. Ferme les autres applis, puis réessaie (ou fais un mix plus court).';
-  async function scrMixRender(id) {
-    const x = mmOf(id); if (!x) return scrMixes();
-    mmStop(); gridStop();
-    const musics = {}; for (const m of await dall('musics')) if (m && m.blob) musics[m.id] = m;
-    for (const t of x.tracks) if (musics[t.mu] && !(S.grids || {})[t.mu] && !gridErr[t.mu]) { try { if (!(await gridOf(t.mu))) gridErr[t.mu] = 1; } catch (e) { gridErr[t.mu] = 1; } }
-    const G = S.grids, segs = C.mgSegments(x.tracks.filter((t) => musics[t.mu] && !gridErr[t.mu]), G, x);
-    if (!segs.length) { toast('Ajoute d\'abord des musiques au mix.'); return scrMusicMix(id); }
-    const total = C.mgDur(segs, G), SR = 44100, X = Math.round(0.02 * SR);
-    try { // place pour enregistrer le fichier (192 kb/s ≈ 1,4 Mo par minute)
-      if (navigator.storage && navigator.storage.estimate) { const e = await navigator.storage.estimate(); if (e.quota && e.quota - (e.usage || 0) < total * 24000 * 1.1 + 50e6) { await ask('Pas assez de place', 'Il faut environ ' + fmtSize(total * 24000) + ' de libre sur ton téléphone pour ce mix. Fais de la place, puis réessaie.', [{ label: 'OK', value: 1 }]); return scrMusicMix(id); } }
-    } catch (e) { /* on essaie quand même */ }
-    let stop = false, wk = null;
-    const notes = [];
-    render('<div class="top"><h1>⬇️ Mon mix en MP3</h1></div><div class="card o"><h2>🎛️ Je fabrique ton mix…</h2><div class="bar"><i id="rb"></i></div><p style="margin:8px 0 2px"><b id="rp">0 %</b> · <span class="soft">' + fmtDur(total) + ' de musique</span></p><p class="mute" id="rs"></p>' +
-      '<p class="soft small">Tout se fait sur ton téléphone, sans internet. Ça peut prendre plusieurs minutes.</p></div>' +
-      '<p id="rmsg" class="small" style="color:var(--ja);font-weight:700"></p>' +
-      '<div class="card j small">📱 <b>Garde l\'écran allumé</b> et ScriptMove ouvert jusqu\'à la fin.</div><button class="btn sec" data-act="stop">✖ Annuler</button>',
-    { stop: () => { stop = true; if (wk) wk.terminate(); toast('Fabrication annulée'); scrMusicMix(id); } });
-    S.wantAwake = true; keepAwake(true);
-    const bar = (pos) => { const f = Math.min(1, pos / (total * SR)); const b = $('#rb'); if (b) b.style.width = Math.round(f * 100) + '%'; const p = $('#rp'); if (p) p.textContent = Math.round(f * 100) + ' %'; };
-    const fail = async (t) => { if (wk) wk.terminate(); S.wantAwake = false; keepAwake(false); if (stop) return; await ask('Mix pas fabriqué', t, [{ label: 'OK', value: 1 }]); scrMusicMix(id); };
-    try {
-      wk = new Worker('mix-render.js');
-      const parts = []; let wait = null;
-      const next = (type) => new Promise((res, rej) => { wait = { type, res, rej }; });
-      wk.onmessage = (e) => {
-        const d = e.data;
-        if (d.t === 'mp3') { if (d.data && d.data.length) parts.push(d.data); bar(d.pos); }
-        else if (d.t === 'prog') bar(d.pos);
-        else if (d.t === 'err') { const w = wait; wait = null; if (w) w.rej(Object.assign(new Error(d.msg), { mem: d.mem })); }
-        else if (wait && d.t === wait.type) { const w = wait; wait = null; w.res(d); }
-      };
-      wk.onerror = (e) => { const w = wait; wait = null; if (w) w.rej(new Error(e.message || 'worker')); };
-      const p0 = next('ok'); wk.postMessage({ t: 'init', sr: SR, kbps: 192 }); await p0;
-      let B = 0, first = true, cache = null, blocks = 0, prevK = -1;
-      for (let i = 0; i < segs.length && !stop; i++) {
-        const s = segs[i], g = G[s.mu], r = s.rate, nm = musics[s.mu].name;
-        const st = $('#rs'); if (st) st.textContent = '🎵 ' + (i + 1) + '/' + segs.length + ' · ' + nm;
-        let buf = cache && cache.mu === s.mu ? cache.buf : null;
-        if (!buf) {
-          cache = null;
-          try { const ac = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(2, 1, SR); buf = await ac.decodeAudioData(await musics[s.mu].blob.arrayBuffer()); }
-          catch (e) { if (e instanceof RangeError || /memory/i.test(String(e && e.message))) return fail(MEM_TXT); notes.push(nm); const m = $('#rmsg'); if (m) m.textContent = '⚠️ « ' + nm + ' » ne se lit pas : je passe à la suivante.'; continue; }
-          cache = { mu: s.mu, buf };
-        }
-        const last = i === segs.length - 1, pre = first ? 0 : X, post = last ? 0 : X;
-        const inStart = C.mgStart(g, s.a), inEnd = s.natural ? Math.min(g.dur, buf.duration) : C.mgEnd(g, s.b), content = (inEnd - inStart) / r;
-        const b0 = Math.round(B * SR), b1 = Math.round((B + content) * SR);
-        const s0 = Math.max(0, Math.floor((inStart - pre / SR * r - 0.1) * SR)), s1 = Math.min(buf.length, Math.ceil((inEnd + post / SR * r + 0.1) * SR));
-        const L = new Float32Array(s1 - s0), R = new Float32Array(s1 - s0);
-        buf.copyFromChannel(L, 0, s0); if (buf.numberOfChannels > 1) buf.copyFromChannel(R, 1, s0); else R.set(L);
-        if (!(segs[i + 1] && segs[i + 1].mu === s.mu)) cache = null; // la musique suivante est une autre : on libère la mémoire
-        buf = null;
-        const outLen = b1 - b0 + pre + post;
-        const isNew = prevK !== s.k, nx = segs[i + 1];
-        const th = { theme: x.theme || '', sfx: !!x.sfx, vol: (x.themeVol >= 0 ? x.themeVol : 0.5) * 0.8, bpm: g.bpm * r, beats: (s.b - s.a + 1) * 32, block0: blocks + 1, newTrack: isNew, nextNew: !!(nx && nx.k !== s.k), hasNext: !!nx, trackNo: s.k };
-        blocks += s.b - s.a + 1; prevK = s.k;
-        const msg = { t: 'seg', th, first, L, R, rate: r, q0: inStart * SR - pre * r - s0, outStart: b0 - pre, outLen,
-          fin: first ? Math.round(0.005 * SR) : 2 * X, fout: last ? (s.natural ? Math.round(0.01 * SR) : Math.round(4 * 60 / g.bpm / r * SR)) : 2 * X, fadeCos: !last, safe: last ? outLen : outLen - 2 * X };
-        const pd = next('segdone'); wk.postMessage(msg, [L.buffer, R.buffer]); await pd;
-        B += content; first = false;
-      }
-      if (stop) return;
-      if (first) return fail('Aucune musique de ce mix ne se lit. Vérifie tes musiques.');
-      const pf = next('fin'); wk.postMessage({ t: 'end' }); await pf; wk.terminate();
-      S.wantAwake = false; keepAwake(false);
-      const file = new File(parts, mixFileName(x), { type: 'audio/mpeg' });
-      return scrMixReady(id, file, B, notes);
-    } catch (e) { console.warn('mix mp3', e); return fail(e && e.mem ? MEM_TXT : 'Je n\'ai pas réussi à fabriquer le mix. Réessaie.'); }
-  }
-  function scrMixReady(id, file, dur, notes) {
-    const canShare = !!(navigator.canShare && (() => { try { return navigator.canShare({ files: [file] }); } catch (e) { return false; } })());
-    render('<div class="top"><button class="back" data-act="back">‹</button><h1>⬇️ Mon mix en MP3</h1></div>' +
-      '<div class="card g"><h2>✅ Ton mix est prêt</h2><p style="overflow-wrap:anywhere"><b>' + esc(file.name) + '</b></p><p class="mute">' + fmtDur(dur) + ' · ' + fmtSize(file.size) + ' · MP3 192 kb/s</p>' +
-      (notes.length ? '<p class="small" style="color:var(--ja)">⚠️ Sautée' + (notes.length > 1 ? 's' : '') + ' (illisible' + (notes.length > 1 ? 's' : '') + ') : ' + notes.map(esc).join(', ') + '</p>' : '') + '</div>' +
-      '<button class="btn" data-act="dl">⬇️ Enregistrer le fichier</button>' +
-      (canShare ? '<button class="btn sec" data-act="sh">📤 Envoyer ou partager</button>' : '') +
-      '<p class="mute">« Enregistrer » le met dans le dossier Téléchargements du téléphone.</p>',
-    {
-      back: () => scrMusicMix(id),
-      dl: () => { const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = file.name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 60000); toast('Fichier enregistré ✅', 3000); },
-      sh: async () => { try { await navigator.share({ files: [file], title: file.name }); } catch (e) { if (!(e && e.name === 'AbortError')) toast('Partage impossible : utilise « Enregistrer le fichier ».', 4000); } }
-    });
-  }
-
-  /* ---------- ▶️ Lecture du mix ---------- */
-  const MM = { E: null };
-  function mmStop() {
-    const E = MM.E; if (!E) return; MM.E = null;
-    clearInterval(E.iv); if (E.wk) { try { E.wk.terminate(); } catch (e) { /* rien */ } }
-    for (const a of E.el) { try { a.pause(); a.removeAttribute('src'); a.load(); } catch (e) { /* rien */ } }
-    try { E.out.pause(); E.out.srcObject = null; } catch (e) { /* rien */ }
-    try { E.ctx.close(); } catch (e) { /* rien */ }
-    for (const k in E.urls) URL.revokeObjectURL(E.urls[k]);
-    try { if ('mediaSession' in navigator) { navigator.mediaSession.playbackState = 'none'; for (const h of ['play', 'pause', 'nexttrack']) navigator.mediaSession.setActionHandler(h, null); } } catch (e) { /* rien */ }
-    S.wantAwake = false; keepAwake(false);
-  }
-  async function scrMixPlay(id) {
-    const x = mmOf(id); if (!x) return scrMixes();
-    mmStop(); gridStop();
-    const musics = {}; for (const m of await dall('musics')) if (m && m.blob) musics[m.id] = m;
-    for (const t of x.tracks) if (musics[t.mu] && !(S.grids || {})[t.mu] && !gridErr[t.mu]) { try { if (!(await gridOf(t.mu))) gridErr[t.mu] = 1; } catch (e) { gridErr[t.mu] = 1; } }
-    const segs = C.mgSegments(x.tracks.filter((t) => musics[t.mu]), S.grids || {}, x);
-    if (!segs.length) { toast('Ajoute d\'abord des musiques au mix.'); return scrMusicMix(id); }
-    const before = []; segs.reduce((s, g, i) => { before[i] = s; return s + g.b - g.a + 1; }, 0);
-    render('<div class="top"><button class="back" data-act="back">‹</button><h1>▶️ ' + esc(x.name) + '</h1></div>' +
-      '<div id="mmcnt" class="mmcnt big">Prêt</div><p id="mmsub" class="mute" style="text-align:center;min-height:22px"></p>' +
-      '<div class="card"><p style="margin:0 0 6px">▶️ <b id="mmcur"></b></p><p class="mute" style="margin:0 0 6px">Ensuite : <span id="mmnext"></span></p><p style="margin:0">🥁 <b id="mmbpm"></b></p></div>' +
-      '<p id="mmmsg" class="small" style="color:var(--ja);font-weight:700;min-height:0"></p>' +
-      '<div class="row"><button class="btn" data-act="pp" id="mmpp">▶️ Lecture</button><button class="btn sec" data-act="nx" id="mmnx">⏭ Musique suivante</button></div>' +
-      '<div class="card j small">📱 L\'écran reste allumé. Si le téléphone se verrouille, la musique continue (pause et lecture aussi sur l\'écran verrouillé).</div>',
-    { back: () => { mmStop(); scrMusicMix(id); }, pp: () => mmToggle(), nx: () => mmNext() });
-    S.where = 'mmplay';
-    // le son : 2 lecteurs (la musique en cours et la suivante, déjà prête) → Web Audio (micro-fondus à l'horloge audio) → <audio>
-    const AC = window.AudioContext || window.webkitAudioContext;
-    const ctx = new AC({ latencyHint: 'playback' });
-    const dest = ctx.createMediaStreamDestination ? ctx.createMediaStreamDestination() : null;
-    const mk = () => { const a = new Audio(); a.preload = 'auto'; a.preservesPitch = true; a.mozPreservesPitch = true; a.webkitPreservesPitch = true; const s = ctx.createMediaElementSource(a), gn = ctx.createGain(); gn.gain.value = 0; s.connect(gn); gn.connect(dest || ctx.destination); a.gn = gn; return a; };
-    const thBus = ctx.createGain(); thBus.gain.value = (x.themeVol >= 0 ? x.themeVol : 0.5) * 0.8; thBus.connect(dest || ctx.destination);
-    const E = MM.E = { th: { bus: thBus, done: new Set(), src: [] }, id, x, segs, before, musics, ctx, el: [mk(), mk()], cur: 0, i: 0, urls: {}, playing: false, prep: -1, pre: false, cut: null, out: new Audio(), wk: null, iv: 0, done: false };
-    if (dest) { E.out.srcObject = dest.stream; }
-    E.el.forEach((a, k) => a.addEventListener('error', () => mmFail(k)));
-    try {
-      if ('mediaSession' in navigator) {
-        navigator.mediaSession.setActionHandler('play', () => { if (MM.E === E && !E.playing) mmToggle(); });
-        navigator.mediaSession.setActionHandler('pause', () => { if (MM.E === E && E.playing) mmToggle(); });
-        navigator.mediaSession.setActionHandler('nexttrack', () => { if (MM.E === E) mmNext(); });
-      }
-    } catch (e) { /* rien */ }
-    // horloge dans un Worker (pas ralentie quand l'écran est éteint), sinon minuterie normale
-    try { E.wk = new Worker(URL.createObjectURL(new Blob(['setInterval(function(){postMessage(0)},25)'], { type: 'text/javascript' }))); E.wk.onmessage = () => mmTick(); }
-    catch (e) { E.iv = setInterval(mmTick, 25); }
-    mmLoad(E.el[0], segs[0], C.mgStart(S.grids[segs[0].mu], segs[0].a));
-    E.el[0].gn.gain.value = 1;
-    mmPrep();
-    mmPaint(true);
-  }
-  const mmUrl = (E, mu) => E.urls[mu] || (E.urls[mu] = URL.createObjectURL(E.musics[mu].blob));
-  function mmLoad(a, s, pos) {
-    const E = MM.E; a.seg = s; a.ok = false;
-    if (a.mu !== s.mu) { a.mu = s.mu; a.src = mmUrl(E, s.mu); }
-    a.playbackRate = s.rate;
-    const go = () => { try { a.currentTime = Math.max(0, pos); } catch (e) { /* rien */ } a.ok = true; };
-    if (a.readyState >= 1) go(); else a.addEventListener('loadedmetadata', go, { once: true });
-  }
-  /** Prépare la musique suivante sur l'autre lecteur (bien avant le changement) */
-  function mmPrep() {
-    const E = MM.E, n = E.segs[E.i + 1], o = E.el[1 - E.cur];
-    E.pre = false; E.cut = null;
-    if (!n) { E.prep = -1; return; }
-    const g = S.grids[n.mu]; E.prep = E.i + 1;
-    o.pause(); o.gn.gain.cancelScheduledValues(0); o.gn.gain.value = 0;
-    mmLoad(o, n, C.mgStart(g, n.a) - 3.5 * n.rate);
-  }
-  function mmMsg(t) { const e = $('#mmmsg'); if (e) e.textContent = t; }
-  /** Une musique ne se lit pas : on passe à la suivante au prochain bloc, sans arrêter le mix */
-  function mmFail(k) {
-    const E = MM.E; if (!E) return; const a = E.el[k], s = a.seg; if (!s) return;
-    mmMsg('⚠️ « ' + ((E.musics[s.mu] || {}).name || 'musique') + ' » ne se lit pas : je passe à la suivante.');
-    if (k !== E.cur) { // la suivante : on prépare celle d'après
-      E.segs.splice(E.i + 1, 1); E.before.splice(E.i + 1, 1); a.mu = null; mmPrep(); return;
-    }
-    // la musique en cours : la suivante démarre tout de suite (sur son 1er temps)
-    const o = E.el[1 - E.cur];
-    if (E.segs[E.i + 1] && o.ok) { mmSwap(); try { o.currentTime = C.mgStart(S.grids[o.seg.mu], o.seg.a); } catch (e) { /* rien */ } o.gn.gain.cancelScheduledValues(0); o.gn.gain.value = 1; if (E.playing) o.play().catch(() => {}); }
-    else mmEnd();
-  }
-  function mmSwap() {
-    const E = MM.E, a = E.el[E.cur];
-    a.pause(); a.gn.gain.cancelScheduledValues(0); a.gn.gain.value = 0;
-    { const s = E.segs[E.i], g = S.grids[s.mu]; if (s && g) E.before[E.prep] = E.before[E.i] + Math.max(1, Math.round(((s.endT != null ? s.endT : C.mgEnd(g, s.b)) - C.mgStart(g, s.a)) / (32 * 60 / g.bpm))); } // blocs vraiment joués
-    E.i = E.prep; E.cur = 1 - E.cur; E.el[E.cur].playbackRate = E.segs[E.i].rate; mmPrep(); mmPaint(true);
-    mmSession();
-  }
-  function mmSession() {
-    const E = MM.E; if (!E) return;
-    try { if ('mediaSession' in navigator && window.MediaMetadata) navigator.mediaSession.metadata = new MediaMetadata({ title: (E.musics[E.segs[E.i].mu] || {}).name || 'Musique', artist: 'ScriptMove · ' + E.x.name, artwork: [{ src: 'icon-512.png', sizes: '512x512', type: 'image/png' }] }); navigator.mediaSession.playbackState = E.playing ? 'playing' : 'paused'; } catch (e) { /* rien */ }
-  }
-  async function mmToggle() {
-    const E = MM.E; if (!E) return;
-    if (E.done) { const id = E.id; mmStop(); return scrMixPlay(id).then(() => mmToggle()); }
-    const a = E.el[E.cur], o = E.el[1 - E.cur];
-    if (E.playing) {
-      E.playing = false; a.pause(); o.pause(); E.pre = false; E.cut = null; mmThemeStop(E);
-      o.gn.gain.cancelScheduledValues(0); o.gn.gain.value = 0; a.gn.gain.cancelScheduledValues(0); a.gn.gain.value = 1;
-      if (E.prep >= 0) { const n = E.segs[E.prep], g = S.grids[n.mu]; try { o.currentTime = Math.max(0, C.mgStart(g, n.a) - 3.5 * n.rate); } catch (e) { /* rien */ } }
-    } else {
-      E.playing = true;
-      try { await E.ctx.resume(); } catch (e) { /* rien */ }
-      if (E.out.srcObject) E.out.play().catch(() => {});
-      a.play().catch(() => {});
-      S.wantAwake = true; keepAwake(true);
-    }
-    mmSession(); mmPaint(true);
-  }
-  /** ⏭ : la suivante entre à la fin du bloc en cours (au moins 4 s plus tard, pour qu'elle soit calée) */
-  function mmNext() {
-    const E = MM.E; if (!E || E.done) return;
-    const a = E.el[E.cur], s = E.segs[E.i], g = S.grids[s.mu], bl = 60 / g.bpm;
-    let k = Math.ceil(((a.currentTime - g.t1) / bl + 0.01) / 32);
-    while (g.t1 + k * 32 * bl - a.currentTime < 4 * s.rate) k++;
-    const t = g.t1 + k * 32 * bl;
-    if (t < (s.endT != null ? s.endT : C.mgEnd(g, s.b))) { s.endT = t; s.natural = false; }
-    mmMsg(''); const e = $('#mmsub'); if (e) e.textContent = E.segs[E.i + 1] ? '⏭ La suivante arrive à la fin de ce bloc' : '⏹ Le mix s\'arrête à la fin de ce bloc';
-  }
-  function mmEnd() {
-    const E = MM.E; if (!E) return; E.done = true; E.playing = false;
-    for (const a of E.el) a.pause();
-    S.wantAwake = false; keepAwake(false); mmSession();
-    const c = $('#mmcnt'); if (c) c.innerHTML = '<span>✅ Mix terminé</span>';
-    const p = $('#mmpp'); if (p) p.textContent = '🔁 Recommencer';
-  }
-  function mmTick() {
-    const E = MM.E; if (!E) return;
-    if (!document.getElementById('mmcnt')) return mmStop(); // on a quitté l'écran
-    if (!E.playing || E.done) return;
-    const a = E.el[E.cur], o = E.el[1 - E.cur], s = E.segs[E.i], g = S.grids[s.mu], ctx = E.ctx, now = ctx.currentTime;
-    const end = s.endT != null ? s.endT : C.mgEnd(g, s.b);
-    const left = (end - a.currentTime) / a.playbackRate; // secondes réelles avant le changement
-    const n = E.prep >= 0 ? E.segs[E.prep] : null;
-    if (n) {
-      const gn = S.grids[n.mu], start = C.mgStart(gn, n.a);
-      const want = (t) => start - (E.cut - t) * n.rate; // position voulue de la suivante à l'instant audio t
-      if (left < 3.2 && left > -0.2) {
-        const T = now + left; E.cut = E.cut == null ? T : E.cut + (T - E.cut) * 0.3; // instant du changement (horloge audio, lissé)
-        if (!o.ok || o.readyState < 2) {
-          // pas prête à temps : la musique en cours joue un bloc de plus (s'il y en a un)
-          if (left < 1 && C.mgEnd(g, s.b) > end + 1) { s.endT = end + 32 * 60 / g.bpm; E.cut = null; mmMsg('⏳ La suivante n\'était pas prête : un bloc de plus.'); }
-        } else if (!E.pre) { if (want(now + 0.08) >= 0) { E.pre = true; try { o.currentTime = want(now + 0.08); } catch (e) { /* rien */ } o.playbackRate = n.rate; o.play().catch(() => {}); } }
-        else if (left > 0.12) {
-          const err = o.currentTime - want(now); // calage fin de la suivante (encore muette)
-          if (Math.abs(err) > 0.12 && left > 0.8) { try { o.currentTime = want(now + 0.05); } catch (e) { /* rien */ } }
-          else { const r = n.rate * (1 - Math.max(-0.06, Math.min(0.06, err * 1.5))); if (Math.abs(r - o.playbackRate) > 0.002) o.playbackRate = r; }
-          // micro-fondu de 40 ms pile sur le 1er temps : programmé à l'horloge audio
-          const c0 = Math.max(now + 0.005, E.cut - 0.02);
-          for (const [el, v0, v1] of [[a, 1, 0], [o, 0, 1]]) { const p = el.gn.gain; p.cancelScheduledValues(now); p.setValueAtTime(v0, now); p.setValueAtTime(v0, c0); p.linearRampToValueAtTime(v1, E.cut + 0.02); }
-        }
-        if (left <= -0.03) { o.playbackRate = n.rate; mmSwap(); return; }
-      }
-    } else {
-      if (s.natural) { if (a.ended || a.currentTime >= g.dur - 0.05) return mmEnd(); }
-      else { const fade = 4 * 60 / g.bpm / a.playbackRate; if (left < fade) a.gn.gain.setTargetAtTime(0, now, Math.max(0.05, left / 3)); if (left <= 0) return mmEnd(); }
-    }
-    try { mmTheme(E, now); } catch (e) { console.warn('thème', e); }
-    mmPaint();
-  }
-  function mmThemeStop(E) { for (const s of E.th.src) { try { s.stop(); } catch (e) { /* rien */ } } E.th.src = []; E.th.done.clear(); }
-  /** 🎨 Thème : le « huit » suivant est fabriqué ~1 s avant et programmé pile sur son 1er temps (horloge audio) */
-  function mmTheme(E, now) {
-    const x = E.x; if ((!x.theme && !x.sfx) || !window.SMTheme) return;
-    const a = E.el[E.cur]; if (!a.ok) return;
-    const s = E.segs[E.i], g = S.grids[s.mu], bl = 60 / g.bpm;
-    const end = s.endT != null ? s.endT : C.mgEnd(g, s.b);
-    const hb = Math.ceil((a.currentTime - g.t1) / bl / 8 - 1e-3) * 8, tt = g.t1 + hb * bl;
-    const lead = (tt - a.currentTime) / a.playbackRate; if (lead > 1.2) return;
-    let j = E.i, beat = hb;
-    if (tt >= end - 1e-3) { if (E.prep < 0) return; j = E.prep; beat = (E.segs[j].a - 1) * 32; }
-    const key = j + ':' + beat; if (E.th.done.has(key)) return; E.th.done.add(key);
-    const sg = E.segs[j], gg = S.grids[sg.mu], nx = E.segs[j + 1];
-    const endBeat = sg.endT != null ? (sg.endT - gg.t1) / (60 / gg.bpm) : sg.b * 32;
-    const isNew = (k) => k === 0 || E.segs[k].k !== E.segs[k - 1].k;
-    const h = SMTheme.huit({ theme: x.theme || '', sfx: !!x.sfx, bpm: gg.bpm * sg.rate, sr: E.ctx.sampleRate, huit: ((beat / 8) % 4 + 4) % 4, block: E.before[j] + Math.floor(beat / 32) - (sg.a - 1) + 1,
-      newTrack: beat === (sg.a - 1) * 32 && isNew(j), beforeTrack: !!(nx && isNew(j + 1) && beat + 8 >= endBeat - 0.01), trackNo: sg.k, last: !nx && beat + 8 >= endBeat - 0.01 });
-    const buf = E.ctx.createBuffer(2, h.L.length, E.ctx.sampleRate); buf.copyToChannel(h.L, 0); buf.copyToChannel(h.R, 1);
-    const src = E.ctx.createBufferSource(); src.buffer = buf; src.connect(E.th.bus);
-    const when = now + lead; src.start(Math.max(now, when), when < now ? now - when : 0);
-    E.th.src.push(src); src.onended = () => { E.th.src = E.th.src.filter((y) => y !== src); };
-  }
-  let mmLast = '';
-  function mmPaint(force) {
-    const E = MM.E; if (!E) return;
-    const a = E.el[E.cur], s = E.segs[E.i], g = S.grids[s.mu], c = C.mgCount(g, a.currentTime || C.mgStart(g, s.a));
-    const blk = c.intro ? 0 : E.before[E.i] + Math.max(1, Math.min(s.b, c.block) - s.a + 1);
-    const html = c.intro ? '<span>Intro</span>' : '<span>Bloc <b>' + blk + '</b></span><span>' + huitTxt(c.huit) + '</span><span>temps <b>' + c.temps + '</b></span>';
-    if (html !== mmLast || force) {
-      mmLast = html; const e = $('#mmcnt'); if (e && !E.done) { e.innerHTML = html; e.classList.toggle('t1', !c.intro && c.temps === 1); }
-    }
-    if (force) {
-      const n = E.segs[E.i + 1], nm = (k) => (E.musics[k] || {}).name || 'Musique';
-      const set = (id2, t) => { const e = $(id2); if (e) e.textContent = t; };
-      set('#mmcur', nm(s.mu) + ' · bloc ' + s.a + (s.b > s.a ? ' à ' + s.b : '')); set('#mmnext', n ? nm(n.mu) + (n.mu === s.mu ? ' (après le pont)' : '') : 'fin du mix');
-      set('#mmbpm', Math.round(g.bpm * s.rate) + ' BPM'); set('#mmpp', E.playing ? '⏸️ Pause' : '▶️ Lecture'); set('#mmsub', '');
-    }
   }
 
   /* ======================= 💻 Relier mon PC (v22) =======================
@@ -2927,6 +2457,6 @@
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
     try { navigator.serviceWorker.register('sw.js').catch(() => {}); } catch (e) { /* rien */ }
   }
-  S.api = { scrMixRender, scrMusicMix, scrMixPlay, scrGrid, gridOf, scrPc, pcRaw, shareRaw, scrShare, shareNext, sharePending, scrMixes, scrMix, scrPickMorceau, scrMixScript, doBackup, printCourse, scrHome, scrFolder, scrCourse, scrWrite, scrRead, scrPlay, scrCourseScript, setVideo, dget, dput, dall, saveCourse, scriptText, storeVideo, videoURL, photosOf, migrateAll, loadKV, getLivret, viewLivret, lvPageFor };
+  S.api = { scrPc, pcRaw, shareRaw, scrShare, shareNext, sharePending, scrMixes, scrMix, scrPickMorceau, scrMixScript, doBackup, printCourse, scrHome, scrFolder, scrCourse, scrWrite, scrRead, scrPlay, scrCourseScript, setVideo, dget, dput, dall, saveCourse, scriptText, storeVideo, videoURL, photosOf, migrateAll, loadKV, getLivret, viewLivret, lvPageFor };
   scrLock();
 })();
