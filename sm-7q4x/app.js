@@ -100,7 +100,7 @@
     const y = window.scrollY, same = key && key === lastScreen;
     document.documentElement.style.scrollPaddingTop = '';
     document.body.classList.remove('wtyping');
-    app.innerHTML = html; acts = actions || {}; lastScreen = key;
+    app.innerHTML = html; acts = actions || {}; lastScreen = key; S.where = null; // v22 : scrHome / scrPc disent où on est
     if (same) { window.scrollTo(0, y); requestAnimationFrame(() => window.scrollTo(0, y)); } else window.scrollTo(0, 0);
   }
   app.addEventListener('click', (e) => {
@@ -624,11 +624,13 @@
     S.wantAwake = false; keepAwake(false); S.mixBack = null;
     const courses = await dall('courses');
     const info = await storageInfo();
+    const att = (await shareRaw()).length; // v22 : fichiers reçus (partage ou ordinateur) pas encore rangés
     const count = (fid) => courses.filter((c) => c.folder === fid).length;
     const folders = S.folders;
     render('<div class="logo"><img src="icon-192.png" alt=""><div><b>ScriptMove</b><span>Tes chorés en script</span></div></div>' +
       '<input type="search" id="hq" placeholder="🔎 Chercher (édition, morceau, mouvement)" autocomplete="off">' +
       '<div id="hres"></div>' +
+      (att ? '<button class="btn green" data-act="rgr">📥 ' + att + ' fichier' + (att > 1 ? 's' : '') + ' reçu' + (att > 1 ? 's' : '') + ' à ranger</button>' : '') +
       '<div id="hlib"><h2 style="margin-top:16px">Ma bibliothèque</h2><div class="fgrid">' +
       folders.map((f) => '<button class="fold" data-act="fold" data-id="' + esc(f.id) + '"><span class="fi">📁</span><b>' + esc(f.name) + '</b><span class="mute">' + (count(f.id) ? count(f.id) + ' édition' + (count(f.id) > 1 ? 's' : '') : 'vide') + '</span></button>').join('') +
       '<button class="fold" data-act="mixes"><span class="fi">🔀</span><b>Mes mix</b><span class="mute">' + (S.mixes.length ? S.mixes.length + ' mix' : 'vide') + '</span></button>' +
@@ -636,7 +638,8 @@
       (courses.length ? '' : '<div class="card o"><h3>Bienvenue Hamid 👋</h3><p class="soft">Ouvre un dossier (par exemple 📁 Pump), puis « ➕ Nouvelle édition » : choisis la vidéo et tes musiques, l\'appli découpe en morceaux. Ensuite tu écris ton script en regardant la vidéo. Tout reste dans ton téléphone.</p></div>') +
       '<p class="mute">💾 Place utilisée : ' + fmtSize(info.usage) + (info.vids ? ' (dont vidéos ' + fmtSize(info.vids) + ')' : '') + (info.quota ? ' · libre pour l\'appli : ' + fmtSize(Math.max(0, info.quota - info.usage)) : '') + '</p>' +
       '<div class="row"><button class="btn sec" data-act="moves">📚 Mes mouvements</button><button class="btn sec" data-act="set">⚙️ Réglages</button></div>' +
-      '<div class="row"><button class="btn sec" data-act="save">💾 Sauvegarder</button><button class="btn sec" data-act="restore">📂 Restaurer</button></div></div>',
+      '<div class="row"><button class="btn sec" data-act="save">💾 Sauvegarder</button><button class="btn sec" data-act="restore">📂 Restaurer</button></div>' +
+      '<button class="btn sec" data-act="pc">💻 Relier mon PC</button></div>',
     {
       fold: (b) => scrFolder(b.dataset.id),
       newf: async () => {
@@ -646,8 +649,10 @@
       moves: () => scrMoves(folders[0].id), set: () => scrSettings(), save: () => doBackup(), restore: () => doRestore(),
       res: (b) => { const d = b.dataset; if (d.mid) scrWrite(d.cid, d.mid); else scrCourse(d.cid); },
       mixes: () => scrMixes(),
-      resmix: (b) => scrMix(b.dataset.id)
+      resmix: (b) => scrMix(b.dataset.id),
+      pc: () => scrPc(), rgr: () => shareNext()
     });
+    S.where = 'home';
     const q = $('#hq');
     q.addEventListener('input', () => {
       const t = C.norm(q.value.trim());
@@ -1953,11 +1958,13 @@
     const persisted = navigator.storage && navigator.storage.persisted ? await navigator.storage.persisted().catch(() => false) : false;
     const bio = await bioDispo();
     const vids = (await dall('courses')).filter((c) => c.video && c.video.kept);
+    const pcx = await pcRaw();
     render('<div class="top"><button class="back" data-act="back">‹</button><h1>Réglages</h1></div>' +
       '<div class="card"><h2>💾 Place</h2><p class="soft small">Utilisé : <b>' + fmtSize(info.usage) + '</b>' + (info.quota ? ' · encore libre pour l\'appli : ' + fmtSize(Math.max(0, info.quota - info.usage)) : '') + (persisted ? '<br>Protégé ✅ (le téléphone ne l\'effacera pas tout seul)' : '<br>Pas encore protégé : fais des sauvegardes 💾') + '</p>' +
         (vids.length ? '<p class="small"><b>Vidéos gardées :</b></p>' + vids.map((c) => '<p class="small soft" style="margin:0 0 4px">🎬 ' + esc(c.name) + ' · ' + fmtSize(c.video.kept.size) + '</p>').join('') + '<p class="mute">Pour en retirer une : ouvre l\'édition › « 🗑️ Retirer la vidéo ».</p>' : '<p class="mute">Aucune vidéo gardée.</p>') +
         (persisted ? '' : '<button class="btn sec small" data-act="persist">🛡️ Protéger mes données</button>') + '</div>' +
       '<div class="card"><h2>👆 Empreinte</h2>' + (bio ? (lsGet('sm_bio') ? '<p class="soft small">Activée ✅ : à l\'ouverture, pose ton doigt. Ton code marche toujours.</p><button class="btn sec" data-act="bioOff">Désactiver l\'empreinte</button>' : '<p class="soft small">Ouvre l\'appli avec ton empreinte. Ton code reste possible. Ton empreinte ne sort jamais du téléphone.</p><button class="btn" data-act="bioOn">👆 Activer l\'empreinte</button>') : '<p class="soft small">Ce téléphone ou ce navigateur ne permet pas l\'empreinte ici. Utilise Chrome.</p>') + '</div>' +
+      '<div class="card"><h2>💻 Relier mon PC</h2><p class="soft small">' + (pcx ? (pcx.pc ? 'Relié ✅ : glisse tes vidéos et musiques sur la page de ton ordinateur.' : 'Code créé : tape-le sur ton ordinateur.') : 'Envoie tes vidéos et tes musiques depuis ton ordinateur, directement dans ScriptMove.') + '</p><button class="btn sec" data-act="pc">💻 Relier mon PC</button></div>' +
       '<button class="btn ghost" data-act="reset">🗑️ Tout effacer et recommencer</button>' +
       '<p class="mute" style="text-align:center">ScriptMove · tout reste dans ton téléphone</p>',
     {
@@ -1965,6 +1972,7 @@
       persist: async () => { let ok = false; try { ok = await navigator.storage.persist(); } catch (e) { /* rien */ } toast(ok ? 'Protégé ✅' : 'Le téléphone n\'a pas accepté pour l\'instant (réessaie après avoir installé l\'appli).', 4000); scrSettings(); },
       bioOn: async () => { try { await bioActiver(); toast('Empreinte activée ✅'); } catch (e) { toast('Empreinte pas activée (annulée ou pas disponible).'); } scrSettings(); },
       bioOff: async () => { try { localStorage.removeItem('sm_bio'); } catch (e) { /* rien */ } toast('Empreinte désactivée'); scrSettings(); },
+      pc: () => scrPc(),
       reset: () => resetAll()
     });
   }
@@ -2036,10 +2044,24 @@
      (kv 'sharePending' = { files: [{ id, name, type, size, blob }] }), puis on demande ici où le ranger.
      Le rangement passe par les mêmes fonctions que dans l'appli : giveVideo / scrNew (vidéo de l'édition), linkMusicFile (musique d'un morceau). */
   const SHARE_KEY = 'sharePending';
-  async function sharePending() { try { const p = await dget('kv', SHARE_KEY); return p && Array.isArray(p.files) ? p.files.filter((x) => x && x.blob) : []; } catch (e) { return []; } }
+  /* v22 : un fichier venu de l'ordinateur (💻 Relier mon PC) est écrit par blocs dans 'vchunks' (clés 'pcin_<id>:000000'…) ;
+     dans 'sharePending' il n'a pas de blob mais pcChunks (nombre de blocs) : on le reconstitue ici sans le charger en mémoire. */
+  const pcinRange = (id) => IDBKeyRange.bound('pcin_' + id + ':', 'pcin_' + id + ':\uffff');
+  async function shareRaw() { try { const p = await dget('kv', SHARE_KEY); return p && Array.isArray(p.files) ? p.files.filter((x) => x && (x.blob || x.pcChunks)) : []; } catch (e) { return []; } }
+  async function sharePending() {
+    const out = [], bad = [];
+    for (const x of await shareRaw()) {
+      if (x.blob) { out.push(x); continue; }
+      let bl = null; try { bl = await tx('vchunks', 'readonly', (s) => s.getAll(pcinRange(x.id))); } catch (e) { /* rien */ }
+      if (bl && bl.length === x.pcChunks) out.push(Object.assign({}, x, { blob: new Blob(bl, { type: x.type || '' }) })); else bad.push(x.id);
+    }
+    for (const id of bad) await shareDrop(id).catch(() => {});
+    return out;
+  }
   async function shareDrop(id) {
-    const left = (await sharePending()).filter((x) => id !== '*' && x.id !== id);
+    const all = await shareRaw(), gone = all.filter((x) => id === '*' || x.id === id), left = all.filter((x) => !(id === '*' || x.id === id));
     if (left.length) await dput('kv', { files: left, at: Date.now() }, SHARE_KEY); else await ddel('kv', SHARE_KEY);
+    for (const x of gone) if (x.pcChunks) { try { await tx('vchunks', 'readwrite', (s) => s.delete(pcinRange(x.id))); } catch (e) { /* rien */ } }
     return left;
   }
   function shareCleanURL() { try { if (/[?&]share=/.test(location.search)) history.replaceState(null, '', location.pathname); } catch (e) { /* rien */ } }
@@ -2144,6 +2166,230 @@
     }, common));
   }
 
+  /* ======================= 💻 Relier mon PC (v22) =======================
+     Des vidéos et musiques glissées sur la page pc.html de l'ordinateur arrivent ici, en direct (WebRTC) : rien n'est stocké
+     sur un serveur. Le relais Supabase de Gestinéro (pc-commun.js) ne sert qu'à se trouver, avec de petits messages chiffrés.
+     Un fichier reçu est écrit par blocs (jamais tout en mémoire), puis rangé EXACTEMENT comme un « Partager › ScriptMove ». */
+  const PCX = window.SMPC, PCK = 'pcLien';
+  const PCT = { raw: null, lien: null, occupe: false, tour: 0, rtc: null, dc: null, rx: null, vus: new Set(), wake: null, msg: '' };
+  const PC_BLOC = 8 * 1024 * 1024; // écrit dans l'appli tous les 8 Mo
+  const pcinKey = (id, i) => 'pcin_' + id + ':' + String(i).padStart(6, '0');
+  const pcPage = () => new URL('pc.html', location.href).href;
+  const pcOk = () => !!(PCX && window.RTCPeerConnection && window.crypto && crypto.subtle);
+  async function pcRaw() {
+    if (PCT.raw) return PCT.raw;
+    let x = null; try { x = await dget('kv', PCK); } catch (e) { /* rien */ }
+    if (!x || !/^[0-9a-f]{32}$/.test(String(x.canal || '')) || !x.cle || !x.code) return null;
+    PCT.raw = x; return x;
+  }
+  async function pcLien() { const x = await pcRaw(); if (!x) return null; if (!PCT.lien || PCT.lien.canal !== x.canal) PCT.lien = { canal: x.canal, cle: await PCX.importer(x.cle) }; return PCT.lien; }
+  const pcIci = () => S.where === 'pc';
+  const pcReseau = (e) => (e && e.reseau ? 'Pas de connexion internet. Vérifie ta connexion, puis réessaie.' : 'Le service ne répond pas pour le moment. Réessaie dans quelques minutes.');
+
+  async function scrPc() {
+    const x = await pcRaw();
+    const top = '<div class="top"><button class="back" data-act="back">‹</button><h1>Relier mon PC</h1></div>';
+    const gros = 'font-size:clamp(24px,8vw,32px);font-weight:900;letter-spacing:2px;white-space:nowrap;text-align:center;padding:12px 6px;border-radius:14px;background:#11162c;font-family:ui-monospace,Menlo,Consolas,monospace;margin:0 0 12px';
+    const msg = PCT.msg ? '<p class="small" role="status" style="color:var(--ko);font-weight:700">' + esc(PCT.msg) + '</p>' : '';
+    const garde = '<div class="card j small">📱 <b>Pour recevoir, garde ScriptMove ouvert sur ton téléphone</b>, écran allumé, pendant tout l\'envoi.</div>';
+    const prive = '<p class="mute">🔒 Tes fichiers vont directement de ton ordinateur à ton téléphone. Ils ne sont gardés sur aucun serveur, et personne d\'autre ne peut les lire. Pas de limite de taille.</p>';
+    let h;
+    if (!pcOk()) h = top + '<div class="card"><p class="soft">Ce téléphone ou ce navigateur ne permet pas de relier un ordinateur. Utilise Chrome.</p></div>';
+    else if (!x) h = top + '<div class="card o"><div style="font-size:40px">💻</div><h2>Envoie tes fichiers depuis ton ordinateur</h2>' +
+      '<p class="soft">Tes vidéos de cours et tes musiques, glissées sur une page de ton ordinateur, arrivent ici, dans ScriptMove. Elles se rangent comme si tu les avais partagées depuis ton téléphone.</p>' + prive + msg +
+      '<button class="btn" data-act="creer"' + (PCT.occupe ? ' disabled' : '') + '>' + (PCT.occupe ? 'Un instant…' : '💻 Relier mon ordinateur') + '</button></div>';
+    else h = top + (x.pc ? '<div class="card g"><h2>✅ Ton ordinateur est relié</h2><p class="soft small">' + esc(x.pc) + '</p><p class="small">Sur ton ordinateur, glisse tes vidéos et tes musiques sur la page. Elles arrivent ici, puis ScriptMove te demande où les ranger.</p>' + (x.recus ? '<p class="small">📥 ' + x.recus + ' fichier' + (x.recus > 1 ? 's reçus' : ' reçu') + ' de ton ordinateur</p>' : '') + '</div>'
+      : '<div class="card j" role="status"><h2>⏳ J\'attends ton ordinateur…</h2><p class="soft small">Laisse cet écran ouvert pendant que tu tapes le code sur ton ordinateur.</p></div>') +
+      '<div class="card"><p class="small"><b>1. Sur ton ordinateur, ouvre le lien</b> : touche « 📤 M\'envoyer le lien » et envoie-le-toi (WhatsApp, e-mail…), puis ouvre-le sur ton ordinateur. La page se relie toute seule.</p>' +
+      '<button class="btn" data-act="lien">📤 M\'envoyer le lien</button>' +
+      '<p class="small"><b>2. Ou tape ce code</b> sur la page de ton ordinateur :</p><div style="' + gros + '">' + esc(PCX.joli(x.code)) + '</div>' +
+      '<p class="mute" style="overflow-wrap:anywhere">Adresse de la page : ' + esc(pcPage()) + '</p></div>' +
+      garde + prive + msg + '<button class="btn ghost" data-act="delier"' + (PCT.occupe ? ' disabled' : '') + '>Délier mon ordinateur</button>';
+    render(h, {
+      back: () => scrHome(),
+      creer: () => pcCreer(),
+      lien: () => pcEnvoyerLien(),
+      delier: () => pcDelier()
+    });
+    S.where = 'pc';
+  }
+  async function pcCreer() {
+    if (PCT.occupe) return; PCT.occupe = true; PCT.msg = ''; scrPc();
+    try {
+      const r = await PCX.deriver(PCX.nouveauCode());
+      await PCX.rpc('pc_canal_creer', { p_canal: r.canal });
+      const x = { code: r.code, canal: r.canal, cle: r.cleB64, le: Date.now(), pc: '', recus: 0 };
+      await dput('kv', x, PCK); PCT.raw = x; PCT.lien = null;
+    } catch (e) { PCT.msg = pcReseau(e); }
+    PCT.occupe = false; if (pcIci()) scrPc();
+  }
+  async function pcOublier(toastTxt) {
+    pcFermer(); try { await ddel('kv', PCK); } catch (e) { /* rien */ }
+    PCT.raw = null; PCT.lien = null; PCT.vus.clear(); if (toastTxt) toast(toastTxt, 4000);
+    if (pcIci()) scrPc();
+  }
+  async function pcDelier() {
+    const x = await pcRaw(); if (!x) return;
+    const ok = await ask('Délier ton ordinateur ?', 'Les fichiers déjà arrivés restent dans ScriptMove. Pour envoyer de nouveau, il faudra un nouveau code.', [{ label: 'Délier', value: 1, cls: 'red' }, { label: 'Annuler', value: 0, cls: 'sec' }]);
+    if (!ok) return;
+    PCT.occupe = true; scrPc();
+    try { await PCX.rpc('pc_canal_supprimer', { p_canal: x.canal }); } catch (e) { /* le relais efface tout seul les canaux inutilisés */ }
+    PCT.occupe = false; await pcOublier('💻 Ordinateur délié');
+  }
+  async function pcEnvoyerLien() {
+    const x = await pcRaw(); if (!x) return;
+    const url = pcPage() + '#' + x.code;
+    const txt = 'Pour envoyer mes vidéos et musiques à ScriptMove, j\'ouvre ce lien sur mon ordinateur : ' + url;
+    try { if (navigator.share) { await navigator.share({ title: 'ScriptMove sur mon ordinateur', text: txt }); return; } }
+    catch (e) { if (e && e.name === 'AbortError') return; }
+    try { await navigator.clipboard.writeText(url); toast('Lien copié ✅'); } catch (e) { toast(url, 8000); }
+  }
+
+  /* ---------- écouter l'ordinateur (tant que ScriptMove est ouvert) ---------- */
+  async function pcTour() {
+    if (PCT.tour || document.hidden || !pcOk()) return;
+    const x = await pcRaw(); if (!x) return;
+    PCT.tour = Date.now();
+    try {
+      const l = await pcLien(); let r;
+      try { r = await PCX.relever(l); } catch (e) { return; }
+      if (!r.existe) { if (PCT.raw && PCT.raw.canal === l.canal) await pcOublier('💻 Ton ordinateur n\'est plus relié'); return; }
+      if (r.pc && !x.pc) {
+        let nom = 'Ordinateur'; try { nom = (await PCX.dechiffrerTexte(l.cle, r.pc, 'pc')).slice(0, 60) || nom; } catch (e) { /* rien */ }
+        x.pc = nom; await dput('kv', x, PCK); toast('✅ Ton ordinateur est relié'); if (pcIci()) scrPc();
+      }
+      for (const m of r.msgs) {
+        const vieux = Date.now() - m.le > 5 * 60000;
+        if (m.de === 'tel') { if (vieux) PCX.effacer(l, m.id); continue; } // nos réponses : l'ordinateur les efface en les lisant
+        if (PCT.vus.has(m.id)) continue; PCT.vus.add(m.id);
+        const o = await PCX.lire(l, m.id); PCX.effacer(l, m.id);
+        if (!vieux && o && o.t === 'offre' && o.sdp) pcRepondre(l, o).catch((e) => console.warn('relier mon PC', e));
+      }
+    } finally { PCT.tour = 0; }
+  }
+  function pcFermer() {
+    if (PCT.rx) pcCoupe();
+    try { if (PCT.dc) PCT.dc.close(); } catch (e) { /* rien */ }
+    try { if (PCT.rtc) PCT.rtc.close(); } catch (e) { /* rien */ }
+    PCT.dc = null; PCT.rtc = null;
+  }
+  async function pcRepondre(l, o) {
+    pcFermer(); // une seule connexion à la fois (page de l'ordinateur rechargée : on reprend la nouvelle)
+    const rtc = new RTCPeerConnection({ iceServers: PCX.ICE }); PCT.rtc = rtc;
+    rtc.ondatachannel = (e) => { if (PCT.rtc === rtc) pcCanal(e.channel); };
+    rtc.onconnectionstatechange = () => { if (PCT.rtc === rtc && (rtc.connectionState === 'failed' || rtc.connectionState === 'closed') && PCT.rx) pcCoupe(); };
+    await rtc.setRemoteDescription({ type: 'offer', sdp: o.sdp });
+    await rtc.setLocalDescription(await rtc.createAnswer());
+    await PCX.adresses(rtc, 5000);
+    if (PCT.rtc !== rtc) return;
+    await PCX.poster(l, 'tel', { t: 'reponse', s: o.s, sdp: rtc.localDescription.sdp });
+  }
+  function pcDire(o) { try { if (PCT.dc && PCT.dc.readyState === 'open') PCT.dc.send(JSON.stringify(o)); } catch (e) { /* rien */ } }
+  function pcCanal(dc) {
+    PCT.dc = dc; dc.binaryType = 'arraybuffer';
+    dc.onclose = () => { if (PCT.dc === dc) { PCT.dc = null; if (PCT.rx) pcCoupe(); } };
+    dc.onmessage = (e) => {
+      if (typeof e.data !== 'string') return pcDonnees(e.data);
+      let o = null; try { o = JSON.parse(e.data); } catch (er) { return; }
+      if (o && o.t === 'f') pcDebut(o).catch((er) => { console.warn(er); pcDire({ t: 'non', id: o.id, raison: 'erreur' }); });
+      else if (o && o.t === 'fin') pcFin(o).catch((er) => console.warn(er));
+    };
+  }
+  async function pcGarderEcran(on) {
+    try {
+      if (on && !PCT.wake && 'wakeLock' in navigator) { PCT.wake = await navigator.wakeLock.request('screen'); PCT.wake.addEventListener('release', () => { PCT.wake = null; }); }
+      if (!on && PCT.wake) { const w = PCT.wake; PCT.wake = null; await w.release(); }
+    } catch (e) { /* pas grave */ }
+  }
+  async function pcDebut(o) {
+    if (PCT.rx) pcCoupe(true);
+    const nom = String(o.nom || 'fichier').slice(0, 200), type = String(o.type || '').slice(0, 100), taille = Math.max(0, +o.taille || 0), id = String(o.id || '').replace(/[^0-9a-z]/gi, '').slice(0, 40);
+    if (!id) return;
+    if (!shareKind({ name: nom, type })) return pcDire({ t: 'non', id, raison: 'type' });
+    try { // il faut la place deux fois : la copie reçue, puis la copie rangée
+      if (navigator.storage && navigator.storage.estimate) { const e = await navigator.storage.estimate(); if (e.quota && e.quota - (e.usage || 0) < taille * 2 + 50e6) return pcDire({ t: 'non', id, raison: 'place', libre: Math.max(0, e.quota - (e.usage || 0)) }); }
+    } catch (e) { /* on essaie quand même */ }
+    try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* rien */ }
+    PCT.rx = { id, nom, type, taille, recu: 0, ecrit: 0, buf: [], bufN: 0, i: 0, q: Promise.resolve(), err: null, vu: 0 };
+    pcGarderEcran(true); pcBandeau();
+    pcDire({ t: 'go', id });
+  }
+  function pcVider(r) {
+    if (!r.bufN) return;
+    const parts = r.buf, n = r.bufN, i = r.i++; r.buf = []; r.bufN = 0;
+    r.q = r.q.then(async () => {
+      if (r.err) return;
+      await dput('vchunks', new Blob(parts, { type: r.type || '' }), pcinKey(r.id, i));
+      r.ecrit += n; if (PCT.rx === r) pcDire({ t: 'ack', id: r.id, n: r.ecrit });
+    }).catch((e) => {
+      if (r.err) return; r.err = e;
+      pcDire({ t: 'non', id: r.id, raison: isQuota(e) ? 'place' : 'erreur' });
+      if (PCT.rx === r) { PCT.rx = null; pcGarderEcran(false); pcBandeau({ ko: isQuota(e) ? 'Plus assez de place sur ton téléphone : « ' + r.nom + ' » n\'est pas reçu.' : 'Je n\'ai pas réussi à garder « ' + r.nom + ' ». Renvoie-le depuis ton ordinateur.' }); }
+      tx('vchunks', 'readwrite', (s) => s.delete(pcinRange(r.id))).catch(() => {});
+    });
+  }
+  function pcDonnees(buf) {
+    const r = PCT.rx; if (!r || r.err) return;
+    const u = new Uint8Array(buf); r.buf.push(u); r.bufN += u.length; r.recu += u.length;
+    if (r.bufN >= PC_BLOC) pcVider(r);
+    if (Date.now() - r.vu > 400) { r.vu = Date.now(); pcBandeau(); }
+  }
+  async function pcFin(o) {
+    const r = PCT.rx; if (!r || r.id !== o.id) return;
+    pcVider(r); await r.q;
+    if (r.err || PCT.rx !== r) return;
+    PCT.rx = null; pcGarderEcran(false);
+    if (r.ecrit !== r.taille) { tx('vchunks', 'readwrite', (s) => s.delete(pcinRange(r.id))).catch(() => {}); pcDire({ t: 'non', id: r.id, raison: 'erreur' }); pcBandeau({ ko: '« ' + r.nom + ' » est arrivé incomplet. Renvoie-le depuis ton ordinateur.' }); return; }
+    // rangé dans la même file d'attente que « Partager › ScriptMove » (une seule écriture, comme le service worker)
+    await tx('kv', 'readwrite', (s) => {
+      const g = s.get(SHARE_KEY);
+      g.onsuccess = () => {
+        const cur = g.result && Array.isArray(g.result.files) ? g.result : { files: [] };
+        cur.files.push({ id: r.id, name: r.nom, type: r.type, size: r.taille, at: Date.now(), pcChunks: r.i, from: 'pc' });
+        cur.at = Date.now(); s.put(cur, SHARE_KEY);
+      };
+    });
+    pcDire({ t: 'ok', id: r.id });
+    const x = await pcRaw(); if (x) { x.recus = (+x.recus || 0) + 1; dput('kv', x, PCK).catch(() => {}); }
+    pcBandeau({ ok: '✅ « ' + r.nom + ' » est arrivé' });
+    if ((S.where === 'home' || S.where === 'pc') && !S.shareOn && !document.querySelector('.sheet-bg')) shareNext();
+    else toast('📥 « ' + r.nom + ' » est arrivé de ton ordinateur. Il t\'attend sur l\'accueil.', 5000);
+  }
+  /** Connexion coupée pendant une réception : ce qui était reçu est effacé */
+  function pcCoupe(silence) {
+    const r = PCT.rx; if (!r) return; PCT.rx = null; r.err = r.err || new Error('coupé');
+    r.q.then(() => tx('vchunks', 'readwrite', (s) => s.delete(pcinRange(r.id)))).catch(() => {});
+    pcGarderEcran(false);
+    if (!silence) pcBandeau({ ko: 'La connexion avec ton ordinateur est coupée. Garde ScriptMove ouvert sur ton téléphone, puis renvoie « ' + r.nom + ' » depuis ton ordinateur.' });
+  }
+  /** Bandeau en haut de l'écran (reste affiché quel que soit l'écran) */
+  let pcBTimer = null;
+  function pcBandeau(fin) {
+    let b = document.getElementById('pcrx');
+    if (!b) { b = document.createElement('div'); b.id = 'pcrx'; b.setAttribute('role', 'status'); b.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:60;padding:10px 16px;background:#252d56;border-bottom:2px solid var(--line);box-shadow:0 6px 20px rgba(0,0,0,.4)'; document.body.appendChild(b); b.addEventListener('click', (e) => { if (e.target.closest('[data-pcx]')) b.remove(); }); }
+    clearTimeout(pcBTimer);
+    const r = PCT.rx;
+    if (fin && fin.ko) b.innerHTML = '<div style="max-width:640px;margin:0 auto"><p style="margin:0 0 8px;font-weight:800;color:var(--ko)">⚠️ ' + esc(fin.ko) + '</p><button class="btn small sec" data-pcx="1" style="margin:0">OK</button></div>';
+    else if (fin && fin.ok) { b.innerHTML = '<div style="max-width:640px;margin:0 auto;font-weight:800;color:var(--ok)">' + esc(fin.ok) + '</div>'; pcBTimer = setTimeout(() => b.remove(), 4000); }
+    else if (r) {
+      const f = r.taille ? Math.min(1, r.recu / r.taille) : 0;
+      b.innerHTML = '<div style="max-width:640px;margin:0 auto"><p style="margin:0 0 6px;font-weight:800;font-size:16px;overflow-wrap:anywhere">💻 Réception de ton ordinateur : ' + esc(r.nom) + '</p><div class="bar"><i style="width:' + Math.round(f * 100) + '%;transition:none"></i></div><p class="mute" style="margin:4px 0 0">' + Math.round(f * 100) + ' % · ' + fmtSize(r.recu) + ' sur ' + fmtSize(r.taille) + ' · garde ScriptMove ouvert</p></div>';
+    } else b.remove();
+  }
+  async function pcDemarrer() {
+    if (!pcOk() || PCT.demarre) return; PCT.demarre = true;
+    // blocs reçus d'un fichier qui n'a jamais été fini (appli fermée pendant l'envoi) : effacés
+    try {
+      const garde = new Set((await shareRaw()).filter((x) => x.pcChunks).map((x) => x.id));
+      const ks = await tx('vchunks', 'readonly', (s) => s.getAllKeys(IDBKeyRange.bound('pcin_', 'pcin_￿')));
+      const morts = new Set(); for (const k of ks || []) { const id = String(k).slice(5).split(':')[0]; if (!garde.has(id)) morts.add(id); }
+      for (const id of morts) await tx('vchunks', 'readwrite', (s) => s.delete(pcinRange(id)));
+    } catch (e) { /* rien */ }
+    const boucle = async () => { try { await pcTour(); } catch (e) { /* rien */ } setTimeout(boucle, pcIci() ? 3000 : 4000); };
+    setTimeout(boucle, 1500);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) { setTimeout(() => pcTour().catch(() => {}), 500); if (PCT.rx) pcGarderEcran(true); } });
+  }
+
   /* ======================= Démarrage ======================= */
   async function start() {
     await loadKV();
@@ -2151,12 +2397,13 @@
     try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch (e) { /* rien */ }
     // v19 : un fichier reçu par « Partager › ScriptMove » attend d'être rangé
     if (/[?&]share=err/.test(location.search)) { shareCleanURL(); toast('Le fichier partagé n\'a pas pu être reçu. Réessaie.', 5000); }
+    pcDemarrer();
     if (await shareNext()) return;
     scrHome();
   }
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
     try { navigator.serviceWorker.register('sw.js').catch(() => {}); } catch (e) { /* rien */ }
   }
-  S.api = { scrShare, shareNext, sharePending, scrMixes, scrMix, scrPickMorceau, scrMixScript, doBackup, printCourse, scrHome, scrFolder, scrCourse, scrWrite, scrRead, scrPlay, scrCourseScript, setVideo, dget, dput, dall, saveCourse, scriptText, storeVideo, videoURL, photosOf, migrateAll, loadKV, getLivret, viewLivret, lvPageFor };
+  S.api = { scrPc, pcRaw, shareRaw, scrShare, shareNext, sharePending, scrMixes, scrMix, scrPickMorceau, scrMixScript, doBackup, printCourse, scrHome, scrFolder, scrCourse, scrWrite, scrRead, scrPlay, scrCourseScript, setVideo, dget, dput, dall, saveCourse, scriptText, storeVideo, videoURL, photosOf, migrateAll, loadKV, getLivret, viewLivret, lvPageFor };
   scrLock();
 })();

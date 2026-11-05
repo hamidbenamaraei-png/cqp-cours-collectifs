@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#151a33">
+<title>ScriptMove sur mon ordinateur</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+:root{--bg:#151a33;--card:#1e2547;--card2:#252d56;--line:#323c6e;--txt:#fff;--soft:#c9cfea;--mute:#8f97bd;--or:#ff8a3d;--or2:#ffb27f;--ok:#4cc38a;--ko:#ff5d6c;--ja:#f5c451}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--txt)}
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:18px;line-height:1.45;overflow-wrap:break-word;min-height:100vh}
+main{max-width:760px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:28px;margin:0;line-height:1.2}
+h2{font-size:21px;margin:0 0 10px}
+p{margin:0 0 12px}
+.logo{display:flex;align-items:center;gap:14px;margin:0 0 18px}
+.logo img{width:56px;height:56px;border-radius:14px}
+.logo span{display:block;color:var(--soft);font-size:15px}
+.soft{color:var(--soft)}.mute{color:var(--mute);font-size:15px}.small{font-size:15px}
+.card{background:var(--card);border-radius:18px;padding:16px;margin:0 0 14px;border:1px solid var(--line)}
+.card.o{border-left:6px solid var(--or)}.card.g{border-left:6px solid var(--ok)}.card.j{border-left:6px solid var(--ja)}.card.r{border-left:6px solid var(--ko)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:52px;padding:10px 20px;border:0;border-radius:14px;background:var(--or);color:#1b1206;font:inherit;font-weight:800;font-size:18px;cursor:pointer}
+.btn.sec{background:var(--card2);color:#fff;border:2px solid var(--line)}
+.btn.small{min-height:40px;font-size:15px;padding:6px 14px;border-radius:11px}
+.btn:disabled{opacity:.45;cursor:default}
+input[type=text]{width:100%;padding:14px;border-radius:14px;border:2px solid var(--line);background:#11162c;color:#fff;font:inherit;font-size:24px;font-weight:800;letter-spacing:2px;text-align:center;font-family:ui-monospace,Menlo,Consolas,monospace;margin:0 0 12px}
+input:focus{outline:none;border-color:var(--or)}
+#zone{display:block;border:3px dashed var(--line);border-radius:20px;padding:34px 16px;text-align:center;cursor:pointer;background:#11162c;margin:0 0 14px}
+#zone.sur,#zone:hover{border-color:var(--or);background:#2a2440}
+#zone b{display:block;font-size:22px;margin:6px 0}
+.f{background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:12px;margin:0 0 10px}
+.f .n{font-weight:800;overflow-wrap:anywhere}
+.f .e{font-size:15px;color:var(--soft);margin:4px 0 0}
+.f .e.ok{color:var(--ok);font-weight:800}.f .e.ko{color:var(--ko);font-weight:700}
+.bar{height:14px;background:#0f1328;border-radius:9px;overflow:hidden;border:1px solid var(--line);margin:8px 0 0}
+.bar>i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--or),var(--or2))}
+.f.fini .bar>i{background:var(--ok)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.hide{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <div class="logo"><img src="icon-192.png" alt=""><div><h1>ScriptMove</h1><span>Envoyer mes vidéos et musiques sur mon téléphone</span></div></div>
+
+  <div class="card j"><b>📱 Avant d'envoyer :</b> ton téléphone doit être allumé, avec <b>ScriptMove ouvert</b> (déverrouillé, écran allumé), pendant tout l'envoi.</div>
+
+  <section id="ecranCode" class="hide">
+    <div class="card o">
+      <h2>Tape le code de ton téléphone</h2>
+      <p class="soft small">Sur ton téléphone : ScriptMove › 💻 Relier mon PC. Le code a 12 caractères (lettres et chiffres).</p>
+      <input type="text" id="code" autocomplete="off" spellcheck="false" placeholder="XXXX-XXXX-XXXX" maxlength="20" aria-label="Code du téléphone">
+      <p id="codeMsg" class="small" style="color:var(--ko);font-weight:700;min-height:22px"></p>
+      <button class="btn" id="relier">Relier</button>
+    </div>
+  </section>
+
+  <section id="ecranEnvoi" class="hide">
+    <div class="card g"><b>✅ Relié à ton téléphone</b> <span class="mute" id="codeVu"></span></div>
+    <label id="zone" for="choix">
+      <div style="font-size:44px">📥</div>
+      <b>Glisse ici tes vidéos et tes musiques</b>
+      <span class="soft">ou clique ici pour les choisir. Tu peux en mettre plusieurs.</span>
+    </label>
+    <input type="file" id="choix" class="hide" multiple accept="video/*,audio/*,.mp4,.mov,.m4v,.webm,.mkv,.mp3,.m4a,.wav,.aac,.ogg,.flac">
+    <div id="liste"></div>
+    <p class="mute">🔒 Les fichiers vont directement de cet ordinateur à ton téléphone. Ils ne sont gardés sur aucun serveur. Pas de limite de taille. Une vidéo d'une heure peut prendre plusieurs minutes : laisse cette page ouverte.</p>
+    <p class="mute">Sur ton téléphone, ScriptMove te demande ensuite où ranger chaque fichier.</p>
+    <button class="btn sec small" id="autre">Utiliser un autre code</button>
+  </section>
+  <p id="pasOk" class="card r hide">Ce navigateur ne permet pas d'envoyer les fichiers. Utilise Chrome, Edge ou Firefox, à jour.</p>
+</main>
+<script src="pc-commun.js?v=22"></script>
+<script src="pc-page.js?v=22"></script>
+</body>
+</html>
