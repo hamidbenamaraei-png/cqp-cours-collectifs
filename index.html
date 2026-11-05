@@ -56,11 +56,15 @@ textarea{min-height:90px;resize:vertical}
 .frise .p{flex:none;letter-spacing:3px;font-size:18px;white-space:nowrap;overflow-x:auto;max-width:55%}
 details{background:var(--card);border-radius:18px;padding:14px 18px;margin:0 0 12px}
 summary{cursor:pointer;font-weight:700}
+/* 05/11 : relier un PC / un nouveau téléphone */
+.qr{max-width:320px;margin:12px auto 4px;padding:10px;background:#fff;border-radius:14px}
+.lien{background:#141b33;border:2px solid var(--line);border-radius:12px;padding:10px 12px;font-size:13px;word-break:break-all;color:var(--soft);max-height:120px;overflow:auto;margin-top:10px}
 </style>
 </head>
 <body>
 <div class="wrap" id="app"></div>
-<script src="commun.js?v=202610301500"></script>
+<script src="commun.js?v=202611051500"></script>
+<script src="qr.js?v=202611051500"></script>
 <script src="roue.js?v=202610260957"></script>
 <script src="bonhommes3d.js?v=202610261832"></script>
 <script src="fiches.js?v=202610261640"></script>
@@ -196,8 +200,15 @@ function accueil(){
      ${b}
      ${vis.length?`<button class="btn sec" data-cours="${j.id}">📚 ${vis.length<j.diapos?'Voir les documents':'Revoir les diapos'}</button>`:''}</div>`;
   });
+  // 05/11 : en bas de l'accueil, relier un PC ou passer sur un nouveau téléphone
+  h+=`<div class="card" style="border-top-color:var(--line)"><div class="tag" style="color:var(--soft)">📱 Mes appareils</div>
+      <p class="muted" style="margin:4px 0 0">Ton espace peut être sur un téléphone et sur un ordinateur.</p>
+      <button class="btn sec" id="rpc">💻 Relier mon PC</button>
+      <button class="btn sec" id="rtel">📲 Passer sur un nouveau téléphone</button></div>`;
   app.innerHTML = h;
   document.getElementById('evo').onclick=evolution;
+  document.getElementById('rpc').onclick=()=>ecranRelier('pc');
+  document.getElementById('rtel').onclick=()=>ecranRelier('tel');
   const br=document.getElementById('roue'); if(br)br.onclick=ecranRoue;
   const bf=document.getElementById('fx'); if(bf)bf.onclick=()=>revoirFiches();
   const bm=document.getElementById('mr'); if(bm)bm.onclick=mesRetours;
@@ -214,11 +225,12 @@ async function clesEtRetours(s,L){
     let k=lire('cles',null);
     if(!k||!k.priv){k=await nouvellesCles();ecrire('cles',k)}
     const pubTxt=JSON.stringify(k.pub);
-    if(!s.pub||JSON.stringify(s.pub)!==pubTxt){if(lire('cle_envoyee','')!==pubTxt){await envoyerForm(FORM_QUIZ,{[EQ.journee]:'cles',[EQ.statut]:'pub',[EQ.contenu]:JSON.stringify({id:moi.id,pub:k.pub})});ecrire('cle_envoyee',pubTxt)}}
+    if(!memeCle(s.pub,k.pub)){if(lire('cle_envoyee','')!==pubTxt){await envoyerForm(FORM_QUIZ,{[EQ.journee]:'cles',[EQ.statut]:'pub',[EQ.contenu]:JSON.stringify({id:moi.id,pub:k.pub})});ecrire('cle_envoyee',pubTxt)}}
     const res=[];
     for(const m of L.filter(x=>x.sid===moi.id)){try{res.push(await dechiffrerAvec(k.priv,m))}catch(e){}}
+    lire('retours_gardes',[]).forEach(x=>{if(x&&x.texte&&!res.some(y=>y.at===x.at&&y.texte===x.texte))res.push(x)});
     MES_RETOURS=res.sort((a,b)=>(b.at||0)-(a.at||0));
-  }catch(e){MES_RETOURS=MES_RETOURS||[]}
+  }catch(e){MES_RETOURS=MES_RETOURS&&MES_RETOURS.length?MES_RETOURS:lire('retours_gardes',[])}
 }
 function mesRetours(){
   ECRAN='retours';
@@ -314,6 +326,7 @@ async function verifier(){
   // sur le téléphone du formateur (stagiaire de test) : sa décision locale compte tout de suite
   try{const ls=JSON.parse(localStorage.getItem('cqpf_localst')||'{}')[moi.id];if(ls&&(!s||s.statut==='attente'))s={id:moi.id,statut:ls.statut}}catch(e){}
   if(s&&s.statut==='accepte'){
+    if(controleAppareil(g))return;
     appliquerReouvertures(g.reouv||[]);
     await clesEtRetours(s,g.retours||[]);
     accueil();
@@ -595,7 +608,7 @@ function evolution(){
           ${i.e?`<div class="d">💡 ${esc(i.e)}</div>`:''}</div>`).join('')+`</details>`;
     });
   }
-  html+=`<p class="muted">Ton évolution est gardée sur ce téléphone. Si tu changes de téléphone, demande à Hamid de te l'envoyer.</p><button class="btn sec" id="bk2">← Retour</button>`;
+  html+=`<p class="muted">Ton évolution est gardée sur ce téléphone. Si tu changes de téléphone, touche « 📲 Passer sur un nouveau téléphone » en bas de l'accueil.</p><button class="btn sec" id="bk2">← Retour</button>`;
   app.innerHTML=html;
   document.getElementById('bk').onclick=accueil;document.getElementById('bk2').onclick=accueil;
   haut();
@@ -700,7 +713,7 @@ async function rafraichirRoue(){
   roueActive()?ecranRoue():accueil();
 }
 
-// ======= Lien envoyé par Hamid pour un nouveau téléphone (#t=…) =======
+// ======= Lien pour un nouvel appareil (#t=…) : outils =======
 function empreinteLien(t){let h=5381;for(let i=0;i<t.length;i++)h=((h*33)^t.charCodeAt(i))>>>0;return h.toString(36)+'_'+t.length}
 function deplierHisto(p){
   return (p.h||[]).map(([l,dSec,items,rs])=>({l,d:dSec*1000,
@@ -719,30 +732,177 @@ function ecranMessage(titre,texte,classe){
   document.getElementById('ok').onclick=demarrer;
   haut();
 }
+// ======= 05/11 : un seul téléphone et un seul PC actifs par stagiaire (comme WhatsApp) =======
+// Chaque appareil a son numéro (tiré au hasard). Quand un appareil est relié, il l'écrit dans le
+// tableau « Mes quiz CQP » (Journée = « appareil », Statut = « relie »). Le plus récent gagne sa place
+// (téléphone ou PC) : l'ancien se ferme. On ne ferme jamais à cause d'un problème de connexion.
+function memeCle(a,b){return !!(a&&b&&a.x===b.x&&a.y===b.y)}
+function typeAppareil(){
+  const ua=navigator.userAgent||'';
+  try{if(navigator.userAgentData&&navigator.userAgentData.mobile)return 'tel'}catch(e){}
+  if(/iPhone|iPod|Android.*Mobile|Windows Phone|IEMobile|Opera Mini|BlackBerry/i.test(ua))return 'tel';
+  let tactile=false;try{tactile=matchMedia('(pointer:coarse)').matches&&!matchMedia('(pointer:fine)').matches}catch(e){}
+  const petit=Math.min(screen.width||9999,screen.height||9999)<=520;
+  return tactile&&petit?'tel':'pc';
+}
+function nomPlace(slot){return slot==='pc'?'ordinateur':'téléphone'}
+function idAppareil(){let d=lire('dev_id','');if(!d){d=nouvelId();ecrire('dev_id',d)}return d}
+function inscrireAppareil(slot,at,lien){
+  const A=lire('appareils',{});A[moi.id]={slot,at,envoi:Date.now()};ecrire('appareils',A);
+  const c={sid:moi.id,slot,dev:idAppareil(),at};if(lien)c.lien=lien;
+  return envoyerForm(FORM_QUIZ,{[EQ.journee]:'appareil',[EQ.statut]:'relie',[EQ.contenu]:JSON.stringify(c)}).catch(()=>{});
+}
+function espaceRemplace(){const r=lire('remplace',null);return r&&moi&&r.sid===moi.id?r:null}
+function ecranRemplace(slot){
+  ECRAN='remplace';QUIZ_AFFICHE=null;
+  app.innerHTML=`<div class="tag">${esc(monEspace())}</div><h1>Bonjour ${esc(moi.prenom)}</h1>
+   <div class="card r nopli"><h2>📵 Ton espace est maintenant sur un autre ${nomPlace(slot)}.</h2>
+   <p class="muted" style="margin:0">Si ce n'est pas toi, parles-en à Hamid.</p></div>`;
+  haut();
+}
+// Renvoie true si cet appareil a été remplacé (il se ferme), false sinon.
+function controleAppareil(g){
+  DERNIER_CTRL=Date.now();
+  if(!g||!g.appareils||!moi||!moi.id)return false;
+  const A=g.appareils[moi.id]||{}, dev=idAppareil();
+  const R=lire('appareils',{})[moi.id];
+  if(!R){ // premier passage avec cette version : cet appareil prend sa place, sauf si un autre l'a déjà prise
+    const slot=typeAppareil(), cur=A[slot];
+    if(cur&&cur.dev!==dev)return fermerAppareil(slot);
+    inscrireAppareil(slot,Date.now(),null);return false;
+  }
+  const cur=A[R.slot];
+  if(cur&&cur.dev!==dev&&cur.at>R.at)return fermerAppareil(R.slot);
+  // pas encore visible dans le tableau : on renvoie l'inscription toutes les 10 minutes
+  if((!cur||cur.dev!==dev)&&Date.now()-(R.envoi||0)>10*60000)inscrireAppareil(R.slot,R.at,null);
+  return false;
+}
+function fermerAppareil(slot){
+  stopSurveiller();
+  ecrire('remplace',{sid:moi.id,slot,at:Date.now()});
+  try{['cles','cle_envoyee','retours_gardes'].forEach(k=>localStorage.removeItem('cqp_'+k))}catch(e){}
+  MES_RETOURS=[];
+  ecranRemplace(slot);
+  return true;
+}
+let DERNIER_CTRL=0;
+// quand on revient sur l'appli, on revérifie de temps en temps (sauf pendant un quiz)
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState!=='visible'||!moi||!moi.id||espaceRemplace())return;
+  if(!['accueil','evolution','retours','fiches','cours','relier'].includes(ECRAN)||Date.now()-DERNIER_CTRL<3*60000)return;
+  DERNIER_CTRL=Date.now();
+  etatGeneral().then(g=>{const s=g.stagiaires&&g.stagiaires[moi.id];if(s&&s.statut==='accepte'&&['accueil','evolution','retours','fiches','cours','relier'].includes(ECRAN))controleAppareil(g)}).catch(()=>{});
+});
+
+// ======= « 💻 Relier mon PC » / « 📲 Passer sur un nouveau téléphone » : QR code + lien =======
+function histoCompact(niveau){
+  let h=lire('histo',[]);
+  if(niveau>=5)return [];
+  if(niveau>=4)h=h.slice(-6);else if(niveau>=3)h=h.slice(-15);
+  return h.map(e=>[e.l,Math.round(e.d/1000),(e.it||[]).map(i=>{
+      const s=i.s==='ok'?1:i.s==='na'?2:0;
+      const ref=(i.id&&questionParId(i.id))?i.id:{q:i.q,o:[i.b],b:0,e:niveau>=1?'':(i.e||''),t:i.th||'autre'};
+      return s===0?[ref,0,String(i.r||'')]:[ref,s];
+    }),niveau>=2?[]:(e.rs||[]).map(x=>[x.t,x.n])]);
+}
+async function lienEspace(slot,n,max){
+  const k=lire('cles',null), RG=lire('retours_gardes',[]);
+  let t='';
+  for(let niv=0;niv<=5;niv++){
+    const p={v:2,c:Math.round(Date.now()/1000),s:slot,n,d:idAppareil(),m:[moi.id,moi.nom,moi.prenom,moi.st||'',moi.str||''],h:histoCompact(niv)};
+    if(k&&k.priv&&k.priv.d)p.k=[k.priv.d,k.priv.x,k.priv.y];
+    if(RG.length)p.r=RG.slice(niv>=4?-5:0).map(x=>[x.titre||'',x.texte||'',x.at||0,x.date||'']);
+    t=await encoderLien(p);
+    if(t.length<=max)return LIEN_STAGIAIRES+'#t='+t;
+  }
+  return null;
+}
+async function ecranRelier(slot){
+  ECRAN='relier';QUIZ_AFFICHE=null;
+  const pc=slot==='pc';
+  app.innerHTML=`<button class="back" id="bk">← Retour</button><div class="tag">${esc(monEspace())}</div><h1>${pc?'💻 Relier mon PC':'📲 Passer sur un nouveau téléphone'}</h1><p class="muted">Préparation…</p>`;
+  document.getElementById('bk').onclick=accueil;
+  haut();
+  const n=nouvelId().slice(0,10);
+  let long=null, court=null;
+  try{long=await lienEspace(slot,n,7500);court=await lienEspace(slot,n,2800)}catch(e){}
+  if(ECRAN!=='relier')return;
+  if(!long){app.innerHTML=`<button class="back" id="bk">← Retour</button><div class="card r"><h2>Je n'ai pas pu préparer le lien</h2><p>Réessaie dans un moment.</p></div>`;document.getElementById('bk').onclick=accueil;return}
+  const qr=court&&typeof qrSvg==='function'?qrSvg(court):null;
+  app.innerHTML=`<button class="back" id="bk">← Retour</button><div class="tag">${esc(monEspace())}</div><h1>${pc?'💻 Relier mon PC':'📲 Passer sur un nouveau téléphone'}</h1>
+   <div class="card o nopli">
+    <h2>${pc?'Ouvre ce lien sur ton ordinateur':'Ouvre ce lien sur ton nouveau téléphone'}</h2>
+    <p style="margin:0">${pc?'Touche « 📤 M\'envoyer le lien », envoie-le-toi (par e-mail ou WhatsApp), puis ouvre-le sur ton ordinateur.':'Sur ton nouveau téléphone, ouvre l\'appareil photo et vise ce code. Ou touche « 📤 M\'envoyer le lien » et ouvre-le sur ton nouveau téléphone.'}</p>
+    ${qr?`<div class="qr">${qr}</div>${pc?`<p class="muted" style="margin:4px 0 0;text-align:center">Si ton ordinateur a une caméra, tu peux aussi viser ce code.</p>`:''}`:''}
+    <button class="btn" id="env">📤 M'envoyer le lien</button>
+    <div class="lien hide" id="lien"></div>
+    <div class="done hide" id="ok" style="margin-top:10px"></div>
+   </div>
+   <div class="card j nopli"><h2>⚠️ À savoir</h2>
+    <p style="margin:0 0 8px">• Le lien marche <b>une seule fois</b>, pendant <b>7 jours</b>.</p>
+    <p style="margin:0 0 8px">• Il emporte ton évolution et tes retours de Hamid.</p>
+    <p style="margin:0">• ${pc?'Tu peux avoir un seul ordinateur : si un autre ordinateur était relié, il se fermera.':'Dès que le nouveau téléphone est ouvert, ce téléphone-ci se fermera.'}</p></div>
+   <button class="btn sec" id="bk2">← Retour à l'accueil</button>`;
+  document.getElementById('bk').onclick=accueil;document.getElementById('bk2').onclick=accueil;
+  document.getElementById('env').onclick=async()=>{
+    const ok=document.getElementById('ok'), zl=document.getElementById('lien');
+    const texte=pc?'Mon lien pour ouvrir mon espace CQP sur mon ordinateur (une seule fois) :':'Mon lien pour ouvrir mon espace CQP sur mon nouveau téléphone (une seule fois) :';
+    if(navigator.share){try{await navigator.share({title:'Mon espace CQP',text:texte,url:long});return}catch(e){if(e&&e.name==='AbortError')return}}
+    let copie=false;try{await navigator.clipboard.writeText(long);copie=true}catch(e){}
+    zl.textContent=long;zl.classList.remove('hide');
+    ok.textContent=copie?'✅ Lien copié : colle-le dans un message pour toi (e-mail ou WhatsApp).':'Appuie longtemps sur le lien ci-dessus, puis choisis « Copier ».';
+    ok.classList.remove('hide');
+  };
+}
+
+// ======= Lien pour un nouvel appareil (#t=…) : envoyé par Hamid, ou fabriqué par le stagiaire =======
 async function traiterLien(t){
   // on enlève tout de suite les données de l'adresse
   try{history.replaceState(null,'',location.pathname+location.search)}catch(e){}
   let p;
   try{p=await decoderLien(t);if(!p||!Array.isArray(p.m)||!p.m[0])throw 0}
   catch(e){return ecranMessage('Lien abîmé',"Ce lien ne marche pas. Demande-en un nouveau à Hamid.",'r')}
-  if(!p.c||Date.now()-p.c*1000>7*24*3600*1000)return ecranMessage("Lien expiré","Ce lien n'est plus valable, demande-en un nouveau à Hamid.",'r');
+  if(!p.c||Date.now()-p.c*1000>7*24*3600*1000)return ecranMessage("Lien expiré","Ce lien n'est plus valable. Fabrique-en un nouveau depuis ton espace, ou demande-en un à Hamid.",'r');
   const cle=empreinteLien(t), utilises=lire('liens_utilises',[]);
-  if(utilises.includes(cle))return ecranMessage('Lien déjà utilisé',"Ce lien a déjà été utilisé sur ce téléphone. Tu peux utiliser le lien habituel de ton espace.",'j');
+  if(utilises.includes(cle))return ecranMessage('Lien déjà utilisé',"Ce lien a déjà été utilisé sur cet appareil. Tu peux utiliser le lien habituel de ton espace.",'j');
+  const ici=typeAppareil();
+  if(p.s&&p.s!==ici)return ecranMessage(p.s==='pc'?'Ce lien est pour un ordinateur':'Ce lien est pour un téléphone',
+    p.s==='pc'?"Ce lien sert à relier ton ordinateur (PC). Ouvre-le sur ton ordinateur, pas sur un téléphone.":"Ce lien sert à passer sur un nouveau téléphone. Ouvre-le sur ton nouveau téléphone, pas sur un ordinateur.",'r');
+  if(p.d&&p.d===idAppareil())return ecranMessage('Ouvre-le sur l\'autre appareil',`Ce lien a été fabriqué sur cet appareil-ci. Ouvre-le sur ton ${p.s==='pc'?'ordinateur':'nouveau téléphone'}.`,'j');
+  // lien déjà utilisé sur un autre appareil ? (si le tableau répond ; sinon on continue)
+  if(p.n){
+    app.innerHTML=`<p class="muted">Chargement…</p>`;
+    try{const g=await etatGeneral(), u=g.liensUtilises&&g.liensUtilises[p.n];
+      if(u&&u!==idAppareil())return ecranMessage('Lien déjà utilisé',"Ce lien a déjà été ouvert sur un autre appareil. Fabrique-en un nouveau depuis ton espace, ou demande-en un à Hamid.",'j')}catch(e){}
+  }
   const nouveau={id:p.m[0],nom:p.m[1],prenom:p.m[2]};
+  if(p.m[3])nouveau.st=p.m[3]; if(p.m[4])nouveau.str=p.m[4];
   const appliquer=autre=>{
+    const autreId=!!(moi&&moi.id&&moi.id!==nouveau.id);
     moi=nouveau; ecrire('moi',moi); ecrire('demande_at',Date.now());
     fusionnerHisto(deplierHisto(p),autre);
     if(autre){ecrire('chrono',{});ecrire('fermes',{});ecrire('envoyes',{})}
+    if(autre||autreId){try{['cles','cle_envoyee','retours_gardes'].forEach(k=>localStorage.removeItem('cqp_'+k))}catch(e){}}
+    // la clé des « 📝 Mes retours » (lien fabriqué par le stagiaire)
+    if(Array.isArray(p.k)&&p.k.length===3){const [d,x,y]=p.k;
+      ecrire('cles',{priv:{kty:'EC',crv:'P-256',d,x,y,ext:true},pub:{kty:'EC',crv:'P-256',x,y,ext:true}})}
+    // les retours en clair (lien envoyé par Hamid)
+    if(Array.isArray(p.r)){const RG=lire('retours_gardes',[]);
+      p.r.forEach(([titre,texte,at,date])=>{if(texte&&!RG.some(z=>z.at===at&&z.texte===texte))RG.push({titre,texte,at,date})});
+      ecrire('retours_gardes',RG)}
+    try{localStorage.removeItem('cqp_remplace')}catch(e){}
     utilises.push(cle); ecrire('liens_utilises',utilises);
-    ecranMessage("✅ C'est bon, ton espace est récupéré",`Bonjour ${esc(nouveau.prenom)} ! Ton évolution est sur ce téléphone. La prochaine fois, utilise le lien habituel de ton espace.`,'g');
+    // cet appareil devient LE téléphone (ou LE PC) de l'espace : l'ancien se fermera
+    inscrireAppareil(p.s||ici,Date.now(),p.n||null);
+    ecranMessage("✅ C'est bon, ton espace est récupéré",`Bonjour ${esc(nouveau.prenom)} ! Ton évolution est sur ${ici==='pc'?'cet ordinateur':'ce téléphone'}. La prochaine fois, utilise le lien habituel de ton espace.`,'g');
   };
   if(moi&&moi.nom&&!memeNom(moi.prenom+' '+moi.nom,nouveau.prenom+' '+nouveau.nom)){
     ECRAN='confirmer';
     app.innerHTML=`<div class="tag">${esc(monEspace())}</div><h1>Attention</h1>
-     <div class="card j"><h2>Ce téléphone est déjà à un autre nom</h2>
+     <div class="card j"><h2>Cet appareil est déjà à un autre nom</h2>
       <p>Il est enregistré au nom de <b>${esc(moi.prenom)} ${esc(moi.nom)}</b>.</p>
       <p>Veux-tu le remplacer par <b>${esc(nouveau.prenom)} ${esc(nouveau.nom)}</b> ?</p>
-      <p class="muted">L'évolution de ${esc(moi.prenom)} sera effacée de ce téléphone.</p>
+      <p class="muted">L'évolution de ${esc(moi.prenom)} sera effacée de cet appareil.</p>
       <button class="btn" id="oui">Oui, remplacer</button><button class="btn sec" id="non">Non, garder ${esc(moi.prenom)}</button></div>`;
     document.getElementById('oui').onclick=()=>appliquer(true);
     document.getElementById('non').onclick=demarrer;
@@ -751,7 +911,7 @@ async function traiterLien(t){
   appliquer(false);
 }
 
-function demarrer(){moi ? verifier() : ecranNom()}
+function demarrer(){if(moi&&espaceRemplace())return ecranRemplace(espaceRemplace().slot);moi ? verifier() : ecranNom()}
 const T0 = location.hash.match(/^#t=([A-Za-z0-9_-]+)/);
 const MEMO_CLE='cqps_ecran';
 const MEMO_ECRANS={

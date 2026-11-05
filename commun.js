@@ -313,6 +313,7 @@ async function etatGeneral(){
   const etat={};JOURNEES.forEach(j=>etat[j.id]={quiz:j.quiz,ouvert:false,duree:0,ouvertAt:null,ouvCle:''});
   const stag={}, revs={}, roue={tirage:null,lances:{},listes:{},persos:{}}, fiches={ouverts:[]}, diapos={ouverts:[]}, reouv=[], retours=[];
   const deroules={}, minuteur={montrer:false}, prepCours={montrer:false,modeles:null,choisi:null};
+  const appareils={}, liensUtilises={}; // 05/11 : un téléphone et un PC actifs par stagiaire
   const L=await lireCSV(CSV_QUIZ);
   if(L.length){
     const h=L[0].map(x=>x.trim().toLowerCase());
@@ -340,6 +341,15 @@ async function etatGeneral(){
         else if(st==='lance'&&c.id&&c.s){const t=roue.lances[c.id]||(roue.lances[c.id]={});t[c.s]=Math.max(t[c.s]||0,+c.m||1)}
         else if(st==='liste'&&c.roue&&Array.isArray(c.cases))roue.listes[c.roue]=c.cases.map(String).filter(x=>x.trim());
         else if(st==='perso'&&c.nom){const k=memeNomCle(c.nom);if(c.supprime)delete roue.persos[k];else if(Array.isArray(c.cases))roue.persos[k]={nom:String(c.nom),cases:c.cases.map(String)}}
+        return;
+      }
+      // 05/11 : appareil relié à un espace : {sid, slot:'tel'|'pc', dev, at, lien} — le plus récent (at) gagne pour chaque place
+      if(id==='appareil'){
+        let c;try{c=JSON.parse(l[iC]||'')}catch(e){return}
+        if(st!=='relie'||!c||!c.sid||!c.dev||(c.slot!=='tel'&&c.slot!=='pc'))return;
+        const at=+c.at||horoVersMs(l[0])||0, A=appareils[c.sid]||(appareils[c.sid]={});
+        if(!A[c.slot]||at>=A[c.slot].at)A[c.slot]={dev:String(c.dev),at};
+        if(c.lien&&!liensUtilises[c.lien])liensUtilises[c.lien]=String(c.dev);
         return;
       }
       // fiches de révision ouvertes aux stagiaires (la dernière ligne gagne)
@@ -412,7 +422,7 @@ async function etatGeneral(){
   }
   Object.keys(revs).forEach(k=>{if(!revs[k].quiz)delete revs[k]});
   Object.entries(CLES_EN_ATTENTE).forEach(([k,v])=>{if(stag[k]&&!stag[k].pub)stag[k].pub=v});
-  return {quiz:etat,stagiaires:stag,revisions:revs,roue,fiches,diapos,reouv,retours,deroules,minuteur,prepCours};
+  return {quiz:etat,stagiaires:stag,revisions:revs,roue,fiches,diapos,reouv,retours,deroules,minuteur,prepCours,appareils,liensUtilises};
 }
 async function etatQuiz(){return (await etatGeneral()).quiz}
 // La révision « en cours » = la dernière préparée

@@ -152,7 +152,7 @@ body.avec-barre .wrap{padding-bottom:120px}
 </head>
 <body>
 <div class="wrap" id="app"></div>
-<script src="commun.js?v=202610301500"></script>
+<script src="commun.js?v=202611051500"></script>
 <script src="roue.js?v=202610260957"></script>
 <script src="bonhommes3d.js?v=202610261832"></script>
 <script src="fiches.js?v=202610261640"></script>
@@ -209,13 +209,14 @@ async function chargerReponses(){
 // ======= État des quiz (tableau Google + ce que tu viens de faire sur ce téléphone) =======
 // Le tableau Google met quelques minutes à se mettre à jour : pendant 15 min, ce téléphone
 // se fie à ce que tu viens d'enregistrer.
-let ETAT = null, STAG = {}, REVS = {}, DEROULES = {}, MINUTEUR_MONTRE = false, PREP_COURS = null;
+let ETAT = null, STAG = {}, REVS = {}, DEROULES = {}, MINUTEUR_MONTRE = false, PREP_COURS = null, APPAREILS = {};
 async function chargerEtat(){
   let g=null;
   try{g=await etatGeneral()}catch(e){g=null}
   if(g){ETAT=g.quiz;STAG=g.stagiaires;REVS=g.revisions||{}}
   else{ETAT={};STAG={};REVS={};JOURNEES.forEach(j=>ETAT[j.id]={quiz:j.quiz,ouvert:false,horsLigne:true})}
   DEROULES=(g&&g.deroules)||{};
+  APPAREILS=(g&&g.appareils)||{};
   MINUTEUR_MONTRE=!!(g&&g.minuteur&&g.minuteur.montrer);
   {const lm=lire('local_minuteur',null);if(lm&&typeof lm.montrer==='boolean'&&Date.now()-lm.at<15*60*1000)MINUTEUR_MONTRE=lm.montrer}
   PREP_COURS=crPrep(g);
@@ -487,7 +488,7 @@ function mesStagiaires(msg){
   if(att.length>1)h+=`<button class="btn ko" id="toutref">❌ Tout refuser (${att.length})</button>`;
   h+=`</div><div class="card g"><h2>Stagiaires acceptés (${acc.length})</h2>`;
   if(!acc.length)h+=`<p class="muted" style="margin:0">Personne pour l'instant.</p>`;
-  acc.forEach(x=>{h+=`<div class="stag"><span><b>${esc(x.prenom)} ${esc(x.nom)}</b>${typeBtn(x)}</span><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn small" data-bil="${x.id}">📊 Bilan</button><button class="btn small ko" data-sup="${x.id}">🗑️ Supprimer</button></div></div>`});
+  acc.forEach(x=>{h+=`<div class="stag"><span><b>${esc(x.prenom)} ${esc(x.nom)}</b>${typeBtn(x)}${ligneAppareils(x)}</span><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn small" data-bil="${x.id}">📊 Bilan</button><button class="btn small ko" data-sup="${x.id}">🗑️ Supprimer</button></div></div>`});
   h+=`</div>`;
   if(aut.length){h+=`<div class="card"><h2>Refusés ou supprimés (${aut.length})</h2><p class="muted" style="margin-top:0">Ils n'ont pas accès. Tu peux les réaccepter en cas d'erreur.</p>`;
     aut.forEach(x=>{h+=`<div class="row" style="align-items:center"><span>${esc(x.prenom)} ${esc(x.nom)} <span class="muted">(${x.statut==='refuse'?'refusé':'supprimé'})</span></span><span style="display:flex;gap:6px;flex:none"><button class="btn small sec" style="margin:0" data-acc="${x.id}">↩️ Réaccepter</button><button class="btn small ko" style="margin:0" data-eff="${x.id}">🗑️ Effacer</button></span></div>`});
@@ -573,14 +574,14 @@ function historiqueStagiaire(x){
 
 // ======= Écran : bilan d'un stagiaire =======
 async function bilanStagiaire(x){
-  app.innerHTML=`<button class="back" id="bk">← Retour</button><div class="tag">Bilan du stagiaire</div><h1>${esc(x.prenom)} ${esc(x.nom)}</h1><div id="zb"><p class="muted">Chargement…</p></div>`;
+  app.innerHTML=`<button class="back" id="bk">← Retour</button><div class="tag">Bilan du stagiaire</div><h1 style="margin-bottom:4px">${esc(x.prenom)} ${esc(x.nom)}</h1>${ligneAppareils(x)}<div id="zb" style="margin-top:14px"><p class="muted">Chargement…</p></div>`;
   document.getElementById('bk').onclick=()=>mesStagiaires();
   haut();
   try{await chargerReponses()}catch(e){document.getElementById('zb').innerHTML=`<div class="card r"><h2>Impossible de lire les réponses</h2><p>Vérifie ta connexion internet, puis réessaie.</p><button class="btn" id="re">Réessayer</button></div>`;document.getElementById('re').onclick=()=>bilanStagiaire(x);return}
   const H=historiqueStagiaire(x), RT=retoursDe(x.id);
   const NG=notesGardees(x.id), TOUT=NG.map(n=>Object.assign({garde:true},n)).concat(RT).sort((a,b)=>b.at-a.at);
   let h=`<div class="card j"><h2>📝 Mes notes et retours (${TOUT.length})</h2><p class="muted" style="margin-top:0">🔒 Gardée pour moi : ${esc(x.prenom)} ne la voit pas · 📤 Envoyée : elle est dans son espace.</p>`+(TOUT.length?TOUT.map(r=>`<div class="stag"><div class="d" style="color:var(--soft)">${r.garde?'🔒 Gardée pour moi':'📤 Envoyée'} · ${esc(r.date||dateJour(r.at))}${r.titre?' · <b>'+esc(r.titre)+'</b>':''}</div><div style="white-space:pre-wrap;margin-top:4px">${esc(r.texte)}</div>${r.garde?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn small" data-nenv="${esc(r.nid)}">📤 Lui envoyer</button><button class="btn small ko" data-nsup="${esc(r.nid)}">🗑️ Supprimer</button></div>`:''}</div>`).join(''):`<p class="muted" style="margin:0">Aucune note pour l'instant.</p>`)+`<button class="btn sec" id="nobs">📝 Nouvelle observation</button></div>`;
-  h+=`<details class="card j"><summary style="cursor:pointer;list-style:none;font-weight:700;font-size:18px">📲 Nouveau téléphone ? <span class="muted" style="font-weight:400">▸</span></summary><p class="muted">Envoie-lui un lien qui récupère son espace et son évolution sur son nouveau téléphone (valable 7 jours, à ouvrir une seule fois).</p>
+  h+=`<details class="card j"><summary style="cursor:pointer;list-style:none;font-weight:700;font-size:18px">📲 Nouveau téléphone ? <span class="muted" style="font-weight:400">▸</span></summary><p class="muted">Envoie-lui un lien qui récupère son espace, son évolution et tes retours sur son nouveau téléphone (valable 7 jours, à ouvrir une seule fois). Son ancien téléphone se fermera. Il peut aussi le faire seul : « 📲 Passer sur un nouveau téléphone », en bas de son accueil.</p>
     <button class="btn wa" id="tel">📲 Envoyer son historique sur son nouveau téléphone</button><div class="muted hide" id="telinfo" style="margin-top:8px"></div></details>`;
   // 29/10 : ses cours préparés (📝 Je prépare mon cours), le plus récent en haut
   const CS=crRecoller(COURS_LIGNES).filter(k=>k.sid===x.id);
@@ -644,10 +645,18 @@ async function bilanStagiaire(x){
     setTimeout(()=>ouvrirWhatsApp(`Voici ton lien pour retrouver ton espace et ton évolution sur ton nouveau téléphone (à ouvrir une seule fois) : ${lien}`),400);
   };
 }
+// 05/11 : « 📱 téléphone relié le … · 💻 PC relié le … »
+function ligneAppareils(x){
+  const A=APPAREILS[x.id]||{}, q=t=>t?`le ${jjmm(t)} à ${heureParis(t)}`:'pas encore';
+  return `<div class="d muted" style="margin-top:4px">📱 téléphone relié ${q(A.tel&&A.tel.at)} · 💻 PC relié ${q(A.pc&&A.pc.at)}</div>`;
+}
 // Fabrique le lien #t=… (les questions de la banque sont envoyées par leur numéro seulement)
+// 05/11 : le lien porte aussi ses retours (pour qu'il puisse encore les lire) et un numéro pour ne servir qu'une fois
 async function lienTransfert(x,H){
   const ref=q=>(q.id&&questionParId(q.id))?q.id:{q:q.q,o:q.o,b:q.b,e:q.e||'',t:q.theme||'autre'};
-  const fab=(niveau)=>({v:1,c:Math.round(Date.now()/1000),m:[x.id,x.nom,x.prenom],
+  const n=nouvelId().slice(0,10), RT=retoursDe(x.id);
+  const fab=(niveau)=>({v:2,n,c:Math.round(Date.now()/1000),m:[x.id,x.nom,x.prenom,x.st||'',x.str||''],
+    r:RT.slice(0,niveau>=3?5:50).map(r=>[r.titre||'',r.texte||'',r.at||0,r.date||'']),
     h:H.slice(niveau>=3?-15:0).map(e=>[e.l,Math.round(e.d/1000),
       e.items.filter(it=>it.q&&it.etat!=='?').map(it=>{
         const s=it.etat==='ok'?1:it.etat==='na'?2:0; let r=ref(it.q);
