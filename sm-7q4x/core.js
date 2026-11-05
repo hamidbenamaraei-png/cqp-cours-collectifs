@@ -1142,12 +1142,44 @@
       if (!x || !x.id || !Array.isArray(x.items)) continue;
       const i = out.findIndex((y) => y.id === x.id);
       const clean = { id: x.id, name: String(x.name || 'Mix'), created: x.created || Date.now(), items: x.items.filter((r) => r && r.cid && r.mid).map((r) => ({ cid: r.cid, mid: r.mid })) };
+      if (x.kind === 'music') Object.assign(clean, { kind: 'music', bpm: +x.bpm || 130, keep: !!x.keep, theme: String(x.theme || ''), themeVol: x.themeVol >= 0 && x.themeVol <= 1 ? +x.themeVol : 0.5, sfx: !!x.sfx, tracks: (Array.isArray(x.tracks) ? x.tracks : []).filter((t) => t && t.mu).map((t) => ({ mu: t.mu, from: Math.max(1, t.from | 0 || 1), blocks: t.blocks > 0 ? t.blocks | 0 : null })) });
       if (i >= 0) out[i] = clean; else out.push(clean);
     }
     return out;
   }
 
+  /* ---------- 🎵 Mix de musiques (v24) : grille de chaque musique (BPM + 1er temps) et blocs de 32 temps ----------
+     g = { bpm, t1 (1er temps, s), dur (s), pont: null | { a, b } (blocs sautés, numérotés à partir de 1) } */
+  const mgBeat = (g) => 60 / g.bpm;
+  function mgBlocks(g) { if (!g || !(g.bpm > 0) || !(g.dur > 0)) return 0; return Math.max(0, Math.floor((g.dur - g.t1 + 0.05) / (32 * mgBeat(g)))); }
+  const mgStart = (g, a) => g.t1 + (a - 1) * 32 * mgBeat(g);
+  const mgEnd = (g, b) => g.t1 + b * 32 * mgBeat(g);
+  /** Position dans la grille : bloc (de la musique), huit (1 à 4), temps (1 à 8) */
+  function mgCount(g, t) {
+    const b = (t - g.t1) / mgBeat(g) + 1e-6;
+    if (b < 0) return { intro: true, beat: b };
+    return { block: Math.floor(b / 32) + 1, huit: Math.floor((b % 32) / 8) + 1, temps: Math.floor(b % 8) + 1, beat: b };
+  }
+  /** Les parties jouées, dans l'ordre : { k (n° de la musique dans le mix), mu, a, b (blocs), rate, natural (la dernière va jusqu'au bout) } */
+  function mgSegments(tracks, grids, o) {
+    const out = [];
+    (tracks || []).forEach((tr, k) => {
+      const g = grids && grids[tr.mu], nb = mgBlocks(g); if (!nb) return;
+      const a = Math.min(nb, Math.max(1, tr.from | 0 || 1)), b = tr.blocks > 0 ? Math.min(nb, a + tr.blocks - 1) : nb;
+      let parts = [[a, b]];
+      if (g.pont && g.pont.a <= g.pont.b && g.pont.a <= b && g.pont.b >= a) { parts = []; if (g.pont.a > a) parts.push([a, g.pont.a - 1]); if (g.pont.b < b) parts.push([g.pont.b + 1, b]); }
+      const rate = o && !o.keep && o.bpm > 0 ? Math.min(2, Math.max(0.5, o.bpm / g.bpm)) : 1;
+      for (const [x, y] of parts) if (y >= x) out.push({ k, mu: tr.mu, a: x, b: y, rate, tail: !(tr.blocks > 0) && y === nb });
+    });
+    if (out.length) out[out.length - 1].natural = out[out.length - 1].tail;
+    return out;
+  }
+  function mgDur(segs, grids) {
+    return (segs || []).reduce((s, x) => { const g = grids[x.mu]; return s + ((x.b - x.a + 1) * 32 * mgBeat(g) + (x.natural ? Math.max(0, g.dur - mgEnd(g, x.b)) : 0)) / x.rate; }, 0);
+  }
+
   return {
+    mgBlocks, mgStart, mgEnd, mgCount, mgSegments, mgDur,
     smooth, quantile, MOVES, STYLES, QUICK, RENAMES, TEMPO_BEATS, OLD_TEMPOS, normTempo, COURSE_VERSION, migrateMoveLists,
     morceauNumber, numLabel, getFavs, setFavs, moveButtons, fft, AudioFeatureStream, audioFeaturesFromPCM, prepareVideo, alignMusic, silenceCuts,
     prepareVideo2, findMusic, placeMusics, verifyChunks, sliceFeat, cutSongs, trackNumber, proposeMusics,

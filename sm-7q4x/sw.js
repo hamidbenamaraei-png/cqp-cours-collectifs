@@ -1,8 +1,11 @@
 /* ScriptMove – fonctionne sans Internet après la 1re visite.
    Ne met en cache que les fichiers de l'appli (jamais tes vidéos, tes musiques, tes photos ni tes livrets : ils restent dans l'appli).
    lib/ : pdf.js 6.2.108 (Mozilla, licence Apache 2.0, voir lib/LICENSE-pdfjs.txt) pour afficher le livret sans Internet. */
-const V = 'sm-app-v23';
-const CORE = ['./', './index.html', './core.js', './mp4.js', './app.js', './pc-commun.js', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png', './lib/pdf.min.mjs', './lib/pdf.worker.min.mjs'];
+const V = 'sm-app-v24';
+/* v24 : TOUT ce dont l'appli a besoin est gardé dès l'installation : elle s'ouvre et marche sans internet (salles sans réseau).
+   lib/lame.min.js : lamejs 1.2.1 (LGPL 3.0, voir lib/LICENSE-lamejs.txt), pour fabriquer le MP3 d'un mix sur le téléphone. */
+const CORE = ['./', './index.html', './core.js', './mp4.js', './app.js', './pc-commun.js', './mix-render.js', './theme.js', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png',
+  './lib/pdf.min.mjs', './lib/pdf.worker.min.mjs', './lib/lame.min.js', './pc.html', './pc-page.js'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(V).then((c) => c.addAll(CORE.map((x) => new Request(x, { cache: 'reload' })))).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => {
   // anciennes versions (et l'ancien détecteur de mouvements) : effacées
@@ -55,9 +58,15 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET') return;
   const u = new URL(req.url);
   if (u.origin !== location.origin || !u.pathname.includes('/sm-7q4x/')) return;
-  // fichiers de l'appli : réseau d'abord (pour les mises à jour), sinon le cache
-  e.respondWith(fetch(req, { cache: 'no-cache' }).then((r) => {
-    if (r && r.ok) { const cl = r.clone(); caches.open(V).then((c) => c.put(req, cl)); }
+  // v24 : fichiers de l'appli : le cache d'abord (rien n'attend le réseau, même sans internet), mis à jour en arrière-plan
+  const nav = req.mode === 'navigate';
+  const update = fetch(req, { cache: 'no-cache' }).then((r) => {
+    if (r && r.ok && r.type === 'basic') { const cl = r.clone(); caches.open(V).then((c) => c.put(req, cl)).catch(() => {}); }
     return r;
-  }).catch(() => caches.match(req, { ignoreSearch: true }).then((h) => h || caches.match('./index.html'))));
+  });
+  update.catch(() => {}); // sans internet : on garde ce qu'on a
+  e.respondWith(caches.match(req, { ignoreSearch: true }).then((h) => h || (nav ? caches.match('./index.html') : null)).then((h) => {
+    if (h) { e.waitUntil(update.catch(() => {})); return h; }
+    return update.catch(() => (nav ? caches.match('./index.html') : Response.error()));
+  }));
 });
