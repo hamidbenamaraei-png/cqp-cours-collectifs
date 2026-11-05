@@ -330,13 +330,23 @@
     return null;
   }
   /** Regarder la vidéo d'une édition, même sans musiques ni script */
-  async function scrWatch(c) {
+  async function scrWatch(c, auto) {
     const url = await videoURL(c);
     if (!url) { await ask('Vidéo introuvable', 'La vidéo n\'est plus dans l\'appli : rechoisis-la avec « 🎬 Remettre la vidéo ».', [{ label: 'OK', value: 1 }]); scrCourse(c.id); return; }
+    // éditions du même dossier qui ont une vidéo gardée, dans l'ordre du dossier
+    const list = C.sortEditions((await dall('courses')).filter((x) => x.folder === c.folder && x.video && x.video.kept));
+    const i = list.findIndex((x) => x.id === c.id);
+    const prev = i > 0 ? list[i - 1] : null, next = i >= 0 && i < list.length - 1 ? list[i + 1] : null;
+    const stop = () => { const v = $('#smwatch'); if (v) v.pause(); };
     render('<div class="top"><button class="back" data-act="back">‹</button><h1>' + esc(c.name) + '</h1></div>' +
-      '<div class="vidbox"><video id="smwatch" src="' + url + '" controls playsinline preload="metadata"></video></div>' +
+      '<div class="vidbox"><video id="smwatch" src="' + url + '" controls playsinline preload="metadata"' + (auto ? ' autoplay' : '') + '></video></div>' +
+      '<div class="row"><button class="btn sec" data-act="prev"' + (prev ? '' : ' disabled') + '>⏮ Vidéo précédente</button><button class="btn sec" data-act="next"' + (next ? '' : ' disabled') + '>Vidéo suivante ⏭</button></div>' +
       '<p class="mute small">Touche ⛶ en bas de la vidéo pour la mettre en plein écran.</p>',
-      { back: () => { const v = $('#smwatch'); if (v) v.pause(); scrCourse(c.id); } });
+      {
+        back: () => { stop(); scrCourse(c.id); },
+        prev: () => { if (prev) { stop(); scrWatch(prev, true); } },
+        next: () => { if (next) { stop(); scrWatch(next, true); } }
+      });
   }
   /** Rechoisir la vidéo d'une édition, et la garder dans l'appli */
   async function giveVideo(c, given, sure) {
