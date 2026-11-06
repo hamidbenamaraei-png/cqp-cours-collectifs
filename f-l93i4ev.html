@@ -163,7 +163,7 @@ body.avec-barre .wrap{padding-bottom:120px}
 <script src="tabata.js?v=202610301300"></script>
 <script src="cours.js?v=202610301300"></script>
 <script src="fpc-commun.js?v=202611061705"></script>
-<script src="depot-pc.js?v=202611061650"></script>
+<script src="depot-pc.js?v=202611062250"></script>
 <script>
 // ======= Réglages propres au formateur =======
 // Empreinte du code d'accès (le code lui-même n'est pas écrit ici)
@@ -460,8 +460,7 @@ function accueil(){
     <div style="display:flex;align-items:center;height:52px;margin:0 132px 16px 0"><h1 style="margin:0;line-height:52px">Menu</h1></div>
     <button class="btn sec" id="mo-b" style="text-align:left;margin:0 0 14px">🧰 Mes outils <span class="muted" style="float:right">▸</span></button><div id="mo-liste" class="hide">`;
   // 06/11 : la roue retirée du menu à la demande de Hamid
-  h+=`<div class="card"><h2>🎵 Mes musiques</h2><p style="margin:0" class="muted">Tes musiques de cours, rangées par catégories. Seulement sur ce téléphone.</p>
-    <button class="btn sec" id="mus">Ouvrir mes musiques</button></div>`;
+  // 06/11 : « Mes musiques » retirée (les stagiaires cherchent eux-mêmes leurs musiques) ; les musiques déjà gardées restent sur le téléphone
   h+=`<div class="card g"><h2>⏱️ Minuteur</h2><p style="margin:0" class="muted">Travail, repos, tours (ou sans fin), en grand et avec des bips. Pour tes séances et les passages.</p>
     <button class="btn sec" id="tbo">Ouvrir le minuteur</button>
     <button class="btn small ${MINUTEUR_MONTRE?'':'sec'}" id="tbm">${MINUTEUR_MONTRE?'👀 Montrer le minuteur aux stagiaires / apprentis : Oui · toucher pour Non':'🙈 Montrer le minuteur aux stagiaires / apprentis : Non · toucher pour Oui'}</button>
@@ -509,7 +508,7 @@ function accueil(){
   {const b=document.getElementById('roue');if(b)b.onclick=()=>roueSimple()}
   document.getElementById('fiches').onclick=()=>mesExercices();
 
-  document.getElementById('mus').onclick=()=>mesMusiques();
+  {const b=document.getElementById('mus');if(b)b.onclick=()=>mesMusiques()}
   document.getElementById('tbo').onclick=()=>tabataEcran(accueil,'Espace formateur');
   document.getElementById('tbm').onclick=async e=>{
     const nv=!MINUTEUR_MONTRE, b=e.currentTarget;b.disabled=true;b.textContent='⏳ Un instant…';
@@ -2439,7 +2438,7 @@ function htmlMesAppareils(){
   return `<div class="card" style="border-top-color:var(--line)"><div class="tag" style="color:var(--soft)">📱 Mes appareils</div>
     <p class="muted" style="margin:4px 0 0">Ton espace formateur peut aussi être sur ton ordinateur, avec tes notes et tes réglages.</p>
     <button class="btn sec" id="rpc">💻 Ouvrir mon espace sur mon PC</button>
-    <p class="muted" style="margin:14px 0 0">Tes musiques et tes documents de l'ordinateur, envoyés sur ce téléphone (rien que pour toi).</p>
+    <p class="muted" style="margin:14px 0 0">Tes documents de l'ordinateur, envoyés sur ce téléphone (rien que pour toi).</p>
     <button class="btn sec" id="fpc">💻 Envoyer depuis mon PC</button>
     <button class="btn sec" id="mdoc">📁 Mes documents</button></div>`;
 }

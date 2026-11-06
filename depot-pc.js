@@ -51,7 +51,7 @@ async function ecranEnvoiPC(){
   const msg=DPT.msg?`<div class="err" role="status">${esc(DPT.msg)}</div>`:'';
   const garde=`<div class="card j nopli"><p style="margin:0">📱 <b>Pour recevoir, garde ton espace formateur ouvert sur ce téléphone</b>, écran allumé, pendant tout l'envoi.</p></div>`;
   const prive=`<p class="muted">🔒 Les fichiers vont directement de ton ordinateur à ce téléphone, chiffrés. Ils ne sont gardés sur aucun serveur et restent seulement sur ce téléphone : les stagiaires et les autres formateurs ne les voient pas.</p>`;
-  const dest=`<p class="muted" style="margin:8px 0 0">Sur l'ordinateur, tu choisis où les ranger : ${estAdmin()?'« 🎵 Mes musiques » (Tabata, Renfo… : comme une musique ajoutée ici) ou ':''}« 📁 Mes documents » (un dossier existant ou un nouveau).</p>`;
+  const dest=`<p class="muted" style="margin:8px 0 0">Sur l'ordinateur, tu choisis où les ranger : « 📁 Mes documents » (un dossier existant ou un nouveau).</p>`;
   let h;
   if(!dpOk())h=top+`<div class="card r nopli"><p style="margin:0">Ce téléphone ou ce navigateur ne permet pas de recevoir des fichiers d'un ordinateur. Utilise Chrome, à jour.</p></div>`;
   else if(navigator.onLine===false)h=top+`<div class="card j nopli"><h2>📶 Il faut internet pour relier ton PC</h2><p class="muted" style="margin:0">Reviens ici quand tu as du réseau ou du Wi-Fi.</p><button class="btn sec" id="dp-re">🔄 Réessayer</button></div>`;
@@ -108,7 +108,7 @@ async function dpDelier(){
 /* ---------- ce que l'ordinateur peut proposer : catégories de musiques (Hamid) et dossiers ---------- */
 async function dpLieux(p){
   let mu=null;
-  if(p==='admin'&&typeof muCats==='function'){
+  if(false){ // 06/11 : plus de musiques (retirées à la demande de Hamid)
     // les mêmes catégories que l'écran 🎵 Mes musiques
     let L=[];try{L=(await muOp('readonly',s=>s.getAll()))||[]}catch(e){L=[]}
     mu=muCats().filter(c=>c!=='Échauffement'||L.some(m=>m&&m.cat===c));
@@ -435,7 +435,7 @@ function dpVoir(f){
 })();
 async function dpOuRanger(F){
   const p=dpProprio(), mus=F.every(f=>dpEstMusique(f.name,f.type)), admin=estAdmin();
-  const cats=(admin&&typeof muCats==='function')?muCats():[], D=await dpDossiers(p).catch(()=>[]);
+  const cats=[], /* 06/11 : plus de musiques */ D=await dpDossiers(p).catch(()=>[]);
   let ST=[];try{if(admin&&typeof acceptes==='function')ST=acceptes().slice().sort((a,b)=>(a.prenom+' '+a.nom).localeCompare(b.prenom+' '+b.nom,'fr'))}catch(e){}
   const fond=document.createElement('div');fond.style.cssText='position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px';
   const nb=F.length>1?F.length+' fichiers':'« '+esc(F[0].name)+' »';
