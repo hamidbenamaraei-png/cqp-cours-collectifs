@@ -453,7 +453,8 @@ function accueil(){
   if(passees.length) agP=`<details class="card"><summary style="cursor:pointer;list-style:none;font-weight:700;font-size:18px">📁 Mes journées passées <span class="muted" style="font-weight:400">(${passees.length})</span></summary>
     ${passees.map(j=>`<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(127,127,127,.25)"><div class="tag" style="color:var(--soft)">${esc(j.titre)}</div><div class="b" style="font-weight:700">${esc(j.theme)}</div><button class="btn sec" data-j="${j.id}">Ouvrir cette journée</button></div>`).join('')}</details>`;
   // 30/10 : carte « Observations » retirée de l'accueil (Hamid les prend dans sa journée)
-  h+=`<div class="card ${nAtt?'o':'g'}"><h2>👥 Stagiaires / Apprentis</h2>
+  // 06/11 : stagiaires et formateurs rangés dans le menu ☰ ; sur l'accueil, seulement s'il y a des demandes en attente
+  if(nAtt)h+=`<div class="card ${nAtt?'o':'g'}"><h2>👥 Stagiaires / Apprentis</h2>
     <p style="margin:0">${nAcc} accepté${nAcc>1?'s':''}${nAtt?` · <b style="color:var(--or)">${nAtt} demande${nAtt>1?'s':''} en attente</b>`:''}</p>
     <button class="btn ${nAtt?'':'sec'}" id="stg">${nAtt?'Voir les demandes':'Gérer la liste'}</button></div>`;
   // 06/11 : « Exercices » déplacés dans le menu ☰ (ligne « 📋 Mes exercices »)
@@ -466,7 +467,9 @@ function accueil(){
   h+=`<button class="btn sec" id="tbo" style="margin:0 0 10px 24px;width:calc(100% - 24px);text-align:left">↳ ⏱️ Minuteur</button>
     <button class="btn small ${MINUTEUR_MONTRE?'':'sec'}" id="tbm" style="margin:0 0 10px 24px;width:calc(100% - 24px);text-align:left;margin-left:48px;width:calc(100% - 48px)">${MINUTEUR_MONTRE?'👀 Montrer le minuteur aux stagiaires / apprentis : Oui · toucher pour Non':'🙈 Montrer le minuteur aux stagiaires / apprentis : Non · toucher pour Oui'}</button>
     <div class="ok hide" id="tbmok" style="margin-left:48px"></div>`;
-  h+=`</div><button class="btn sec" id="ag-b" style="text-align:left;margin:0 0 14px">📅 Mon agenda <span class="muted" style="float:right">▸</span></button><div id="ag-liste" class="hide">${agA||'<p class="muted">Aucune journée pour l\'instant.</p>'}</div><button class="btn sec" id="mx-b" style="text-align:left;margin:0 0 14px">📋 Mes exercices <span class="muted" style="float:right">▸</span></button><div id="mx-liste" class="hide"><button class="btn sec" data-fxm="renfo" style="margin:0 0 10px 24px;width:calc(100% - 24px);text-align:left">↳ 💪 Exercices de renforcement musculaire</button><button class="btn sec" data-fxm="etir" style="margin:0 0 10px 24px;width:calc(100% - 24px);text-align:left;margin-bottom:14px">↳ 🧘 Exercices d'étirement</button></div><button class="btn sec" id="me-b" style="text-align:left;margin:0 0 14px">📏 Méthodes <span class="muted" style="float:right">▸</span></button><div id="me-liste" class="hide"><button class="btn sec" id="meth-b" style="margin:0 0 14px;width:calc(100% - 24px);margin-left:24px;text-align:left">↳ Méthodes d'étirement</button></div></div></div>`;
+  h+=`</div><button class="btn sec" id="ag-b" style="text-align:left;margin:0 0 14px">📅 Mon agenda <span class="muted" style="float:right">▸</span></button><div id="ag-liste" class="hide">${agA||'<p class="muted">Aucune journée pour l\'instant.</p>'}</div><button class="btn sec" id="mx-b" style="text-align:left;margin:0 0 14px">📋 Mes exercices <span class="muted" style="float:right">▸</span></button><div id="mx-liste" class="hide"><button class="btn sec" data-fxm="renfo" style="margin:0 0 10px 24px;width:calc(100% - 24px);text-align:left">↳ 💪 Exercices de renforcement musculaire</button><button class="btn sec" data-fxm="etir" style="margin:0 0 10px 24px;width:calc(100% - 24px);text-align:left;margin-bottom:14px">↳ 🧘 Exercices d'étirement</button></div><button class="btn sec" id="me-b" style="text-align:left;margin:0 0 14px">📏 Méthodes <span class="muted" style="float:right">▸</span></button><div id="me-liste" class="hide"><button class="btn sec" id="meth-b" style="margin:0 0 14px;width:calc(100% - 24px);margin-left:24px;text-align:left">↳ Méthodes d'étirement</button></div>
+    <button class="btn sec" id="st-b" style="text-align:left;margin:0 0 14px">🎓 Stagiaires / Apprentis <span class="muted" style="float:right">▸</span></button><div id="st-liste" class="hide"><button class="btn sec" id="stg-m" style="margin:0 0 10px 24px;width:calc(100% - 24px);text-align:left;margin-bottom:14px">↳ 👥 Gérer la liste <span class="muted" style="font-weight:400">· ${nAcc} accepté${nAcc>1?'s':''}${nAtt?` · <b style="color:var(--or)">${nAtt} demande${nAtt>1?'s':''}</b>`:''}</span></button></div>
+    <button class="btn sec" id="fo-b" style="text-align:left;margin:0 0 14px">🧑‍🏫 Formateurs <span class="muted" style="float:right">▸</span></button><div id="fo-liste" class="hide"><button class="btn sec" id="afo" style="margin:0 0 10px 24px;width:calc(100% - 24px);text-align:left">↳ 🔗 Lien et réglages <span class="muted" style="font-weight:400">· ${FORMATEURS.length} formateur${FORMATEURS.length>1?'s':''}</span></button>${Object.keys(QUIZF).length?`<button class="btn sec" id="afq" style="margin:0 0 10px 24px;width:calc(100% - 24px);text-align:left">↳ 📝 Leurs quiz (${Object.keys(QUIZF).length})</button>`:''}<div style="height:4px"></div></div></div></div>`;
   h+=`<div id="param-o" class="hide" style="position:fixed;inset:0;z-index:65;background:var(--bg);overflow:auto;padding:calc(10px + env(safe-area-inset-top,0px)) 16px 24px"><div style="max-width:640px;margin:0 auto">
     <div style="display:flex;align-items:center;height:52px;margin:0 132px 16px 0"><h1 style="margin:0;line-height:52px">Paramètres</h1></div><div id="pa-liste"></div></div></div>`;
   // 06/11 : carte « Je prépare mon cours » retirée de l'accueil à la demande de Hamid (la partie « Ses cours préparés » des fiches reste)
@@ -478,10 +481,6 @@ function accueil(){
   const rc=revisionCourante(REVS), ro=rc&&estOuvert(rc);
   h+=`<button class="btn sec" id="rev" style="margin:0 0 10px 24px;width:calc(100% - 24px);text-align:left">↳ 🧠 Quiz de révision${rc?` <span class="muted" style="font-weight:400">· ${ro?'<b style="color:var(--ok)">ouvert</b>':'caché'}</span>`:''}</button>`;
   // 06/11 : les autres formateurs et « 💻 Ouvrir mon espace sur mon PC »
-  {const nF=FORMATEURS.length, LQ=Object.values(QUIZF), nO=LQ.filter(estOuvert).length;
-  h+=`<div class="card"><h2>👥 Autres formateurs</h2><p style="margin:0" class="muted">${nF?`${nF} formateur${nF>1?'s':''} : ${esc(FORMATEURS.map(f=>f.prenom).join(', '))}.`:'Personne pour l\'instant.'} Envoie-leur le lien et choisis ce que tu leur montres.</p>
-    <button class="btn sec" id="afo">🔗 Lien et réglages</button>
-    ${LQ.length?`<button class="btn sec" id="afq">📝 Leurs quiz (${LQ.length})${nO?` · ${nO} ouvert${nO>1?'s':''}`:''}</button>`:''}</div>`;}
   h+=htmlMesAppareils();
   h+=`<p class="muted"><a href="./" style="color:var(--mute)">Voir l'espace stagiaires / apprentis</a> · <button class="link" id="vef" style="color:var(--mute)">Voir l'espace formateur</button> · <button class="link" id="out">Se déconnecter</button></p>
   <p class="muted"><button class="link" id="rz">Pour mes tests : changer de nom dans l'espace stagiaires (sur ce téléphone)</button></p><div class="ok hide" id="rzok">✅ C'est fait : l'espace stagiaires te redemandera ton nom.</div>`;
@@ -489,28 +488,29 @@ function accueil(){
   // 06/11 : « 🧠 Quiz de révision » rangé dans « Mes outils »
   {const c=document.getElementById('rev'),mo=document.getElementById('mo-liste');if(c&&mo){const t=document.getElementById('tbo');mo.insertBefore(c,t||null)}}
   app.querySelectorAll('[data-fxm]').forEach(b=>b.onclick=()=>ecranFiches(b.dataset.fxm));
+  {const b=document.getElementById('stg-m');if(b)b.onclick=()=>mesStagiaires()}
   {const b=document.getElementById('meth-b');if(b)b.onclick=()=>ecranFiches('meth')}
   // 06/11 : « ⚙️ Paramètres » dans le menu ☰ : mes appareils, liens du bas (« Autres formateurs » reste sur l'accueil)
   {const pa=document.getElementById('pa-liste');if(pa){[document.getElementById('rpc'),document.getElementById('vef'),document.getElementById('rz')].forEach(el=>{const c=el&&(el.closest('.card')||el.closest('p'));if(c&&c.parentNode!==pa)pa.appendChild(c)});const ok=document.getElementById('rzok');if(ok)pa.appendChild(ok)}}
   app.querySelectorAll('[data-j]').forEach(b=>b.onclick=()=>journee(JOURNEES.find(j=>j.id===b.dataset.j)));
-  document.getElementById('stg').onclick=()=>mesStagiaires();
+  {const b=document.getElementById('stg');if(b)b.onclick=()=>mesStagiaires()}
   document.getElementById('rev').onclick=()=>revisionEcran();
   {
    calAgenda();
-   [['mo-liste','mo-b'],['ag-liste','ag-b'],['mx-liste','mx-b'],['me-liste','me-b']].forEach(([l,b])=>{const ml=document.getElementById(l),mb=document.getElementById(b);mb.onclick=()=>{const o=ml.classList.toggle('hide');mb.querySelector('span').textContent=o?'▸':'▾'}})
+   [['mo-liste','mo-b'],['ag-liste','ag-b'],['mx-liste','mx-b'],['me-liste','me-b'],['st-liste','st-b'],['fo-liste','fo-b']].forEach(([l,b])=>{const ml=document.getElementById(l),mb=document.getElementById(b);mb.onclick=()=>{const o=ml.classList.toggle('hide');mb.querySelector('span').textContent=o?'▸':'▾'}})
    // 06/11 : toucher « Menu » referme tout et revient au menu de départ
-   document.getElementById('menu-t').onclick=()=>{const L=[['mo-liste','mo-b'],['ag-liste','ag-b'],['mx-liste','mx-b'],['me-liste','me-b']];
+   document.getElementById('menu-t').onclick=()=>{const L=[['mo-liste','mo-b'],['ag-liste','ag-b'],['mx-liste','mx-b'],['me-liste','me-b'],['st-liste','st-b'],['fo-liste','fo-b']];
      if(!L.some(([l])=>!document.getElementById(l).classList.contains('hide'))){document.getElementById('menu-outils').classList.add('hide');return} // tout est fermé : « Menu » ramène à l'accueil
      L.forEach(([l,b])=>{document.getElementById(l).classList.add('hide');document.getElementById(b).querySelector('span').textContent='▸'});document.getElementById('menu-outils').scrollTop=0};
    // 06/11 : ce qu'on ouvre depuis le menu : « ← Retour » ramène au menu, à la même partie ouverte
    const menu=document.getElementById('menu-outils');
-   menu.addEventListener('click',e=>{const t=e.target.closest('button');if(!t||['mo-b','ag-b','mx-b','me-b','pa-b','rz','out'].includes(t.id))return;
-     MENU_RET={mo:!document.getElementById('mo-liste').classList.contains('hide'),ag:!document.getElementById('ag-liste').classList.contains('hide'),mx:!document.getElementById('mx-liste').classList.contains('hide'),me:!document.getElementById('me-liste').classList.contains('hide'),y:menu.scrollTop}},true);
+   menu.addEventListener('click',e=>{const t=e.target.closest('button');if(!t||['mo-b','ag-b','mx-b','me-b','st-b','fo-b','pa-b','rz','out'].includes(t.id))return;
+     MENU_RET={mo:!document.getElementById('mo-liste').classList.contains('hide'),ag:!document.getElementById('ag-liste').classList.contains('hide'),mx:!document.getElementById('mx-liste').classList.contains('hide'),me:!document.getElementById('me-liste').classList.contains('hide'),st:!document.getElementById('st-liste').classList.contains('hide'),fo:!document.getElementById('fo-liste').classList.contains('hide'),y:menu.scrollTop}},true);
    const par=document.getElementById('param-o');
    par.addEventListener('click',e=>{const t=e.target.closest('button');if(!t||['tbm','rz','out'].includes(t.id))return;PARAM_RET={y:par.scrollTop}},true);
    if(PARAM_RET){const r=PARAM_RET;PARAM_RET=null;par.classList.remove('hide');setTimeout(()=>{par.scrollTop=r.y||0},0)}
    if(MENU_RET){const r=MENU_RET;MENU_RET=null;menu.classList.remove('hide');
-     [['mo-liste','mo-b',r.mo],['ag-liste','ag-b',r.ag],['mx-liste','mx-b',r.mx],['me-liste','me-b',r.me]].forEach(([l,b,o])=>{if(o){document.getElementById(l).classList.remove('hide');document.getElementById(b).querySelector('span').textContent='▾'}});
+     [['mo-liste','mo-b',r.mo],['ag-liste','ag-b',r.ag],['mx-liste','mx-b',r.mx],['me-liste','me-b',r.me],['st-liste','st-b',r.st],['fo-liste','fo-b',r.fo]].forEach(([l,b,o])=>{if(o){document.getElementById(l).classList.remove('hide');document.getElementById(b).querySelector('span').textContent='▾'}});
      setTimeout(()=>{menu.scrollTop=r.y||0},0)}}
   {const b=document.getElementById('roue');if(b)b.onclick=()=>roueSimple()}
   {const b=document.getElementById('fiches');if(b)b.onclick=()=>mesExercices()}
@@ -533,7 +533,7 @@ function accueil(){
     const ok=document.getElementById('crmok');ok.textContent=nv?"✅ « Je prépare mon cours » apparaîtra dans l'espace stagiaires / apprentis d'ici quelques minutes.":"✅ « Je prépare mon cours » disparaîtra de l'espace stagiaires / apprentis d'ici quelques minutes.";ok.classList.remove('hide')};
   document.getElementById('out').onclick=()=>{ecrire('ok','');ecrire('qui',null);marqueHamid();ecranCode()};
   document.getElementById('vef').onclick=()=>{apercuFormateur(true);accueil();haut()};
-  document.getElementById('afo').onclick=()=>autresFormateurs();
+  {const b=document.getElementById('afo');if(b)b.onclick=()=>autresFormateurs()}
   {const b=document.getElementById('afq');if(b)b.onclick=()=>quizFAdmin()}
   document.getElementById('rpc').onclick=()=>ecranPC();
   document.getElementById('fpc').onclick=()=>ecranEnvoiPC();
