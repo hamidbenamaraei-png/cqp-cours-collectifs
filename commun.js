@@ -376,7 +376,7 @@ async function etatGeneral(){
       // 06/11 : Journée = « partage », Statut = « etat », Contenu = {stag,rep,cours,roue,quiz} — la dernière ligne gagne
       if(id==='partage'){
         let c;try{c=JSON.parse(l[iC]||'')}catch(e){return}
-        if(st==='etat'&&c&&typeof c==='object'){partage=Object.assign({},PARTAGE_DEFAUT);Object.keys(PARTAGE_DEFAUT).forEach(k=>{if(typeof c[k]==='boolean')partage[k]=c[k]})}
+        if(st==='etat'&&c&&typeof c==='object'){partage=Object.assign({},PARTAGE_DEFAUT);Object.keys(PARTAGE_DEFAUT).forEach(k=>{if(typeof c[k]==='boolean')partage[k]=c[k]});if(Array.isArray(c.cache))partage.cache=c.cache.map(String)}
         return;
       }
       // 06/11 : quiz d'un autre formateur : Journée = « quizf », Statut = quiz / ouvert / ferme / supprime,

@@ -154,7 +154,7 @@ body.avec-barre .wrap{padding-bottom:120px}
 </head>
 <body>
 <div class="wrap" id="app"></div>
-<script src="commun.js?v=202611061710"></script>
+<script src="commun.js?v=202611061705"></script>
 <script src="qr.js?v=202611051500"></script>
 <script src="roue.js?v=202610260957"></script>
 <script src="bonhommes3d.js?v=202610261832"></script>
@@ -162,7 +162,7 @@ body.avec-barre .wrap{padding-bottom:120px}
 <script src="musiques.js?v=202610261915"></script>
 <script src="tabata.js?v=202610301300"></script>
 <script src="cours.js?v=202610301300"></script>
-<script src="fpc-commun.js?v=202611061710"></script>
+<script src="fpc-commun.js?v=202611061705"></script>
 <script src="depot-pc.js?v=202611061650"></script>
 <script>
 // ======= Réglages propres au formateur =======
@@ -534,6 +534,10 @@ function coursPrepEcran(msg){
 
 // ======= Écran : mes stagiaires =======
 function estTest(x){return !!(x&&String(x.id||'').startsWith('test-'))}
+// 06/11 : stagiaires cachés aux autres formateurs (choisis par Hamid ; tant qu'il n'a rien choisi : ses comptes à lui)
+const estCompteHamid=x=>estTest(x)||/benamara/i.test(x.nom||'')||(/^hamid$/i.test((x.prenom||'').trim()));
+function cachesF(){return Array.isArray(PARTAGE.cache)?PARTAGE.cache:acceptes().filter(estCompteHamid).map(x=>x.id)}
+function voitStag(x){return estAdmin()||!cachesF().includes(x.id)}
 function typeTxt(x){return x&&x.st==='apprenti'?'Apprenti(e)':'Stagiaire'}
 function typeBtn(x){return ` · <button class="link" data-type="${x.id}" style="color:var(--soft)">${typeTxt(x)}</button> · <button class="link" data-str="${x.id}" style="color:var(--soft)">${x.str?esc(x.str):'structure ?'}</button>`}
 function acceptes(){return Object.values(STAG).filter(x=>x.statut==='accepte').sort((a,b)=>(a.nom+a.prenom).localeCompare(b.nom+b.prenom,'fr'))}
@@ -650,7 +654,7 @@ function historiqueStagiaire(x){
 
 // ======= Écran : bilan d'un stagiaire =======
 async function bilanStagiaire(x){
-  const adm=estAdmin(); if(!adm&&!PARTAGE.rep)return accueil();
+  const adm=estAdmin(); if(!adm&&(!PARTAGE.rep||!voitStag(x)))return accueil();
   app.innerHTML=`<button class="back" id="bk">← Retour</button><div class="tag">Bilan du stagiaire</div><h1 style="margin-bottom:4px">${esc(x.prenom)} ${esc(x.nom)}</h1>${adm?ligneAppareils(x):''}<div id="zb" style="margin-top:14px"><p class="muted">Chargement…</p></div>`;
   document.getElementById('bk').onclick=()=>mesStagiaires();
   haut();
@@ -1335,8 +1339,8 @@ function afficher(c,tests){
   const nbTests=c.dateMin?rep.filter(l=>dateFR(l[iH])<c.dateMin).length:0;
   if(!tests&&c.dateMin)rep=rep.filter(l=>dateFR(l[iH])>=c.dateMin);
   // seulement les stagiaires acceptés (dès qu'il y en a au moins un)
-  const acc=acceptes().filter(x=>!estTest(x)); let masques=0;
-  if(acc.length&&!tests){const avant=rep.length;rep=rep.filter(l=>acc.some(a=>memeNom(a.prenom+' '+a.nom,(l[iP]||'')+' '+(l[iN]||''))));masques=avant-rep.length}
+  const acc=acceptes().filter(x=>!estTest(x)&&voitStag(x)); let masques=0;
+  if((acc.length||!estAdmin())&&!tests){const avant=rep.length;rep=rep.filter(l=>acc.some(a=>memeNom(a.prenom+' '+a.nom,(l[iP]||'')+' '+(l[iN]||''))));masques=avant-rep.length}
   // si quelqu'un a envoyé plusieurs fois (accès redonné…), seul son dernier envoi compte
   {const vus=new Map();rep.forEach(l=>vus.set(memeNomCle(((l[iP]||'')+' '+(l[iN]||'')).trim()),l));rep=[...vus.values()]}
   const zone=document.getElementById('zone');
@@ -2380,7 +2384,7 @@ function accueilFormateur(){
   let h=`<div class="tag">Espace formateur</div><h1>Bonjour ${esc(q.prenom)} 👋</h1>`;
   h+=`<div class="card o"><h2>📝 Mes quiz</h2><p style="margin:0" class="muted">${L.length?`${L.length} quiz${nO?` · <b style="color:var(--ok)">${nO} ouvert${nO>1?'s':''}</b>`:''}.`:"Tu n'as pas encore de quiz."} Les stagiaires / apprentis le voient avec ton prénom : « Quiz de ${esc(q.prenom)} ».</p>
     <button class="btn" id="mqn">➕ Nouveau quiz</button>${L.length?`<button class="btn sec" id="mqo">Ouvrir mes quiz</button>`:''}</div>`;
-  if(PARTAGE.stag||PARTAGE.rep){const n=acceptes().filter(x=>!estTest(x)).length;
+  if(PARTAGE.stag||PARTAGE.rep){const n=acceptes().filter(x=>!estTest(x)&&voitStag(x)).length;
     h+=`<div class="card g"><h2>👥 Stagiaires / Apprentis</h2><p style="margin:0">${n} accepté${n>1?'s':''}</p><button class="btn sec" id="stg">Voir la liste</button></div>`}
   if(PARTAGE.quiz)h+=`<div class="card j"><h2>📂 Les quiz de Hamid</h2><p style="margin:0" class="muted">Ses quiz et ses questions, pour les voir.</p><button class="btn sec" id="qh">Voir les quiz de Hamid</button></div>`;
   if(peutCours())h+=`<div class="card"><h2>📚 Cours, diapos et documents</h2><p style="margin:0" class="muted">${seulMontre()?'Les documents et exercices que Hamid a montrés aux stagiaires / apprentis.':'Les diapos, les documents et les exercices de Hamid.'}</p><button class="btn sec" id="crs">Ouvrir</button></div>`;
@@ -2400,7 +2404,7 @@ function accueilFormateur(){
 function stagiairesLecture(){
   if(estAdmin())return mesStagiaires();
   if(!PARTAGE.stag&&!PARTAGE.rep)return accueil();
-  const acc=acceptes().filter(x=>!estTest(x));
+  const acc=acceptes().filter(x=>!estTest(x)&&voitStag(x));
   let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>👥 Stagiaires / Apprentis</h1>
    <div class="card g"><h2>Acceptés (${acc.length})</h2>`+(acc.length?acc.map(x=>`<div class="stag"><b>${esc(x.prenom)} ${esc(x.nom)}</b> <span class="muted">· ${typeTxt(x)}${x.str?' · '+esc(x.str):''}</span>${PARTAGE.rep?`<div><button class="btn small" data-bil="${esc(x.id)}">📊 Bilan</button></div>`:''}</div>`).join(''):`<p class="muted" style="margin:0">Personne pour l'instant.</p>`)+`</div>
    <button class="btn sec" id="maj">🔄 Actualiser</button>`;
@@ -2612,7 +2616,8 @@ function autresFormateurs(msg){
    <div class="card o"><h2>🔗 Le lien à envoyer aux formateurs</h2>${INV?`<div style="background:#f3f4f6;border-radius:10px;padding:10px 12px;font-size:14px;word-break:break-all;color:#111">${esc(lienInvite(INV))}</div>
     <button class="btn wa" id="iwa">📲 Envoyer le lien sur WhatsApp</button><button class="btn small sec" id="icp">📋 Copier le lien</button>`:`<p class="muted" id="iatt" style="margin:0">⏳ Création du lien…</p>`}<div class="err hide" id="ier"></div></div>
    <div class="card j"><h2>👀 Ce que je leur montre</h2>`+
-    PARTAGE_TEXTES.map(([k,t])=>`<label class="check"><input type="checkbox" data-pk="${k}" ${PARTAGE[k]?'checked':''}> ${esc(t)}</label>`).join('')+`
+    PARTAGE_TEXTES.map(([k,t])=>`<label class="check"><input type="checkbox" data-pk="${k}" ${PARTAGE[k]?'checked':''}> ${esc(t)}</label>`).join('')+
+    (acceptes().length?`<div class="tag" style="margin-top:14px">👥 Les stagiaires qu'ils peuvent voir</div>`+acceptes().map(x=>`<label class="check"><input type="checkbox" data-sv="${esc(x.id)}" ${cachesF().includes(x.id)?'':'checked'}> ${esc(x.prenom+' '+x.nom)}</label>`).join(''):'')+`
     <button class="btn" id="psave" disabled>💾 Enregistrer</button><div class="err hide" id="per"></div></div>
    <div class="card g"><h2>Ont accès (${FORMATEURS.length})</h2>`+(FORMATEURS.length?FORMATEURS.map(f=>`<div class="stag"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><span><b>${esc(f.prenom)} ${esc(f.nom)}</b>${f.at?`<div class="d">Depuis le ${esc(jjmm(f.at))}</div>`:''}</span><button class="btn small ko" style="margin:0;flex:none" data-fret="${esc(f.id)}">Retirer</button></div><div data-fconf="${esc(f.id)}"></div></div>`).join(''):`<p class="muted" style="margin:0">Personne pour l'instant.</p>`)+`</div>
    ${Object.keys(QUIZF).length?`<button class="btn sec" id="afq">📝 Leurs quiz (${Object.keys(QUIZF).length})</button>`:''}
@@ -2636,9 +2641,10 @@ function autresFormateurs(msg){
       catch(e){alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");return autresFormateurs()}
       autresFormateurs(`✅ ${f.prenom} n'a plus accès.`)})});
   const ps=document.getElementById('psave');
-  app.querySelectorAll('[data-pk]').forEach(c=>c.onchange=()=>{ps.disabled=false});
+  app.querySelectorAll('[data-pk],[data-sv]').forEach(c=>c.onchange=()=>{ps.disabled=false});
   ps.onclick=async()=>{
     const v={};PARTAGE_TEXTES.forEach(([k])=>{v[k]=!!app.querySelector(`[data-pk="${k}"]`).checked});
+    {const vus=new Set([...app.querySelectorAll('[data-sv]')].map(c=>c.dataset.sv));v.cache=[...app.querySelectorAll('[data-sv]')].filter(c=>!c.checked).map(c=>c.dataset.sv).concat(cachesF().filter(id=>!vus.has(id)))}
     ps.disabled=true;ps.textContent='⏳ Enregistrement…';
     try{await enregistrerPartage(v)}
     catch(e){ps.disabled=false;ps.textContent='💾 Enregistrer';const er=document.getElementById('per');er.textContent="Ça n'a pas marché. Vérifie ta connexion internet et réessaie.";er.classList.remove('hide');return}
