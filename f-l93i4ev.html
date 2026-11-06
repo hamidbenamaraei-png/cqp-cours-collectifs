@@ -390,8 +390,8 @@ const PLANNING=[
 function isoJour(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0') }
 
 // ce qui est prêt pour une journée (quiz, diapos)
-function prepTexte(j){const z=quizDe(j), n=(z&&z.questions||[]).length;
-  return (n?`📝 Quiz : ${n} question${n>1?'s':''}`:'🛠️ Quiz à préparer')+(j.diapos?` · 📚 ${j.diapos} diapos`:'')}
+// 07/11 : plus de quiz par journée (un seul « 🧠 Quiz » choisi par jours) : on n'affiche que les diapos
+function prepTexte(j){return j.diapos?`📚 ${j.diapos} document${j.diapos>1?'s':''}`:''}
 // ======= Écran : accueil =======
 // 06/11 : boutons ⚙️ (Paramètres) et ☰ (Menu) toujours au même endroit, en haut à droite, sur tous les écrans de Hamid
 (function(){
@@ -446,8 +446,8 @@ function accueil(){
   const auj=isoJour(new Date());
   const carteJ=(j,tete)=>{ const o=estOuvert(ETAT[j.id]);
     return `<div class="card nopli">${tete?`<div class="tag" style="color:var(--ok)">${tete}</div>`:''}<div class="tag" style="color:var(--soft)">${esc(j.titre)}</div><h2 style="margin-top:4px">${esc(j.theme)}</h2>
-    <div class="statut" style="font-size:15px"><span class="dot" style="background:${o?'var(--ok)':'var(--mute)'}"></span>${esc(etatTexte(ETAT[j.id]))}</div>
-    <p class="muted" style="margin:6px 0 0">${prepTexte(j)}</p>
+    ${o?`<div class="statut" style="font-size:15px"><span class="dot" style="background:var(--ok)"></span>${esc(etatTexte(ETAT[j.id]))}</div>`:''}
+    ${prepTexte(j)?`<p class="muted" style="margin:6px 0 0">${prepTexte(j)}</p>`:''}
     <button class="btn" data-j="${j.id}">Ouvrir cette journée</button></div>` };
   const carteP=(p,tete)=>`<div class="card nopli">${tete?`<div class="tag" style="color:var(--ok)">${tete}</div>`:''}<div class="tag" style="color:var(--soft)">${esc(p.titre)}</div><h2 style="margin-top:4px">${esc(p.theme)}</h2>
     <p class="muted" style="margin:0">🛠️ À préparer : pas encore de diapos ni de quiz pour cette journée.</p></div>`;
@@ -491,7 +491,7 @@ function accueil(){
     <button class="btn small ${PREP_COURS.montrer?'':'sec'}" id="crm">${PREP_COURS.montrer?'👀 Montrer aux stagiaires / apprentis : Oui · toucher pour Non':'🙈 Montrer aux stagiaires / apprentis : Non · toucher pour Oui'}</button>
     <div class="ok hide" id="crmok"></div></div>`;}
   const rc=revisionCourante(REVS), ro=rc&&estOuvert(rc);
-  h+=`<button class="btn sec" id="rev" style="margin:0 0 10px 24px;width:calc(100% - 24px);text-align:left">↳ 🧠 Quiz de révision${rc?` <span class="muted" style="font-weight:400">· ${ro?'<b style="color:var(--ok)">ouvert</b>':'caché'}</span>`:''}</button>`;
+  h+=`<button class="btn sec" id="rev" style="margin:0 0 10px 24px;width:calc(100% - 24px);text-align:left">↳ 🧠 Quiz${rc?` <span class="muted" style="font-weight:400">· ${ro?'<b style="color:var(--ok)">ouvert</b>':'caché'}</span>`:''}</button>`;
   // 06/11 : les autres formateurs et « 💻 Ouvrir mon espace sur mon PC »
   h+=htmlMesAppareils();
   h+=`<p class="muted"><a href="./" style="color:var(--mute)">Voir l'espace stagiaires / apprentis</a> · <button class="link" id="vef" style="color:var(--mute)">Voir l'espace formateur</button> · <button class="link" id="out">Se déconnecter</button></p>
@@ -897,7 +897,7 @@ function journee(j){
   const e=ETAT[j.id], o=estOuvert(e);
   app.innerHTML=`<button class="back" id="bk">← Retour</button>
   <div class="tag">${esc(j.titre)}</div><h1>${esc(j.theme)}</h1>
-  <div class="card ${o?'g':'j'}">
+  ${o?`<div class="card g">
    <div class="statut"><span class="dot" style="background:${o?'var(--ok)':'var(--mute)'}"></span>${esc(etatTexte(e))}</div>
    <p class="muted" style="margin:6px 0 0">${o?'Les stagiaires voient le bouton « Petit bilan de ma journée ».':'Les stagiaires ne voient pas encore le quiz. Ouvre-le quand tu veux, par exemple en fin de journée.'}</p>
    <p class="muted" style="margin:6px 0 0">${prepTexte(j)}</p>
@@ -906,7 +906,7 @@ function journee(j){
    <div id="dur"></div>
    <div class="ok hide" id="togok"></div>
    ${e.horsLigne?`<div class="err">Je n'ai pas pu lire ton tableau des quiz. Vérifie ta connexion internet.</div>`:''}
-  </div>
+  </div>`:''}
   ${suiteHtml(j)}
   <div class="card j"><h2>📋 Mon déroulé prévu</h2>
    <p class="muted" style="margin-top:0">Ton plan de la journée, pour toi seul : les stagiaires / apprentis ne le voient jamais. Écris ou dicte, modifie quand tu veux. Gardé sur ce téléphone et sauvegardé en ligne (tu le retrouves sur un autre téléphone).</p>
@@ -915,15 +915,12 @@ function journee(j){
    <button class="btn sec" id="dmic">🎤 Dicter</button>
    <div class="muted hide" id="dmicinfo" style="margin-top:8px"></div></div>
   <button class="btn sec" id="m1">📊 Réponses et résumé de la journée</button>
-  <button class="btn sec" id="m2">📝 Mon quiz du jour</button>
   ${j.diapos?`<button class="btn sec" id="m3">📚 Diapos et documents</button>
   <button class="btn small ${DIAPOS_OUV.includes(j.id)?'':'sec'}" id="dtog" style="margin-top:-4px">${DIAPOS_OUV.includes(j.id)?'👀 Tous les documents montrés aux stagiaires · toucher pour tout cacher':(diaposVisibles(DIAPOS_OUV,j).length?'👀 '+diaposVisibles(DIAPOS_OUV,j).length+' / '+j.diapos+' documents montrés · toucher pour tout montrer':'🙈 Documents cachés aux stagiaires · toucher pour tout montrer')}</button>
   <div class="ok hide" id="dok"></div>`:''}
-  ${quizVide(quizDe(j))?'':`<button class="btn sec" id="m4">🖨️ Version papier (PDF)</button>
-  <button class="btn sec" id="m5">✍️ Saisir une réponse papier</button>`}`;
+`;
   document.getElementById('bk').onclick=accueil;
   document.getElementById('m1').onclick=()=>reponses(cibleJournee(j));
-  document.getElementById('m2').onclick=()=>monQuiz(j);
   brancherSuite(j);
   brancherDeroule(j);
   if(j.diapos){document.getElementById('m3').onclick=()=>diapos(j);
@@ -935,11 +932,10 @@ function journee(j){
     catch(err){DIAPOS_OUV=avant;alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");return journee(j)}
     DIAPOS_OUV=n;ecrire('local_diapos',{ouverts:n,at:Date.now()});
     journee(j);const ok=document.getElementById('dok');ok.textContent=montrer?"✅ Diapos montrées aux stagiaires (d'ici quelques minutes).":"✅ Diapos cachées aux stagiaires (d'ici quelques minutes).";ok.classList.remove('hide')};}
-  if(!quizVide(quizDe(j))){document.getElementById('m4').onclick=()=>papier(j,false);
-  document.getElementById('m5').onclick=()=>saisie(j);}
+
   const prev=document.getElementById('prev');
   if(prev)prev.onclick=()=>ouvrirWhatsApp(messageWhatsApp(`Le petit bilan de la journée (${j.titre} – ${j.theme})`,e));
-  const tog=document.getElementById('tog');
+  const tog=document.getElementById('tog');if(!tog){haut();return}
   const changer=async(nouveau,duree)=>{
     tog.disabled=true; tog.textContent='Un instant…';
     try{await envoyerForm(FORM_QUIZ,{[EQ.journee]:j.id,[EQ.statut]:nouveau?'ouvert':'ferme',[EQ.contenu]:nouveau?JSON.stringify({duree}):''})}
@@ -1255,10 +1251,10 @@ function revisionEcran(msg){
   if(!estAdmin())return accueil(); // 06/11 : écran d'Hamid seulement
   const rc=revisionCourante(REVS);
   const autres=Object.values(REVS).filter(r=>!rc||r.id!==rc.id).sort((a,b)=>b.cree-a.cree);
-  let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>🧠 Quiz de révision</h1>
+  let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>🧠 Quiz</h1>
    ${msg?`<div class="ok" style="margin:-6px 0 14px">${esc(msg)}</div>`:''}`;
   if(rc){const o=estOuvert(rc);
-    h+=`<div class="card ${o?'g':'j'}"><div class="tag" style="color:var(--soft)">Révision en cours</div><h2 style="margin-top:4px">${esc(rc.titre)}</h2>
+    h+=`<div class="card ${o?'g':'j'}"><div class="tag" style="color:var(--soft)">Quiz en cours</div><h2 style="margin-top:4px">${esc(rc.titre)}</h2>
      <div class="statut" style="font-size:16px"><span class="dot" style="background:${o?'var(--ok)':'var(--mute)'}"></span>${esc(etatTexte(rc))}</div>
      <p class="muted" style="margin:6px 0 0">${rc.quiz.questions.length} questions · ${texteDuree(rc.quiz)}${(rc.journees||[]).length?` · ${rc.journees.map(id=>{const j=JOURNEES.find(x=>x.id===id);return j?j.titre:id}).join(', ')}`:''}</p>
      ${o?`<button class="btn wa" id="prev">📲 Prévenir les stagiaires sur WhatsApp</button><button class="btn ko" id="tog">🔒 Fermer la révision</button>`:`<button class="btn" id="tog">🔓 Ouvrir aux stagiaires</button>`}
@@ -1267,7 +1263,7 @@ function revisionEcran(msg){
      <button class="btn sec" id="mod">✏️ Modifier ce quiz</button></div>`;
     // 06/11 : tester le quiz comme un stagiaire (rien n'est envoyé)
     h+=`<div class="card"><h2>🧪 Tester le quiz</h2><p class="muted" style="margin-top:0">Fais ce quiz comme un stagiaire, même s'il est caché. Rien n'est envoyé : ça ne compte nulle part.</p><button class="btn sec" id="tst">▶️ Commencer le test</button></div>`}
-  h+=`<div class="card o"><h2>🆕 Nouvelle révision</h2><p class="muted" style="margin-top:0">Des questions tirées au hasard dans les journées que tu choisis.${rc?' La révision en cours sera fermée.':''}</p><button class="btn" id="new">Préparer une nouvelle révision</button></div>`;
+  h+=`<div class="card o"><h2>🆕 Nouveau quiz</h2><p class="muted" style="margin-top:0">Choisis un ou plusieurs jours de formation : les questions sont tirées au hasard dedans.${rc?' Le quiz en cours sera fermé.':''}</p><button class="btn" id="new">Préparer un nouveau quiz</button></div>`;
   if(autres.length){h+=`<div class="card"><h2>Historique</h2>`+autres.map(r=>`<div class="row" style="align-items:center"><span>${esc(r.titre)} <span class="muted">· ${r.quiz.questions.length} questions</span></span><button class="btn small sec" style="margin:0" data-r="${esc(r.id)}">📊 Réponses</button></div>`).join('')+`</div>`}
   h+=`<button class="btn sec" id="maj">🔄 Actualiser</button>`;
   app.innerHTML=h;
@@ -1303,7 +1299,7 @@ async function enregistrerRevision(r,propre){
 function nouvelleRevision(){
   const choix={j:JOURNEES.map(j=>j.id).filter(id=>{const j=JOURNEES.find(x=>x.id===id);return j.banque&&j.banque.questions.length}),duree:5,ressenti:false};
   const dessiner=()=>{
-    let h=`<button class="back" id="bk">← Retour</button><div class="tag">Quiz de révision</div><h1>🆕 Nouvelle révision</h1>
+    let h=`<button class="back" id="bk">← Retour</button><div class="tag">Quiz</div><h1>🆕 Nouveau quiz</h1>
      <div class="card"><h2>Quelles journées ?</h2>`+
      JOURNEES.filter(j=>j.banque&&j.banque.questions.length).map(j=>`<label class="check"><input type="checkbox" data-j="${j.id}" ${choix.j.includes(j.id)?'checked':''}> ${esc(j.titre)} – ${esc(j.theme)}</label>`).join('')+`</div>
      <div class="card"><h2>Combien de temps ?</h2>
@@ -1343,10 +1339,10 @@ function tirerRevision(choix){
     return `✅ ${titre} enregistrée. Ouvre-la aux stagiaires quand tu veux.`;
   };
   const apres=m=>revisionEcran(m);
-  apercu({tag:'Quiz de révision',titre,z,pool,retour:()=>nouvelleRevision(),
+  apercu({tag:'Quiz',titre,z,pool,retour:()=>nouvelleRevision(),
     info:`${js.map(j=>j.titre).join(', ')} · tirage mélangé.`,
     actions:[
-      {txt:'✏️ Modifier avant d\'enregistrer',cls:'sec',f:zz=>editeur({tag:'Quiz de révision',titre,z:zz,retour:()=>revisionEcran(),reouvrir:()=>revisionEcran(),texteEnregistrer:'Enregistrer la révision',enregistrer:sauver,apres})},
+      {txt:'✏️ Modifier avant d\'enregistrer',cls:'sec',f:zz=>editeur({tag:'Quiz',titre,z:zz,retour:()=>revisionEcran(),reouvrir:()=>revisionEcran(),texteEnregistrer:'Enregistrer la révision',enregistrer:sauver,apres})},
       {txt:'💾 Enregistrer la révision',f:async zz=>{
         const p=nettoyer(zz);
         try{apres(await sauver(p))}catch(e){alert("L'enregistrement n'a pas marché. Vérifie ta connexion internet et réessaie.")}
