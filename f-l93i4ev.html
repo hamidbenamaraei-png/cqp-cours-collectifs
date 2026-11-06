@@ -154,7 +154,7 @@ body.avec-barre .wrap{padding-bottom:120px}
 </head>
 <body>
 <div class="wrap" id="app"></div>
-<script src="commun.js?v=202611061650"></script>
+<script src="commun.js?v=202611061710"></script>
 <script src="qr.js?v=202611051500"></script>
 <script src="roue.js?v=202610260957"></script>
 <script src="bonhommes3d.js?v=202610261832"></script>
@@ -162,7 +162,7 @@ body.avec-barre .wrap{padding-bottom:120px}
 <script src="musiques.js?v=202610261915"></script>
 <script src="tabata.js?v=202610301300"></script>
 <script src="cours.js?v=202610301300"></script>
-<script src="fpc-commun.js?v=202611061650"></script>
+<script src="fpc-commun.js?v=202611061710"></script>
 <script src="depot-pc.js?v=202611061650"></script>
 <script>
 // ======= Réglages propres au formateur =======
@@ -216,7 +216,7 @@ async function chargerReponses(){
 // se fie à ce que tu viens d'enregistrer.
 let ETAT = null, STAG = {}, REVS = {}, DEROULES = {}, MINUTEUR_MONTRE = false, PREP_COURS = null, APPAREILS = {};
 // 06/11 : autres formateurs. Hamid = celui qui a le code CODE_HASH (le patron). Les autres : liste en ligne.
-let FORMATEURS = [], FORMATEURS_LUS = false, PARTAGE = Object.assign({},PARTAGE_DEFAUT), QUIZF = {};
+let INVITE_F = '', FORMATEURS = [], FORMATEURS_LUS = false, PARTAGE = Object.assign({},PARTAGE_DEFAUT), QUIZF = {};
 function estAdmin(){return lire('ok','')===CODE_HASH}
 function moiF(){const q=lire('qui',null);return q&&q.id&&q.h&&q.h===lire('ok','')?q:null}
 function peut(k){return estAdmin()||!!PARTAGE[k]}
@@ -236,6 +236,9 @@ async function chargerEtat(){
   FORMATEURS=(g&&g.formateurs)||[]; FORMATEURS_LUS=!!(g&&g.formateursLus);
   PARTAGE=Object.assign({},PARTAGE_DEFAUT,(g&&g.partage)||{}); QUIZF=(g&&g.quizF)||{};
   {const lf=lire('local_formateurs',null);if(lf&&Array.isArray(lf.liste)&&Date.now()-lf.at<15*60*1000){FORMATEURS=lf.liste;FORMATEURS_LUS=true}}
+  INVITE_F=(g&&g.inviteF)||'';{const li=lire('local_invite',null);if(li&&Date.now()-li.at<15*60*1000)INVITE_F=li.p}
+  // 06/11 : formateur qui vient de s'inscrire avec le lien : accès tout de suite, le temps que Google se mette à jour
+  {const ins=lire('local_inscrit',null);if(ins&&ins.f&&Date.now()-ins.at<20*60*1000&&!FORMATEURS.some(f=>f.id===ins.f.id))FORMATEURS=FORMATEURS.concat([ins.f])}
   {const lp=lire('local_partage',null);if(lp&&lp.v&&Date.now()-lp.at<15*60*1000)PARTAGE=Object.assign({},PARTAGE_DEFAUT,lp.v)}
   {const lq=lire('local_quizf',{});Object.entries(lq).forEach(([id,v])=>{if(Date.now()-v.at>=15*60*1000)return;
     if(v.supprime){delete QUIZF[id];return}const c=Object.assign({},v);delete c.at;QUIZF[id]=Object.assign(QUIZF[id]||{id,ouvert:false,duree:0},c)});
@@ -2598,16 +2601,21 @@ async function enregistrerPartage(v){
 const PARTAGE_TEXTES=[['stag','Voir la liste des stagiaires / apprentis'],['rep','Voir les réponses et bilans des stagiaires'],['cours','Voir tous mes cours, diapos et documents'],['coursSt','Voir seulement les documents que j\'ai montrés aux stagiaires'],['roue','Utiliser la roue'],['quiz','Voir mes quiz et mes questions']];
 // 06/11 : un lien qui connecte directement l'autre formateur (le code est dans le lien, jamais gardé en clair)
 function codeAuto(){const A='abcdefghjkmnpqrstuvwxyz23456789',v=crypto.getRandomValues(new Uint8Array(14));return [...v].map(x=>A[x%A.length]).join('')}
+const lienInvite=t=>location.origin+location.pathname+'#fi='+t;
 const lienFormateur=c=>location.origin+location.pathname+'#fc='+c;
 const texteLienF=(prenom,c)=>`Bonjour ${prenom} ! 👋\nVoici ton accès à l'espace formateur CQP (cours collectifs).\nTouche ce lien, tu seras connecté directement :\n${lienFormateur(c)}\n\nGarde ce lien pour toi, ne le partage pas. Il marche d'ici quelques minutes.`;
 function autresFormateurs(msg,envoi){
   if(!estAdmin())return accueil();
+  const INV0=lire('invite_tok',null), INV=INV0&&INV0.p&&INV0.p===INVITE_F?INV0.t:null;
   let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>👥 Autres formateurs</h1>
    ${msg?`<div class="ok" style="margin:-6px 0 14px">${esc(msg)}</div>`:''}
    ${envoi?`<div class="card o nopli"><h2>📲 Le lien de ${esc(envoi.prenom)}</h2><p class="muted" style="margin-top:0">Envoie-le-lui : il touche le lien et il est connecté, sans rien taper.</p><button class="btn wa" id="flwa">📲 Lui envoyer son lien sur WhatsApp</button><button class="btn small sec" id="flcp">📋 Copier le lien</button></div>`:''}
    <p class="muted" style="margin-top:0">Tu restes le seul à tout voir et à tout décider. Chaque autre formateur entre avec son propre code et fait ses propres quiz.</p>
    <div class="card g"><h2>Ont accès (${FORMATEURS.length})</h2>`+(FORMATEURS.length?FORMATEURS.map(f=>`<div class="stag"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><span><b>${esc(f.prenom)} ${esc(f.nom)}</b>${f.at?`<div class="d">Ajouté le ${esc(jjmm(f.at))}</div>`:''}</span><span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="btn small sec" style="margin:0;flex:none" data-flien="${esc(f.id)}">🔗 Nouveau lien</button><button class="btn small ko" style="margin:0;flex:none" data-fret="${esc(f.id)}">Retirer</button></span></div><div data-fconf="${esc(f.id)}"></div></div>`).join(''):`<p class="muted" style="margin:0">Personne pour l'instant.</p>`)+`</div>
-   <div class="card o"><h2>➕ Ajouter un formateur</h2>
+   <div class="card o"><h2>🔗 Lien d'invitation</h2>${INV?`<p class="muted" style="margin-top:0">Envoie ce lien aux formateurs. Ils écrivent leur prénom et leur nom, touchent « Valider », et ils sont dans leur espace.</p>
+    <button class="btn wa" id="iwa">📲 Envoyer le lien d'invitation sur WhatsApp</button><button class="btn small sec" id="icp">📋 Copier le lien</button>
+    <button class="btn small sec" id="ichg">🔄 Changer le lien (l'ancien ne marchera plus)</button><div id="iconf"></div>`:`<p class="muted" style="margin-top:0">Un seul lien pour tous les formateurs : ils écrivent leur prénom et leur nom, et ils sont dans leur espace.</p><button class="btn" id="icre">🔗 Créer le lien d'invitation</button>`}<div class="err hide" id="ier"></div></div>
+   <details class="card nopli"><summary style="cursor:pointer;list-style:none;font-weight:700">➕ Ajouter un formateur à la main <span class="muted" style="font-weight:400">▸</span></summary>
     <label for="fp" style="margin-top:0">Prénom</label><input id="fp" type="text" autocomplete="off" maxlength="40">
     <label for="fno">Nom (facultatif)</label><input id="fno" type="text" autocomplete="off" maxlength="40">
     <details style="margin-top:10px"><summary class="muted" style="cursor:pointer">Choisir son code moi-même (facultatif)</summary>
@@ -2617,7 +2625,7 @@ function autresFormateurs(msg,envoi){
     <div class="err hide" id="fer"></div>
     <button class="btn" id="fadd">➕ Ajouter ce formateur</button>
     <p class="muted" style="margin-bottom:0">Écris juste son prénom : l'appli crée son code et te donne un lien à lui envoyer. Le lien marche d'ici quelques minutes (le temps que Google se mette à jour).</p>
-    <button class="btn small sec" id="fadr">📋 Copier l'adresse de l'espace formateur</button></div>
+    <button class="btn small sec" id="fadr">📋 Copier l'adresse de l'espace formateur</button></details>
    <div class="card j"><h2>👀 Ce que les autres formateurs peuvent voir</h2>
     <p class="muted" style="margin-top:0">Le même réglage pour tous. Ils voient toujours leurs propres quiz et les réponses à leurs quiz.</p>`+
     PARTAGE_TEXTES.map(([k,t])=>`<label class="check"><input type="checkbox" data-pk="${k}" ${PARTAGE[k]?'checked':''}> ${esc(t)}</label>`).join('')+`
@@ -2649,6 +2657,17 @@ function autresFormateurs(msg,envoi){
     catch(err){b.disabled=false;b.textContent='➕ Ajouter ce formateur';return dire("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.")}
     autresFormateurs(`✅ ${prenom} est ajouté.`,{prenom,code:c1});
   };
+  // lien d'invitation
+  {const er=document.getElementById('ier'),dire=t=>{er.textContent=t;er.classList.remove('hide')};
+   const creer=async b=>{b.disabled=true;b.textContent='⏳ Un instant…';const t=codeAuto()+codeAuto(),p=await empreinte('fi:'+t);
+     try{await envoyerForm(FORM_QUIZ,{[EQ.journee]:'formateurs',[EQ.statut]:'invite',[EQ.contenu]:JSON.stringify({p})})}
+     catch(e){b.disabled=false;b.textContent='🔗 Créer le lien d\'invitation';return dire("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.")}
+     ecrire('invite_tok',{t,p});ecrire('local_invite',{p,at:Date.now()});INVITE_F=p;autresFormateurs('✅ Lien d\'invitation prêt. Il marche d\'ici quelques minutes.')};
+   const on=(id,f)=>{const b=document.getElementById(id);if(b)b.onclick=f};
+   on('icre',e=>creer(e.currentTarget));
+   on('iwa',()=>ouvrirWhatsApp(`Bonjour ! 👋\nVoici le lien pour rejoindre l'espace formateur CQP (cours collectifs).\nTouche le lien, écris ton prénom et ton nom, puis « Valider » :\n${lienInvite(INV)}\n\nGarde ce lien pour toi, ne le partage pas avec les stagiaires.`));
+   on('icp',async e=>{const b=e.currentTarget,u=lienInvite(INV),ok=await copier(u);b.textContent=ok?'✅ Lien copié':u;setTimeout(()=>{b.textContent='📋 Copier le lien'},ok?2500:20000)});
+   on('ichg',()=>confirmerIci(document.getElementById('iconf'),"Changer le lien ? L'ancien lien ne marchera plus pour les nouveaux. Les formateurs déjà inscrits gardent leur accès.",'🔄 Oui, changer',()=>creer(document.getElementById('ichg'))));}
   if(envoi){document.getElementById('flwa').onclick=()=>ouvrirWhatsApp(texteLienF(envoi.prenom,envoi.code));
     document.getElementById('flcp').onclick=async e=>{const b=e.currentTarget,u=lienFormateur(envoi.code),ok=await copier(u);b.textContent=ok?'✅ Lien copié':u;setTimeout(()=>{b.textContent='📋 Copier le lien'},ok?2500:20000)}}
   app.querySelectorAll('[data-flien]').forEach(b=>b.onclick=()=>{const f=FORMATEURS.find(x=>x.id===b.dataset.flien);if(!f)return;
@@ -2798,12 +2817,35 @@ async function connexionLien(code){
   if(!f)return ecranCode("Ton lien n'est pas encore prêt, ou il a été remplacé. Réessaie dans quelques minutes, ou demande un nouveau lien à Hamid.");
   ecrire('bloque',{n:0,jusqua:0});ecrire('ok',h);ecrire('qui',{id:f.id,prenom:f.prenom,nom:f.nom,h});demarrer();
 }
+// 06/11 : lien d'invitation (#fi=…) : le formateur écrit son prénom et son nom, puis il est dans son espace
+function ecranRejoindre(t,msg){
+  app.innerHTML=`<div class="tag">CQP Instructeur Fitness – Cours collectifs</div><h1>Espace formateur</h1>
+  <div class="card o"><h2>👋 Bienvenue</h2><p class="muted" style="margin-top:0">Écris ton prénom et ton nom, puis touche « Valider ».</p>
+   <label for="jp" style="margin-top:0">Prénom</label><input id="jp" type="text" autocomplete="given-name" maxlength="40">
+   <label for="jn">Nom</label><input id="jn" type="text" autocomplete="family-name" maxlength="40">
+   <div class="err ${msg?'':'hide'}" id="jer">${msg?esc(msg):''}</div>
+   <button class="btn" id="jok">✅ Valider</button></div>`;
+  const er=document.getElementById('jer'),b=document.getElementById('jok'),dire=x=>{er.textContent=x;er.classList.remove('hide')};
+  b.onclick=async()=>{er.classList.add('hide');
+    const prenom=document.getElementById('jp').value.trim().replace(/\s+/g,' '), nom=document.getElementById('jn').value.trim().replace(/\s+/g,' ');
+    if(!prenom)return dire('Écris ton prénom.');if(!nom)return dire('Écris ton nom.');
+    b.disabled=true;b.textContent='⏳ Un instant…';const fin=()=>{b.disabled=false;b.textContent='✅ Valider'};
+    const p=await empreinte('fi:'+t);let g=null;try{g=await etatGeneral()}catch(e){g=null}
+    if(!g){fin();return dire("Pas de connexion internet. Vérifie ta connexion, puis réessaie.")}
+    if(g.inviteF!==p){fin();return dire("Ce lien n'est pas encore prêt, ou il a été changé. Réessaie dans quelques minutes, sinon demande le nouveau lien à Hamid.")}
+    const id=nouvelId(), h=await empreinte(codeAuto()+codeAuto()), f={id,prenom,nom,h,at:Date.now()};
+    try{await envoyerForm(FORM_QUIZ,{[EQ.journee]:'formateurs',[EQ.statut]:'inscription',[EQ.contenu]:JSON.stringify(Object.assign({p},f))})}
+    catch(e){fin();return dire("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.")}
+    ecrire('local_inscrit',{f,at:Date.now()});ecrire('bloque',{n:0,jusqua:0});ecrire('ok',h);ecrire('qui',{id,prenom,nom,h});demarrer()};
+}
+const lireFI=()=>{const t=location.hash.match(/^#fi=([A-Za-z0-9]{10,60})/);if(t){try{history.replaceState(null,'',location.pathname+location.search)}catch(e){}return t[1]}return null};
 const lireFC=()=>{const t=location.hash.match(/^#fc=([A-Za-z0-9]{6,40})/);if(t){try{history.replaceState(null,'',location.pathname+location.search)}catch(e){}return t[1]}return null};
 {const t=location.hash.match(/^#p=([A-Za-z0-9_-]+)/);
  if(t){LIEN_PC=t[1];try{history.replaceState(null,'',location.pathname+location.search)}catch(e){}}}
-{const fc=lireFC();
- fc&&!LIEN_PC&&!estAdmin() ? connexionLien(fc) : LIEN_PC ? ecranCode() : (estAdmin()||moiF()) ? demarrer() : ecranCode();}
+{const fi=lireFI(), fc=lireFC();
+ fi&&!LIEN_PC&&!estAdmin()&&!moiF() ? ecranRejoindre(fi) : fc&&!LIEN_PC&&!estAdmin() ? connexionLien(fc) : LIEN_PC ? ecranCode() : (estAdmin()||moiF()) ? demarrer() : ecranCode();}
 // si l'espace est déjà ouvert dans cet onglet, le lien ne recharge pas la page
+window.addEventListener('hashchange',()=>{const fi=lireFI();if(fi&&!estAdmin()&&!moiF())return ecranRejoindre(fi)});
 window.addEventListener('hashchange',()=>{const fc=lireFC();if(fc&&!estAdmin())return connexionLien(fc)});
 window.addEventListener('hashchange',()=>{const t=location.hash.match(/^#p=([A-Za-z0-9_-]+)/);if(t){LIEN_PC=t[1];try{history.replaceState(null,'',location.pathname+location.search)}catch(e){};ecranCode()}});
 </script>

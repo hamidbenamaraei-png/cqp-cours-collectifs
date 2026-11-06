@@ -323,7 +323,7 @@ async function etatGeneral(){
   const deroules={}, minuteur={montrer:false}, prepCours={montrer:false,modeles:null,choisi:null};
   const appareils={}, liensUtilises={}; // 05/11 : un téléphone et un PC actifs par stagiaire
   // 06/11 : autres formateurs (liste complète, la dernière ligne gagne), ce qu'ils peuvent voir, et leurs quiz
-  let formateurs=[], formateursLus=false, partage=Object.assign({},PARTAGE_DEFAUT); const quizF={};
+  let inviteF='', formateurs=[], formateursLus=false, partage=Object.assign({},PARTAGE_DEFAUT); const quizF={};
   const L=await lireCSV(CSV_QUIZ);
   if(L.length){
     const h=L[0].map(x=>x.trim().toLowerCase());
@@ -367,6 +367,10 @@ async function etatGeneral(){
         let c;try{c=JSON.parse(l[iC]||'')}catch(e){return}
         if(st==='liste'&&c&&Array.isArray(c.liste)){formateursLus=true;
           formateurs=c.liste.filter(f=>f&&f.id&&f.h).map(f=>({id:String(f.id),prenom:String(f.prenom||'').trim(),nom:String(f.nom||'').trim(),h:String(f.h),at:+f.at||0}))}
+        // 06/11 : lien d'invitation (Statut « invite », Contenu {p}) et inscription d'un formateur avec ce lien (Statut « inscription »)
+        else if(st==='invite'&&c)inviteF=String(c.p||'');
+        else if(st==='inscription'&&c&&c.id&&c.h&&inviteF&&c.p===inviteF&&!formateurs.some(f=>f.id===String(c.id))){formateursLus=true;
+          formateurs.push({id:String(c.id),prenom:String(c.prenom||'').trim().slice(0,40),nom:String(c.nom||'').trim().slice(0,40),h:String(c.h),at:+c.at||Date.now()})}
         return;
       }
       // 06/11 : Journée = « partage », Statut = « etat », Contenu = {stag,rep,cours,roue,quiz} — la dernière ligne gagne
@@ -469,7 +473,7 @@ async function etatGeneral(){
   Object.keys(revs).forEach(k=>{if(!revs[k].quiz)delete revs[k]});
   Object.keys(quizF).forEach(k=>{const q=quizF[k];if(!q.quiz||!q.auteur||!q.label||q.supprime)delete quizF[k]});
   Object.entries(CLES_EN_ATTENTE).forEach(([k,v])=>{if(stag[k]&&!stag[k].pub)stag[k].pub=v});
-  return {quiz:etat,stagiaires:stag,revisions:revs,roue,fiches,diapos,reouv,retours,deroules,minuteur,prepCours,appareils,liensUtilises,formateurs,formateursLus,partage,quizF};
+  return {quiz:etat,stagiaires:stag,revisions:revs,roue,fiches,diapos,reouv,retours,deroules,minuteur,prepCours,appareils,liensUtilises,formateurs,formateursLus,partage,quizF,inviteF};
 }
 async function etatQuiz(){return (await etatGeneral()).quiz}
 // La révision « en cours » = la dernière préparée
