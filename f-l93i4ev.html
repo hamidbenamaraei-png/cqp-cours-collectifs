@@ -395,22 +395,18 @@ function prepTexte(j){const z=quizDe(j), n=(z&&z.questions||[]).length;
 // ======= Écran : accueil =======
 // 06/11 : calendrier du mois pour « Mon agenda » (menu ☰)
 const MOIS_FR=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-function calAgenda(an,mo){
+function calAgenda(){
   const z=document.getElementById('cal');if(!z)return;
-  const auj=isoJour(new Date()), d1=new Date(an,mo,1), dec=(d1.getDay()+6)%7, nbJ=new Date(an,mo+1,0).getDate();
-  const ev={};PLANNING.forEach(p=>{(ev[p.id]=ev[p.id]||[]).push(p)});
+  const auj=isoJour(new Date()), J=['DIM.','LUN.','MAR.','MER.','JEU.','VEN.','SAM.'], M=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
   const court=t=>String(t||'').replace(/^EPMSP\s*–\s*/,'EPMSP ').replace('Cours collectifs','Cours coll.');
-  let h=`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 4px 10px"><button class="btn small sec" style="width:auto;margin:0;flex:none" id="cal-p" aria-label="Mois d'avant">‹</button><h2 style="margin:0;text-transform:capitalize">${MOIS_FR[mo]} ${an}</h2><button class="btn small sec" style="width:auto;margin:0;flex:none" id="cal-n" aria-label="Mois d'après">›</button></div>
-   <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;text-align:center">`+['LUN.','MAR.','MER.','JEU.','VEN.','SAM.','DIM.'].map((t,i)=>`<div style="font-size:11px;font-weight:700;color:${i===6?'var(--ko)':'var(--mute)'};padding-bottom:4px;white-space:nowrap">${t}</div>`).join('');
-  for(let i=0;i<dec;i++)h+='<div></div>';
-  for(let n=1;n<=nbJ;n++){const id=an+'-'+String(mo+1).padStart(2,'0')+'-'+String(n).padStart(2,'0'), L=ev[id]||[], passe=id<auj, ajd=id===auj;
-    h+=`<div style="min-height:62px;border-radius:8px;padding:3px 2px;background:${L.length?'rgba(255,122,61,.10)':'rgba(127,127,127,.06)'};${ajd?'outline:2px solid var(--txt);':''}min-width:0">
-      <div style="font-weight:700;font-size:14px;${ajd?'color:var(--or)':''}">${n}</div>`+
-      L.map(p=>`<button data-cal="${p.id}" style="display:block;width:100%;margin-top:2px;padding:2px 3px;border:0;border-left:3px solid ${passe?'var(--mute)':'var(--or)'};border-radius:3px;background:var(--card);color:${passe?'var(--mute)':'var(--txt)'};font-size:11px;text-align:left;white-space:nowrap;overflow:hidden;cursor:pointer">${esc(court(p.theme))}</button>`).join('')+`</div>`}
-  h+=`</div><div id="cal-info" class="muted" style="margin:10px 4px 0"></div>`;
-  z.innerHTML=h;
-  z.querySelector('#cal-p').onclick=()=>mo===0?calAgenda(an-1,11):calAgenda(an,mo-1);
-  z.querySelector('#cal-n').onclick=()=>mo===11?calAgenda(an+1,0):calAgenda(an,mo+1);
+  const L=PLANNING.filter(p=>p.id>=auj).sort((a,b)=>a.id<b.id?-1:1);
+  if(!L.length){z.innerHTML='<p class="muted" style="margin:0 4px">Aucune intervention prévue.</p>';return}
+  z.innerHTML=`<h2 style="margin:0 4px 10px">🗓️ Mes prochaines interventions</h2><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px">`+L.map(p=>{const d=new Date(p.id+'T12:00:00'), ajd=p.id===auj, matin=/matin/i.test(p.titre);
+    return `<button data-cal="${p.id}" style="min-width:0;border:0;border-radius:12px;padding:8px 6px;background:var(--bg);${ajd?'outline:2px solid var(--or);':''}color:var(--txt);text-align:center;cursor:pointer">
+      <div style="font-size:12px;font-weight:700;color:var(--or)">${J[d.getDay()]}</div>
+      <div style="font-size:26px;font-weight:900;line-height:1.1">${d.getDate()}</div>
+      <div style="font-size:12px;color:var(--soft)">${M[d.getMonth()]}${matin?' · matin':''}</div>
+      <div style="font-size:12px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(court(p.theme))}</div></button>`}).join('')+`</div><div id="cal-info" class="muted" style="margin:10px 4px 0"></div>`;
   z.querySelectorAll('[data-cal]').forEach(b=>b.onclick=()=>{const j=JOURNEES.find(x=>x.id===b.dataset.cal);if(j)return journee(j);
     const p=PLANNING.find(x=>x.id===b.dataset.cal);z.querySelector('#cal-info').textContent=p?`${p.titre} · ${p.theme} · 🛠️ À préparer`:''});
 }
@@ -478,7 +474,7 @@ function accueil(){
   document.getElementById('stg').onclick=()=>mesStagiaires();
   document.getElementById('rev').onclick=()=>revisionEcran();
   {const m=document.getElementById('menu-outils');document.getElementById('menu-o').onclick=()=>m.classList.remove('hide');document.getElementById('menu-x').onclick=()=>m.classList.add('hide');
-   calAgenda(new Date().getFullYear(),new Date().getMonth());
+   calAgenda();
    [['mo-liste','mo-b'],['ag-liste','ag-b']].forEach(([l,b])=>{const ml=document.getElementById(l),mb=document.getElementById(b);mb.onclick=()=>{const o=ml.classList.toggle('hide');mb.querySelector('span').textContent=o?'▸':'▾'}})}
   {const b=document.getElementById('roue');if(b)b.onclick=()=>roueSimple()}
   document.getElementById('fiches').onclick=()=>mesExercices();
