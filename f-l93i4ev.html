@@ -393,20 +393,21 @@ function isoJour(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(
 function prepTexte(j){const z=quizDe(j), n=(z&&z.questions||[]).length;
   return (n?`📝 Quiz : ${n} question${n>1?'s':''}`:'🛠️ Quiz à préparer')+(j.diapos?` · 📚 ${j.diapos} diapos`:'')}
 // ======= Écran : accueil =======
-// 06/11 : bouton ☰ toujours au même endroit (en haut à droite), sur tous les écrans de Hamid
+// 06/11 : boutons ⚙️ (Paramètres) et ☰ (Menu) toujours au même endroit, en haut à droite, sur tous les écrans de Hamid
 (function(){
-  const b=document.createElement('button');b.id='hb';b.setAttribute('aria-label','Menu');b.textContent='☰';
-  b.style.cssText='position:fixed;top:calc(10px + env(safe-area-inset-top,0px));right:max(12px,env(safe-area-inset-right,0px));z-index:70;width:52px;height:52px;border-radius:14px;border:2px solid var(--line);background:var(--card);color:var(--txt);font-size:28px;line-height:1;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.35)';
-  b.hidden=true;
-  b.onclick=()=>{let m=document.getElementById('menu-outils');
+  const st='position:fixed;top:calc(10px + env(safe-area-inset-top,0px));z-index:70;width:52px;height:52px;border-radius:14px;border:2px solid var(--line);background:var(--card);color:var(--txt);font-size:26px;line-height:1;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.35)';
+  const mk=(id,txt,lab,right)=>{const b=document.createElement('button');b.id=id;b.textContent=txt;b.setAttribute('aria-label',lab);b.style.cssText=st+';right:'+right;b.hidden=true;return b};
+  const hb=mk('hb','☰','Menu','max(12px,env(safe-area-inset-right,0px))'), pb=mk('pb','⚙️','Paramètres','calc(max(12px,env(safe-area-inset-right,0px)) + 60px)');
+  const ouvrir=(id,autre)=>{let m=document.getElementById(id);
     if(m&&!m.classList.contains('hide')){m.classList.add('hide');return}
-    if(!m){accueil();m=document.getElementById('menu-outils')}
+    if(!m){accueil();m=document.getElementById(id)}
+    const o=document.getElementById(autre);if(o)o.classList.add('hide');
     if(m){m.classList.remove('hide');m.scrollTop=0}};
-  const maj=()=>{try{b.hidden=!estAdmin()||!!document.getElementById('c')}catch(e){b.hidden=true}const a=document.getElementById('app');if(a)a.style.paddingTop=b.hidden?'':'54px'};
-  addEventListener('DOMContentLoaded',()=>{document.body.appendChild(b);maj();new MutationObserver(maj).observe(document.getElementById('app'),{childList:true})});
-  if(document.readyState!=='loading'){document.body.appendChild(b);setTimeout(maj,0);new MutationObserver(maj).observe(document.getElementById('app'),{childList:true})}
+  hb.onclick=()=>ouvrir('menu-outils','param-o'); pb.onclick=()=>ouvrir('param-o','menu-outils');
+  const maj=()=>{let h=true;try{h=!estAdmin()||!!document.getElementById('c')}catch(e){}hb.hidden=pb.hidden=h;const a=document.getElementById('app');if(a)a.style.paddingTop=h?'':'54px'};
+  addEventListener('DOMContentLoaded',()=>{document.body.appendChild(pb);document.body.appendChild(hb);maj();new MutationObserver(maj).observe(document.getElementById('app'),{childList:true})});
 })();
-let MENU_RET=null;
+let MENU_RET=null, PARAM_RET=null;
 // 06/11 : calendrier du mois pour « Mon agenda » (menu ☰)
 const MOIS_FR=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
 function calAgenda(){
@@ -427,7 +428,7 @@ function calAgenda(){
 }
 function accueil(){
   if(!estAdmin())return accueilFormateur();
-  let h=`<div class="tag">Espace formateur</div><div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h1 style="margin-right:64px">Bonjour Hamid 👋</h1></div>`;
+  let h=`<div class="tag">Espace formateur</div><div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h1 style="margin-right:132px">Bonjour Hamid 👋</h1></div>`;
   const nAtt=Object.values(STAG).filter(x=>x.statut==='attente').length, nAcc=Object.values(STAG).filter(x=>x.statut==='accepte').length;
   // 29/10 : la journée du jour (ou la prochaine) en haut, selon le planning ; les journées passées dans un dossier
   const auj=isoJour(new Date());
@@ -456,7 +457,7 @@ function accueil(){
     <button class="btn sec" id="fiches">Ouvrir les exercices</button></div>`;
   // 06/11 : menu ☰ « Mes outils » (roue, minuteur, musiques)
   h+=`<div id="menu-outils" class="hide" style="position:fixed;inset:0;z-index:65;background:var(--bg);overflow:auto;padding:calc(10px + env(safe-area-inset-top,0px)) 16px 24px"><div style="max-width:640px;margin:0 auto">
-    <div style="display:flex;align-items:center;height:52px;margin:0 64px 16px 0"><h1 style="margin:0;line-height:52px">Menu</h1></div>
+    <div style="display:flex;align-items:center;height:52px;margin:0 132px 16px 0"><h1 style="margin:0;line-height:52px">Menu</h1></div>
     <button class="btn sec" id="mo-b" style="text-align:left;margin:0 0 14px">🧰 Mes outils <span class="muted" style="float:right">▸</span></button><div id="mo-liste" class="hide">`;
   // 06/11 : la roue retirée du menu à la demande de Hamid
   h+=`<div class="card"><h2>🎵 Mes musiques</h2><p style="margin:0" class="muted">Tes musiques de cours, rangées par catégories. Seulement sur ce téléphone.</p>
@@ -465,7 +466,9 @@ function accueil(){
     <button class="btn sec" id="tbo">Ouvrir le minuteur</button>
     <button class="btn small ${MINUTEUR_MONTRE?'':'sec'}" id="tbm">${MINUTEUR_MONTRE?'👀 Montrer le minuteur aux stagiaires / apprentis : Oui · toucher pour Non':'🙈 Montrer le minuteur aux stagiaires / apprentis : Non · toucher pour Oui'}</button>
     <div class="ok hide" id="tbmok"></div></div>`;
-  h+=`</div><button class="btn sec" id="ag-b" style="text-align:left;margin:0 0 14px">📅 Mon agenda <span class="muted" style="float:right">▸</span></button><div id="ag-liste" class="hide">${agA||'<p class="muted">Aucune journée pour l\'instant.</p>'}</div><button class="btn sec" id="pa-b" style="text-align:left;margin:0 0 14px">⚙️ Paramètres <span class="muted" style="float:right">▸</span></button><div id="pa-liste" class="hide"></div></div></div>`;
+  h+=`</div><button class="btn sec" id="ag-b" style="text-align:left;margin:0 0 14px">📅 Mon agenda <span class="muted" style="float:right">▸</span></button><div id="ag-liste" class="hide">${agA||'<p class="muted">Aucune journée pour l\'instant.</p>'}</div></div></div>`;
+  h+=`<div id="param-o" class="hide" style="position:fixed;inset:0;z-index:65;background:var(--bg);overflow:auto;padding:calc(10px + env(safe-area-inset-top,0px)) 16px 24px"><div style="max-width:640px;margin:0 auto">
+    <div style="display:flex;align-items:center;height:52px;margin:0 132px 16px 0"><h1 style="margin:0;line-height:52px">Paramètres</h1></div><div id="pa-liste"></div></div></div>`;
   // 06/11 : carte « Je prépare mon cours » retirée de l'accueil à la demande de Hamid (la partie « Ses cours préparés » des fiches reste)
   if(false){const M=crModeleChoisi(PREP_COURS);
   h+=`<div class="card o"><h2>📝 Je prépare mon cours</h2><p style="margin:0" class="muted">Les stagiaires / apprentis préparent leur cours (musique, exercices, temps) à partir de ton modèle. Modèle proposé : <b style="color:var(--soft)">${esc(M.nom)}</b> (${crFmt(crCibleModele(M))}).</p>
@@ -492,13 +495,16 @@ function accueil(){
   document.getElementById('rev').onclick=()=>revisionEcran();
   {
    calAgenda();
-   [['mo-liste','mo-b'],['ag-liste','ag-b'],['pa-liste','pa-b']].forEach(([l,b])=>{const ml=document.getElementById(l),mb=document.getElementById(b);mb.onclick=()=>{const o=ml.classList.toggle('hide');mb.querySelector('span').textContent=o?'▸':'▾'}})
+   [['mo-liste','mo-b'],['ag-liste','ag-b']].forEach(([l,b])=>{const ml=document.getElementById(l),mb=document.getElementById(b);mb.onclick=()=>{const o=ml.classList.toggle('hide');mb.querySelector('span').textContent=o?'▸':'▾'}})
    // 06/11 : ce qu'on ouvre depuis le menu : « ← Retour » ramène au menu, à la même partie ouverte
    const menu=document.getElementById('menu-outils');
    menu.addEventListener('click',e=>{const t=e.target.closest('button');if(!t||['mo-b','ag-b','pa-b','tbm','rz','out'].includes(t.id))return;
-     MENU_RET={mo:!document.getElementById('mo-liste').classList.contains('hide'),ag:!document.getElementById('ag-liste').classList.contains('hide'),pa:!document.getElementById('pa-liste').classList.contains('hide'),y:menu.scrollTop}},true);
+     MENU_RET={mo:!document.getElementById('mo-liste').classList.contains('hide'),ag:!document.getElementById('ag-liste').classList.contains('hide'),y:menu.scrollTop}},true);
+   const par=document.getElementById('param-o');
+   par.addEventListener('click',e=>{const t=e.target.closest('button');if(!t||['tbm','rz','out'].includes(t.id))return;PARAM_RET={y:par.scrollTop}},true);
+   if(PARAM_RET){const r=PARAM_RET;PARAM_RET=null;par.classList.remove('hide');setTimeout(()=>{par.scrollTop=r.y||0},0)}
    if(MENU_RET){const r=MENU_RET;MENU_RET=null;menu.classList.remove('hide');
-     [['mo-liste','mo-b',r.mo],['ag-liste','ag-b',r.ag],['pa-liste','pa-b',r.pa]].forEach(([l,b,o])=>{if(o){document.getElementById(l).classList.remove('hide');document.getElementById(b).querySelector('span').textContent='▾'}});
+     [['mo-liste','mo-b',r.mo],['ag-liste','ag-b',r.ag]].forEach(([l,b,o])=>{if(o){document.getElementById(l).classList.remove('hide');document.getElementById(b).querySelector('span').textContent='▾'}});
      setTimeout(()=>{menu.scrollTop=r.y||0},0)}}
   {const b=document.getElementById('roue');if(b)b.onclick=()=>roueSimple()}
   document.getElementById('fiches').onclick=()=>mesExercices();
