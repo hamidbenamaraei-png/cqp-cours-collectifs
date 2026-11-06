@@ -431,8 +431,8 @@ function accueil(){
     <button class="btn sec" id="rev">Ouvrir les révisions</button></div>`;
   // 06/11 : les autres formateurs et « 💻 Ouvrir mon espace sur mon PC »
   {const nF=FORMATEURS.length, LQ=Object.values(QUIZF), nO=LQ.filter(estOuvert).length;
-  h+=`<div class="card"><h2>👥 Autres formateurs</h2><p style="margin:0" class="muted">${nF?`${nF} formateur${nF>1?'s':''} : ${esc(FORMATEURS.map(f=>f.prenom).join(', '))}.`:'Personne pour l\'instant.'} Chacun a son code et ses propres quiz. Tu choisis ce qu'ils peuvent voir.</p>
-    <button class="btn sec" id="afo">Gérer les autres formateurs</button>
+  h+=`<div class="card"><h2>👥 Autres formateurs</h2><p style="margin:0" class="muted">${nF?`${nF} formateur${nF>1?'s':''} : ${esc(FORMATEURS.map(f=>f.prenom).join(', '))}.`:'Personne pour l\'instant.'} Envoie-leur le lien et choisis ce que tu leur montres.</p>
+    <button class="btn sec" id="afo">🔗 Lien et réglages</button>
     ${LQ.length?`<button class="btn sec" id="afq">📝 Leurs quiz (${LQ.length})${nO?` · ${nO} ouvert${nO>1?'s':''}`:''}</button>`:''}</div>`;}
   h+=htmlMesAppareils();
   h+=`<p class="muted"><a href="./" style="color:var(--mute)">Voir l'espace stagiaires / apprentis</a> · <button class="link" id="out">Se déconnecter</button></p>
@@ -2604,78 +2604,32 @@ function codeAuto(){const A='abcdefghjkmnpqrstuvwxyz23456789',v=crypto.getRandom
 const lienInvite=t=>location.origin+location.pathname+'#fi='+t;
 const lienFormateur=c=>location.origin+location.pathname+'#fc='+c;
 const texteLienF=(prenom,c)=>`Bonjour ${prenom} ! 👋\nVoici ton accès à l'espace formateur CQP (cours collectifs).\nTouche ce lien, tu seras connecté directement :\n${lienFormateur(c)}\n\nGarde ce lien pour toi, ne le partage pas. Il marche d'ici quelques minutes.`;
-function autresFormateurs(msg,envoi){
+function autresFormateurs(msg){
   if(!estAdmin())return accueil();
   const INV0=lire('invite_tok',null), INV=INV0&&INV0.p&&INV0.p===INVITE_F?INV0.t:null;
   let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>👥 Autres formateurs</h1>
    ${msg?`<div class="ok" style="margin:-6px 0 14px">${esc(msg)}</div>`:''}
-   ${envoi?`<div class="card o nopli"><h2>📲 Le lien de ${esc(envoi.prenom)}</h2><p class="muted" style="margin-top:0">Envoie-le-lui : il touche le lien et il est connecté, sans rien taper.</p><button class="btn wa" id="flwa">📲 Lui envoyer son lien sur WhatsApp</button><button class="btn small sec" id="flcp">📋 Copier le lien</button></div>`:''}
-   <p class="muted" style="margin-top:0">Tu restes le seul à tout voir et à tout décider. Chaque autre formateur entre avec son propre code et fait ses propres quiz.</p>
-   <div class="card g"><h2>Ont accès (${FORMATEURS.length})</h2>`+(FORMATEURS.length?FORMATEURS.map(f=>`<div class="stag"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><span><b>${esc(f.prenom)} ${esc(f.nom)}</b>${f.at?`<div class="d">Ajouté le ${esc(jjmm(f.at))}</div>`:''}</span><span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="btn small sec" style="margin:0;flex:none" data-flien="${esc(f.id)}">🔗 Nouveau lien</button><button class="btn small ko" style="margin:0;flex:none" data-fret="${esc(f.id)}">Retirer</button></span></div><div data-fconf="${esc(f.id)}"></div></div>`).join(''):`<p class="muted" style="margin:0">Personne pour l'instant.</p>`)+`</div>
-   <div class="card o"><h2>🔗 Lien d'invitation</h2>${INV?`<p class="muted" style="margin-top:0">Envoie ce lien aux formateurs. Ils écrivent leur prénom et leur nom, touchent « Valider », et ils sont dans leur espace.</p>
-    <button class="btn wa" id="iwa">📲 Envoyer le lien d'invitation sur WhatsApp</button><button class="btn small sec" id="icp">📋 Copier le lien</button>
-    <button class="btn small sec" id="ichg">🔄 Changer le lien (l'ancien ne marchera plus)</button><div id="iconf"></div>`:`<p class="muted" style="margin-top:0">Un seul lien pour tous les formateurs : ils écrivent leur prénom et leur nom, et ils sont dans leur espace.</p><button class="btn" id="icre">🔗 Créer le lien d'invitation</button>`}<div class="err hide" id="ier"></div></div>
-   <details class="card nopli"><summary style="cursor:pointer;list-style:none;font-weight:700">➕ Ajouter un formateur à la main <span class="muted" style="font-weight:400">▸</span></summary>
-    <label for="fp" style="margin-top:0">Prénom</label><input id="fp" type="text" autocomplete="off" maxlength="40">
-    <label for="fno">Nom (facultatif)</label><input id="fno" type="text" autocomplete="off" maxlength="40">
-    <details style="margin-top:10px"><summary class="muted" style="cursor:pointer">Choisir son code moi-même (facultatif)</summary>
-    <label for="fc1">Son code (au moins 6 chiffres ou lettres)</label><input id="fc1" type="password" autocomplete="new-password">
-    <label for="fc2">Écris le code une deuxième fois</label><input id="fc2" type="password" autocomplete="new-password">
-    <label class="check"><input type="checkbox" id="fvoir"> Afficher le code</label></details>
-    <div class="err hide" id="fer"></div>
-    <button class="btn" id="fadd">➕ Ajouter ce formateur</button>
-    <p class="muted" style="margin-bottom:0">Écris juste son prénom : l'appli crée son code et te donne un lien à lui envoyer. Le lien marche d'ici quelques minutes (le temps que Google se mette à jour).</p>
-    <button class="btn small sec" id="fadr">📋 Copier l'adresse de l'espace formateur</button></details>
-   <div class="card j"><h2>👀 Ce que les autres formateurs peuvent voir</h2>
-    <p class="muted" style="margin-top:0">Le même réglage pour tous. Ils voient toujours leurs propres quiz et les réponses à leurs quiz.</p>`+
+   <div class="card o"><h2>🔗 Le lien à envoyer aux formateurs</h2>${INV?`<div style="background:#f3f4f6;border-radius:10px;padding:10px 12px;font-size:14px;word-break:break-all;color:#111">${esc(lienInvite(INV))}</div>
+    <button class="btn wa" id="iwa">📲 Envoyer le lien sur WhatsApp</button><button class="btn small sec" id="icp">📋 Copier le lien</button>`:`<p class="muted" id="iatt" style="margin:0">⏳ Création du lien…</p>`}<div class="err hide" id="ier"></div></div>
+   <div class="card j"><h2>👀 Ce que je leur montre</h2>`+
     PARTAGE_TEXTES.map(([k,t])=>`<label class="check"><input type="checkbox" data-pk="${k}" ${PARTAGE[k]?'checked':''}> ${esc(t)}</label>`).join('')+`
-    <p class="muted">Jamais pour eux : accepter ou supprimer des stagiaires, tes observations et ton résumé WhatsApp, tes réglages, cet écran, tes codes.</p>
-    <button class="btn" id="psave" disabled>💾 Enregistrer ce réglage</button><div class="err hide" id="per"></div></div>
+    <button class="btn" id="psave" disabled>💾 Enregistrer</button><div class="err hide" id="per"></div></div>
+   <div class="card g"><h2>Ont accès (${FORMATEURS.length})</h2>`+(FORMATEURS.length?FORMATEURS.map(f=>`<div class="stag"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><span><b>${esc(f.prenom)} ${esc(f.nom)}</b>${f.at?`<div class="d">Depuis le ${esc(jjmm(f.at))}</div>`:''}</span><button class="btn small ko" style="margin:0;flex:none" data-fret="${esc(f.id)}">Retirer</button></div><div data-fconf="${esc(f.id)}"></div></div>`).join(''):`<p class="muted" style="margin:0">Personne pour l'instant.</p>`)+`</div>
    ${Object.keys(QUIZF).length?`<button class="btn sec" id="afq">📝 Leurs quiz (${Object.keys(QUIZF).length})</button>`:''}
    <button class="btn sec" id="maj">🔄 Actualiser</button>`;
   app.innerHTML=h;
   document.getElementById('bk').onclick=accueil;
   document.getElementById('maj').onclick=()=>recharger(()=>autresFormateurs());
   {const b=document.getElementById('afq');if(b)b.onclick=()=>quizFAdmin()}
-  document.getElementById('fvoir').onchange=e=>{['fc1','fc2'].forEach(i=>document.getElementById(i).type=e.target.checked?'text':'password')};
-  document.getElementById('fadr').onclick=async e=>{const b=e.currentTarget, u=location.origin+location.pathname, ok=await copier(u);
-    b.textContent=ok?'✅ Adresse copiée':u;setTimeout(()=>{b.textContent='📋 Copier l\'adresse de l\'espace formateur'},ok?2500:15000)};
-  document.getElementById('fadd').onclick=async e=>{
-    const er=document.getElementById('fer'), b=e.currentTarget, dire=t=>{er.textContent=t;er.classList.remove('hide')};
-    er.classList.add('hide');
-    const prenom=document.getElementById('fp').value.trim().replace(/\s+/g,' '), nom=document.getElementById('fno').value.trim().replace(/\s+/g,' ');
-    let c1=document.getElementById('fc1').value.trim(), c2=document.getElementById('fc2').value.trim();
-    if(!prenom)return dire('Écris son prénom.');
-    if(!c1&&!c2){c1=c2=codeAuto()}
-    if(c1.length<6)return dire('Le code doit avoir au moins 6 chiffres ou lettres.');
-    if(c1!==c2)return dire('Les deux codes ne sont pas pareils. Écris-les encore une fois.');
-    const h=await empreinte(c1);
-    if(h===CODE_HASH)return dire("C'est ton code à toi : choisis-en un autre pour lui.");
-    if(FORMATEURS.some(f=>f.h===h))return dire('Ce code est déjà celui d\'un autre formateur : choisis-en un autre.');
-    b.disabled=true;b.textContent='⏳ Un instant…';
-    try{await enregistrerFormateurs(FORMATEURS.concat([{id:nouvelId(),prenom,nom,h,at:Date.now()}]))}
-    catch(err){b.disabled=false;b.textContent='➕ Ajouter ce formateur';return dire("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.")}
-    autresFormateurs(`✅ ${prenom} est ajouté.`,{prenom,code:c1});
-  };
-  // lien d'invitation
-  {const er=document.getElementById('ier'),dire=t=>{er.textContent=t;er.classList.remove('hide')};
-   const creer=async b=>{b.disabled=true;b.textContent='⏳ Un instant…';const t=codeAuto()+codeAuto(),p=await empreinte('fi:'+t);
+  // le lien : créé tout seul la première fois
+  {const er=document.getElementById('ier');
+   if(!INV)(async()=>{const t=codeAuto()+codeAuto(),p=await empreinte('fi:'+t);
      try{await envoyerForm(FORM_QUIZ,{[EQ.journee]:'formateurs',[EQ.statut]:'invite',[EQ.contenu]:JSON.stringify({p})})}
-     catch(e){b.disabled=false;b.textContent='🔗 Créer le lien d\'invitation';return dire("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.")}
-     ecrire('invite_tok',{t,p});ecrire('local_invite',{p,at:Date.now()});INVITE_F=p;autresFormateurs('✅ Lien d\'invitation prêt. Il marche d\'ici quelques minutes.')};
+     catch(e){const z=document.getElementById('iatt');if(z)z.classList.add('hide');er.textContent="Pas de connexion internet : le lien n'a pas pu être créé. Touche « 🔄 Actualiser »." ;er.classList.remove('hide');return}
+     ecrire('invite_tok',{t,p});ecrire('local_invite',{p,at:Date.now()});INVITE_F=p;if(document.getElementById('iatt'))autresFormateurs()})();
    const on=(id,f)=>{const b=document.getElementById(id);if(b)b.onclick=f};
-   on('icre',e=>creer(e.currentTarget));
    on('iwa',()=>ouvrirWhatsApp(`Bonjour ! 👋\nVoici le lien pour rejoindre l'espace formateur CQP (cours collectifs).\nTouche le lien, écris ton prénom et ton nom, puis « Valider » :\n${lienInvite(INV)}\n\nGarde ce lien pour toi, ne le partage pas avec les stagiaires.`));
-   on('icp',async e=>{const b=e.currentTarget,u=lienInvite(INV),ok=await copier(u);b.textContent=ok?'✅ Lien copié':u;setTimeout(()=>{b.textContent='📋 Copier le lien'},ok?2500:20000)});
-   on('ichg',()=>confirmerIci(document.getElementById('iconf'),"Changer le lien ? L'ancien lien ne marchera plus pour les nouveaux. Les formateurs déjà inscrits gardent leur accès.",'🔄 Oui, changer',()=>creer(document.getElementById('ichg'))));}
-  if(envoi){document.getElementById('flwa').onclick=()=>ouvrirWhatsApp(texteLienF(envoi.prenom,envoi.code));
-    document.getElementById('flcp').onclick=async e=>{const b=e.currentTarget,u=lienFormateur(envoi.code),ok=await copier(u);b.textContent=ok?'✅ Lien copié':u;setTimeout(()=>{b.textContent='📋 Copier le lien'},ok?2500:20000)}}
-  app.querySelectorAll('[data-flien]').forEach(b=>b.onclick=()=>{const f=FORMATEURS.find(x=>x.id===b.dataset.flien);if(!f)return;
-    confirmerIci(app.querySelector(`[data-fconf="${f.id}"]`),`Créer un nouveau lien pour <b>${esc(f.prenom)}</b> ? Son ancien lien et son ancien code ne marcheront plus.`,'🔗 Oui, nouveau lien',async()=>{
-      const c=codeAuto(), h=await empreinte(c);
-      try{await enregistrerFormateurs(FORMATEURS.map(x=>x.id===f.id?Object.assign({},x,{h}):x))}
-      catch(e){alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");return autresFormateurs()}
-      autresFormateurs(`✅ Nouveau lien prêt pour ${f.prenom}.`,{prenom:f.prenom,code:c})})});
+   on('icp',async e=>{const b=e.currentTarget,u=lienInvite(INV),ok=await copier(u);b.textContent=ok?'✅ Lien copié':'Appuie longtemps sur le lien au-dessus pour le copier';setTimeout(()=>{b.textContent='📋 Copier le lien'},ok?2500:8000)})}
   app.querySelectorAll('[data-fret]').forEach(b=>b.onclick=()=>{const f=FORMATEURS.find(x=>x.id===b.dataset.fret);if(!f)return;
     confirmerIci(app.querySelector(`[data-fconf="${f.id}"]`),`Retirer l'accès de <b>${esc(f.prenom)} ${esc(f.nom)}</b> ? Il ne pourra plus ouvrir l'espace formateur (d'ici quelques minutes, dès que son espace se recharge). Ses quiz ne seront plus montrés aux stagiaires.`,'Oui, retirer',async()=>{
       try{await enregistrerFormateurs(FORMATEURS.filter(x=>x.id!==f.id))}
@@ -2687,7 +2641,7 @@ function autresFormateurs(msg,envoi){
     const v={};PARTAGE_TEXTES.forEach(([k])=>{v[k]=!!app.querySelector(`[data-pk="${k}"]`).checked});
     ps.disabled=true;ps.textContent='⏳ Enregistrement…';
     try{await enregistrerPartage(v)}
-    catch(e){ps.disabled=false;ps.textContent='💾 Enregistrer ce réglage';const er=document.getElementById('per');er.textContent="Ça n'a pas marché. Vérifie ta connexion internet et réessaie.";er.classList.remove('hide');return}
+    catch(e){ps.disabled=false;ps.textContent='💾 Enregistrer';const er=document.getElementById('per');er.textContent="Ça n'a pas marché. Vérifie ta connexion internet et réessaie.";er.classList.remove('hide');return}
     const y=window.scrollY;autresFormateurs('✅ Réglage enregistré. Les autres formateurs le verront d\'ici quelques minutes.');window.scrollTo(0,y);
   };
   haut();
