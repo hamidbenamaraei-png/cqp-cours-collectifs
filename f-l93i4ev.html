@@ -422,7 +422,8 @@ function accueil(){
     <button class="btn sec" id="fiches">Ouvrir les exercices</button></div>`;
   // 06/11 : menu ☰ « Mes outils » (roue, minuteur, musiques)
   h+=`<div id="menu-outils" class="hide" style="position:fixed;inset:0;z-index:65;background:var(--bg);overflow:auto;padding:calc(16px + env(safe-area-inset-top,0px)) 16px 24px"><div style="max-width:640px;margin:0 auto">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px"><h1 style="margin:0">🧰 Mes outils</h1><button class="btn small sec" style="width:auto;margin:0;flex:none" id="menu-x">✕ Fermer</button></div>`;
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px"><h1 style="margin:0">☰ Menu</h1><button class="btn small sec" style="width:auto;margin:0;flex:none" id="menu-x">✕ Fermer</button></div>
+    <button class="btn sec" id="mo-b" style="text-align:left;margin:0 0 14px">🧰 Mes outils <span class="muted" style="float:right">▸</span></button><div id="mo-liste" class="hide">`;
   h+=`<div class="card o"><h2>🎡 La roue</h2><p style="margin:0" class="muted">Répartition du cours, exercices de renforcement ou d'étirement, tirés au hasard. Sur ton téléphone seulement.</p>
     <button class="btn sec" id="roue">Ouvrir la roue</button></div>`;
   h+=`<div class="card"><h2>🎵 Mes musiques</h2><p style="margin:0" class="muted">Tes musiques de cours, rangées par catégories. Seulement sur ce téléphone.</p>
@@ -431,7 +432,7 @@ function accueil(){
     <button class="btn sec" id="tbo">Ouvrir le minuteur</button>
     <button class="btn small ${MINUTEUR_MONTRE?'':'sec'}" id="tbm">${MINUTEUR_MONTRE?'👀 Montrer le minuteur aux stagiaires / apprentis : Oui · toucher pour Non':'🙈 Montrer le minuteur aux stagiaires / apprentis : Non · toucher pour Oui'}</button>
     <div class="ok hide" id="tbmok"></div></div>`;
-  h+=`</div></div>`;
+  h+=`</div></div></div>`;
   {const M=crModeleChoisi(PREP_COURS);
   h+=`<div class="card o"><h2>📝 Je prépare mon cours</h2><p style="margin:0" class="muted">Les stagiaires / apprentis préparent leur cours (musique, exercices, temps) à partir de ton modèle. Modèle proposé : <b style="color:var(--soft)">${esc(M.nom)}</b> (${crFmt(crCibleModele(M))}).</p>
     <button class="btn sec" id="crp">Ouvrir mes modèles de cours</button>
@@ -453,7 +454,8 @@ function accueil(){
   app.querySelectorAll('[data-j]').forEach(b=>b.onclick=()=>journee(JOURNEES.find(j=>j.id===b.dataset.j)));
   document.getElementById('stg').onclick=()=>mesStagiaires();
   document.getElementById('rev').onclick=()=>revisionEcran();
-  {const m=document.getElementById('menu-outils');document.getElementById('menu-o').onclick=()=>m.classList.remove('hide');document.getElementById('menu-x').onclick=()=>m.classList.add('hide')}
+  {const m=document.getElementById('menu-outils');document.getElementById('menu-o').onclick=()=>m.classList.remove('hide');document.getElementById('menu-x').onclick=()=>m.classList.add('hide');
+   const ml=document.getElementById('mo-liste'),mb=document.getElementById('mo-b');mb.onclick=()=>{const o=ml.classList.toggle('hide');mb.querySelector('span').textContent=o?'▸':'▾'}}
   document.getElementById('roue').onclick=()=>roueSimple();
   document.getElementById('fiches').onclick=()=>mesExercices();
 
