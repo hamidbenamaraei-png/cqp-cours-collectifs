@@ -413,14 +413,15 @@ function calAgenda(){
   const z=document.getElementById('cal');if(!z)return;
   const auj=isoJour(new Date()), J=['DIM.','LUN.','MAR.','MER.','JEU.','VEN.','SAM.'], M=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
   const court=t=>String(t||'').replace(/^EPMSP\s*–\s*/,'EPMSP ').replace('Cours collectifs','Cours coll.');
-  const L=PLANNING.filter(p=>p.id>=auj).sort((a,b)=>a.id<b.id?-1:1);
-  if(!L.length){z.innerHTML='<p class="muted" style="margin:0 4px">Aucune intervention prévue.</p>';return}
-  z.innerHTML=`<h2 style="margin:0 4px 10px">🗓️ Mes prochaines interventions</h2><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px">`+L.map(p=>{const d=new Date(p.id+'T12:00:00'), ajd=p.id===auj, matin=/matin/i.test(p.titre);
-    return `<button data-cal="${p.id}" style="min-width:0;border:0;border-radius:12px;padding:8px 6px;background:var(--bg);${ajd?'outline:2px solid var(--or);':''}color:var(--txt);text-align:center;cursor:pointer">
-      <div style="font-size:12px;font-weight:700;color:var(--or)">${J[d.getDay()]}</div>
+  const tri=(a,b)=>a.id<b.id?-1:1, LP=PLANNING.filter(p=>p.id<auj).sort(tri), L=PLANNING.filter(p=>p.id>=auj).sort(tri);
+  const cases=(T,passe)=>`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px">`+T.map(p=>{const d=new Date(p.id+'T12:00:00'), ajd=p.id===auj, matin=/matin/i.test(p.titre);
+    return `<button data-cal="${p.id}" style="min-width:0;border:0;border-radius:12px;padding:8px 6px;background:var(--bg);${ajd?'outline:2px solid var(--or);':''}color:${passe?'var(--mute)':'var(--txt)'};text-align:center;cursor:pointer">
+      <div style="font-size:12px;font-weight:700;color:${passe?'var(--mute)':'var(--or)'}">${J[d.getDay()]}</div>
       <div style="font-size:26px;font-weight:900;line-height:1.1">${d.getDate()}</div>
       <div style="font-size:12px;color:var(--soft)">${M[d.getMonth()]}${matin?' · matin':''}</div>
-      <div style="font-size:12px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(court(p.theme))}</div></button>`}).join('')+`</div><div id="cal-info" class="muted" style="margin:10px 4px 0"></div>`;
+      <div style="font-size:12px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(court(p.theme))}</div></button>`}).join('')+`</div>`;
+  z.innerHTML=(LP.length?`<h2 style="margin:0 4px 10px">📁 Mes journées passées</h2>${cases(LP,true)}<div style="height:18px"></div>`:'')+
+    `<h2 style="margin:0 4px 10px">🗓️ Mes prochaines interventions</h2>`+(L.length?cases(L,false):'<p class="muted" style="margin:0 4px">Aucune intervention prévue.</p>')+`<div id="cal-info" class="muted" style="margin:10px 4px 0"></div>`;
   z.querySelectorAll('[data-cal]').forEach(b=>b.onclick=()=>{const j=JOURNEES.find(x=>x.id===b.dataset.cal);if(j)return journee(j);
     const p=PLANNING.find(x=>x.id===b.dataset.cal);z.querySelector('#cal-info').textContent=p?`${p.titre} · ${p.theme} · 🛠️ À préparer`:''});
 }
@@ -464,7 +465,7 @@ function accueil(){
     <button class="btn sec" id="tbo">Ouvrir le minuteur</button>
     <button class="btn small ${MINUTEUR_MONTRE?'':'sec'}" id="tbm">${MINUTEUR_MONTRE?'👀 Montrer le minuteur aux stagiaires / apprentis : Oui · toucher pour Non':'🙈 Montrer le minuteur aux stagiaires / apprentis : Non · toucher pour Oui'}</button>
     <div class="ok hide" id="tbmok"></div></div>`;
-  h+=`</div><button class="btn sec" id="ag-b" style="text-align:left;margin:0 0 14px">📅 Mon agenda <span class="muted" style="float:right">▸</span></button><div id="ag-liste" class="hide">${agP+agA||'<p class="muted">Aucune journée pour l\'instant.</p>'}</div></div></div>`;
+  h+=`</div><button class="btn sec" id="ag-b" style="text-align:left;margin:0 0 14px">📅 Mon agenda <span class="muted" style="float:right">▸</span></button><div id="ag-liste" class="hide">${agA||'<p class="muted">Aucune journée pour l\'instant.</p>'}</div></div></div>`;
   // 06/11 : carte « Je prépare mon cours » retirée de l'accueil à la demande de Hamid (la partie « Ses cours préparés » des fiches reste)
   if(false){const M=crModeleChoisi(PREP_COURS);
   h+=`<div class="card o"><h2>📝 Je prépare mon cours</h2><p style="margin:0" class="muted">Les stagiaires / apprentis préparent leur cours (musique, exercices, temps) à partir de ton modèle. Modèle proposé : <b style="color:var(--soft)">${esc(M.nom)}</b> (${crFmt(crCibleModele(M))}).</p>
