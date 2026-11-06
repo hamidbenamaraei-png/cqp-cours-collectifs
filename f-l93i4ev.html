@@ -456,7 +456,7 @@ function accueil(){
   // 06/11 : « Exercices » déplacés dans le menu ☰ (ligne « 📋 Mes exercices »)
   // 06/11 : menu ☰ « Mes outils » (roue, minuteur, musiques)
   h+=`<div id="menu-outils" class="hide" style="position:fixed;inset:0;z-index:65;background:var(--bg);overflow:auto;padding:calc(10px + env(safe-area-inset-top,0px)) 16px 24px"><div style="max-width:640px;margin:0 auto">
-    <div style="display:flex;align-items:center;height:52px;margin:0 132px 16px 0"><h1 style="margin:0;line-height:52px">Menu</h1></div>
+    <div style="display:flex;align-items:center;height:52px;margin:0 132px 16px 0"><h1 id="menu-t" style="margin:0;line-height:52px;cursor:pointer">Menu</h1></div>
     <button class="btn sec" id="mo-b" style="text-align:left;margin:0 0 14px">🧰 Mes outils <span class="muted" style="float:right">▸</span></button><div id="mo-liste" class="hide">`;
   // 06/11 : la roue retirée du menu à la demande de Hamid
   // 06/11 : « Mes musiques » retirée (les stagiaires cherchent eux-mêmes leurs musiques) ; les musiques déjà gardées restent sur le téléphone
@@ -498,6 +498,8 @@ function accueil(){
   {
    calAgenda();
    [['mo-liste','mo-b'],['ag-liste','ag-b'],['me-liste','me-b']].forEach(([l,b])=>{const ml=document.getElementById(l),mb=document.getElementById(b);mb.onclick=()=>{const o=ml.classList.toggle('hide');mb.querySelector('span').textContent=o?'▸':'▾'}})
+   // 06/11 : toucher « Menu » referme tout et revient au menu de départ
+   document.getElementById('menu-t').onclick=()=>{[['mo-liste','mo-b'],['ag-liste','ag-b'],['me-liste','me-b']].forEach(([l,b])=>{document.getElementById(l).classList.add('hide');document.getElementById(b).querySelector('span').textContent='▸'});document.getElementById('menu-outils').scrollTop=0};
    // 06/11 : ce qu'on ouvre depuis le menu : « ← Retour » ramène au menu, à la même partie ouverte
    const menu=document.getElementById('menu-outils');
    menu.addEventListener('click',e=>{const t=e.target.closest('button');if(!t||['mo-b','ag-b','me-b','pa-b','tbm','rz','out'].includes(t.id))return;
