@@ -426,8 +426,7 @@ function accueil(){
   h+=`<div id="menu-outils" class="hide" style="position:fixed;inset:0;z-index:65;background:var(--bg);overflow:auto;padding:calc(16px + env(safe-area-inset-top,0px)) 16px 24px"><div style="max-width:640px;margin:0 auto">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px"><h1 style="margin:0">☰ Menu</h1><button class="btn small sec" style="width:auto;margin:0;flex:none" id="menu-x">✕ Fermer</button></div>
     <button class="btn sec" id="mo-b" style="text-align:left;margin:0 0 14px">🧰 Mes outils <span class="muted" style="float:right">▸</span></button><div id="mo-liste" class="hide">`;
-  h+=`<div class="card o"><h2>🎡 La roue</h2><p style="margin:0" class="muted">Répartition du cours, exercices de renforcement ou d'étirement, tirés au hasard. Sur ton téléphone seulement.</p>
-    <button class="btn sec" id="roue">Ouvrir la roue</button></div>`;
+  // 06/11 : la roue retirée du menu à la demande de Hamid
   h+=`<div class="card"><h2>🎵 Mes musiques</h2><p style="margin:0" class="muted">Tes musiques de cours, rangées par catégories. Seulement sur ce téléphone.</p>
     <button class="btn sec" id="mus">Ouvrir mes musiques</button></div>`;
   h+=`<div class="card g"><h2>⏱️ Minuteur</h2><p style="margin:0" class="muted">Travail, repos, tours (ou sans fin), en grand et avec des bips. Pour tes séances et les passages.</p>
@@ -459,7 +458,7 @@ function accueil(){
   document.getElementById('rev').onclick=()=>revisionEcran();
   {const m=document.getElementById('menu-outils');document.getElementById('menu-o').onclick=()=>m.classList.remove('hide');document.getElementById('menu-x').onclick=()=>m.classList.add('hide');
    [['mo-liste','mo-b'],['ag-liste','ag-b']].forEach(([l,b])=>{const ml=document.getElementById(l),mb=document.getElementById(b);mb.onclick=()=>{const o=ml.classList.toggle('hide');mb.querySelector('span').textContent=o?'▸':'▾'}})}
-  document.getElementById('roue').onclick=()=>roueSimple();
+  {const b=document.getElementById('roue');if(b)b.onclick=()=>roueSimple()}
   document.getElementById('fiches').onclick=()=>mesExercices();
 
   document.getElementById('mus').onclick=()=>mesMusiques();
@@ -2624,7 +2623,7 @@ async function enregistrerPartage(v){
   await envoyerForm(FORM_QUIZ,{[EQ.journee]:'partage',[EQ.statut]:'etat',[EQ.contenu]:JSON.stringify(v)});
   PARTAGE=Object.assign({},PARTAGE_DEFAUT,v);ecrire('local_partage',{v,at:Date.now()});
 }
-const PARTAGE_TEXTES=[['stag','Voir la liste des stagiaires / apprentis'],['rep','Voir les réponses et bilans des stagiaires'],['cours','Voir tous mes cours, diapos et documents'],['coursSt','Voir seulement les documents que j\'ai montrés aux stagiaires'],['roue','Utiliser la roue'],['quiz','Voir mes quiz et mes questions']];
+const PARTAGE_TEXTES=[['stag','Voir la liste des stagiaires / apprentis'],['rep','Voir les réponses et bilans des stagiaires'],['cours','Voir tous mes cours, diapos et documents'],['coursSt','Voir seulement les documents que j\'ai montrés aux stagiaires'],['quiz','Voir mes quiz et mes questions']];
 // 06/11 : un lien qui connecte directement l'autre formateur (le code est dans le lien, jamais gardé en clair)
 function codeAuto(){const A='abcdefghjkmnpqrstuvwxyz23456789',v=crypto.getRandomValues(new Uint8Array(14));return [...v].map(x=>A[x%A.length]).join('')}
 const lienInvite=t=>location.origin+location.pathname+'#fi='+t;
