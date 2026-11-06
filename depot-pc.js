@@ -436,11 +436,13 @@ function dpVoir(f){
 async function dpOuRanger(F){
   const p=dpProprio(), mus=F.every(f=>dpEstMusique(f.name,f.type)), admin=estAdmin();
   const cats=(admin&&typeof muCats==='function')?muCats():[], D=await dpDossiers(p).catch(()=>[]);
+  let ST=[];try{if(admin&&typeof acceptes==='function')ST=acceptes().slice().sort((a,b)=>(a.prenom+' '+a.nom).localeCompare(b.prenom+' '+b.nom,'fr'))}catch(e){}
   const fond=document.createElement('div');fond.style.cssText='position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px';
   const nb=F.length>1?F.length+' fichiers':'« '+esc(F[0].name)+' »';
   fond.innerHTML=`<div class="card o" style="max-width:520px;width:100%;max-height:85vh;overflow:auto;margin:0">
     <h2 style="margin-top:0">Où ranger ${nb} ?</h2>
     ${mus&&cats.length?`<div class="tag">🎵 Mes musiques</div><div style="display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 12px">${cats.map(c=>`<button class="btn sec" style="width:auto;margin:0" data-mu="${esc(c)}">${esc(c)}</button>`).join('')}<button class="btn sec" style="width:auto;margin:0" data-mu="">➕ Nouvelle catégorie</button></div>`:''}
+    ${ST.length?`<div class="tag">👤 Un stagiaire (Ses cours préparés)</div><div style="display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 12px">${ST.map(x=>`<button class="btn sec" style="width:auto;margin:0" data-stg="${esc(x.id)}">👤 ${esc(x.prenom+' '+x.nom)}</button>`).join('')}</div>`:''}
     <div class="tag">📁 Mes documents</div><div style="display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 12px">${D.map(d=>`<button class="btn sec" style="width:auto;margin:0" data-doc="${esc(d.id)}">📁 ${esc(d.nom)}</button>`).join('')}<button class="btn sec" style="width:auto;margin:0" data-doc="">➕ Nouveau dossier</button></div>
     <div id="dp-nv" class="hide"><input id="dp-nvn" placeholder="Nom" style="margin-bottom:8px"><button class="btn" id="dp-nvok">Ranger ici</button></div>
     <p class="muted hide" id="dp-msg"></p>
@@ -456,6 +458,9 @@ async function dpOuRanger(F){
         const C=muCats();if(!C.includes(cat)){C.push(cat);muCatsEcrire(C)}
         fermer();if(typeof dpBandeau==='function')dpBandeau({ok:'✅ Rangé dans 🎵 Mes musiques › '+cat});
         if(document.getElementById('mu-f')&&typeof mesMusiques==='function')mesMusiques('',1)}
+      else if(k==='stg'){const x=ST.find(z=>z.id===val);let n=0;
+        for(const f of F){await dpOp('f','readwrite',s=>s.put({id:dpId(),proprio:p+'|stg:'+val,dossier:'',nom:f.name||'document',type:f.type||'',taille:f.size,at:Date.now()+n,blob:f}));n++}
+        fermer();if(typeof dpBandeau==='function')dpBandeau({ok:'✅ Rangé chez 👤 '+(x?x.prenom:'')+' › Ses cours préparés'})}
       else{let d=val.id?D.find(x=>x.id===val.id):D.find(x=>memeNom(x.nom,val.nouveau));
         if(!d){d={id:dpId(),proprio:p,nom:val.nouveau,at:Date.now()};await dpOp('d','readwrite',s=>s.put(d))}
         for(const f of F)await dpOp('f','readwrite',s=>s.put({id:dpId(),proprio:p,dossier:d.id,nom:f.name,type:f.type||'',taille:f.size,at:Date.now(),blob:f}));
@@ -465,6 +470,16 @@ async function dpOuRanger(F){
   };
   const demander=k=>{choix=k;fond.querySelector('#dp-nv').classList.remove('hide');const i=fond.querySelector('#dp-nvn');i.placeholder=k==='mu'?'Nom de la nouvelle catégorie':'Nom du nouveau dossier';i.focus()};
   fond.querySelectorAll('[data-mu]').forEach(b=>b.onclick=()=>b.dataset.mu?ranger('mu',b.dataset.mu):demander('mu'));
+  fond.querySelectorAll('[data-stg]').forEach(b=>b.onclick=()=>ranger('stg',b.dataset.stg));
   fond.querySelectorAll('[data-doc]').forEach(b=>b.onclick=()=>b.dataset.doc?ranger('doc',{id:b.dataset.doc}):demander('doc'));
   fond.querySelector('#dp-nvok').onclick=()=>{const n=(fond.querySelector('#dp-nvn').value||'').trim();if(!n){msg('Écris un nom.');return}ranger(choix,choix==='mu'?n:{nouveau:n})};
+}
+
+/* ======= 06/11 : fichiers reçus avec « Partager » depuis une autre appli du téléphone ======= */
+async function dpRecuPartage(){
+  if(!/[?&]recu=1/.test(location.search)||!window.caches)return;
+  try{history.replaceState(null,'',location.pathname+location.hash)}catch(e){}
+  const c=await caches.open('cqpf-partage'), K=await c.keys(), F=[];
+  for(const r of K){const x=await c.match(r);if(x){const b=await x.blob();let n='document';try{n=decodeURIComponent(x.headers.get('x-nom')||'document')}catch(e){}F.push(new File([b],n,{type:x.headers.get('content-type')||b.type||''}))}await c.delete(r)}
+  if(F.length)dpOuRanger(F);
 }

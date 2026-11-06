@@ -7,7 +7,38 @@
   "background_color": "#10162b",
   "theme_color": "#10162b",
   "icons": [
-    {"src": "icone-formateur-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
-    {"src": "icone-formateur-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"}
-  ]
+    {
+      "src": "icone-formateur-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icone-formateur-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "share_target": {
+    "action": "./f-l93i4ev.html?partage=1",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "files": [
+        {
+          "name": "fichiers",
+          "accept": [
+            "application/pdf",
+            "image/*",
+            "audio/*",
+            "video/*",
+            "*/*"
+          ]
+        }
+      ]
+    }
+  }
 }

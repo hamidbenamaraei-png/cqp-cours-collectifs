@@ -163,7 +163,7 @@ body.avec-barre .wrap{padding-bottom:120px}
 <script src="tabata.js?v=202610301300"></script>
 <script src="cours.js?v=202610301300"></script>
 <script src="fpc-commun.js?v=202611061500"></script>
-<script src="depot-pc.js?v=202611061900"></script>
+<script src="depot-pc.js?v=202611061610"></script>
 <script>
 // ======= Réglages propres au formateur =======
 // Empreinte du code d'accès (le code lui-même n'est pas écrit ici)
@@ -352,6 +352,7 @@ async function demarrer(){
   try{await chargerEtat()}catch(e){if(e&&e.message==='retire')return;throw e}
   try{fpcDemarrer()}catch(e){} // 06/11 : « 💻 Envoyer depuis mon PC » écoute l'ordinateur tant que l'espace est ouvert
   accueil();
+  try{dpRecuPartage()}catch(e){} // 06/11 : fichiers reçus par « Partager » d'une autre appli
 }
 // 06/11 : un autre formateur retiré : son appareil revient au code quand il revient sur l'appli (toutes les 3 min au plus)
 let DERNIER_CTRL_F=Date.now();
