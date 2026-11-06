@@ -2392,15 +2392,18 @@ function accueilFormateur(){
   const q=moiF()||{prenom:''}, L=mesQuizF(), nO=L.filter(estOuvert).length;
   let h=`<div class="tag">Espace formateur</div><h1>Bonjour ${esc(q.prenom)} 👋</h1>`;
   h+=`<div class="card o"><h2>📝 Mes quiz</h2><p style="margin:0" class="muted">${L.length?`${L.length} quiz${nO?` · <b style="color:var(--ok)">${nO} ouvert${nO>1?'s':''}</b>`:''}.`:"Tu n'as pas encore de quiz."} Les stagiaires / apprentis le voient avec ton prénom : « Quiz de ${esc(q.prenom)} ».</p>
-    ${APERCU?`<p class="muted" style="margin:8px 0 0">Ici, le formateur crée et ouvre ses propres quiz.</p>`:`<button class="btn" id="mqn">➕ Nouveau quiz</button>${L.length?`<button class="btn sec" id="mqo">Ouvrir mes quiz</button>`:''}`}</div>`;
+    <button class="btn" id="mqn">➕ Nouveau quiz</button>${L.length?`<button class="btn sec" id="mqo">Ouvrir mes quiz</button>`:''}</div>`;
   if(PARTAGE.stag||PARTAGE.rep){const n=acceptes().filter(x=>!estTest(x)&&voitStag(x)).length;
     h+=`<div class="card g"><h2>👥 Stagiaires / Apprentis</h2><p style="margin:0">${n} accepté${n>1?'s':''}</p><button class="btn sec" id="stg">Voir la liste</button></div>`}
   if(PARTAGE.quiz)h+=`<div class="card j"><h2>📂 Les quiz de Hamid</h2><p style="margin:0" class="muted">Ses quiz et ses questions, pour les voir.</p><button class="btn sec" id="qh">Voir les quiz de Hamid</button></div>`;
   if(peutCours())h+=`<div class="card"><h2>📚 Cours, diapos et documents</h2><p style="margin:0" class="muted">${seulMontre()?'Les documents et exercices que Hamid a montrés aux stagiaires / apprentis.':'Les diapos, les documents et les exercices de Hamid.'}</p><button class="btn sec" id="crs">Ouvrir</button></div>`;
   if(PARTAGE.roue)h+=`<div class="card o"><h2>🎡 La roue</h2><p style="margin:0" class="muted">Exercices, étirements ou répartition tirés au hasard. Sur ton téléphone seulement.</p><button class="btn sec" id="roue">Ouvrir la roue</button></div>`;
-  if(!APERCU){h+=htmlMesAppareils();
-  h+=`<p class="muted"><a href="./" style="color:var(--mute)">Voir l'espace stagiaires / apprentis</a> · <button class="link" id="out">Se déconnecter</button></p>`;}
+  h+=htmlMesAppareils();
+  h+=`<p class="muted"><a href="./" style="color:var(--mute)">Voir l'espace stagiaires / apprentis</a> · <button class="link" id="out">Se déconnecter</button></p>`;
   app.innerHTML=h;
+  // aperçu de Hamid : mêmes boutons que le formateur, visibles mais grisés (rien ne peut être créé ni changé)
+  if(APERCU){['mqn','mqo','rpc','fpc','mdoc','out'].forEach(id=>{const b=document.getElementById(id);if(b){b.disabled=true;b.style.opacity='.45';b.style.pointerEvents='none';b.id=id+'-apercu'}});
+    app.querySelectorAll('a[href="./"]').forEach(a=>{a.style.opacity='.45';a.style.pointerEvents='none';a.removeAttribute('href')})}
   {const b=document.getElementById('mqn');if(b)b.onclick=()=>nouveauQuizF()}
   const on=(id,f)=>{const b=document.getElementById(id);if(b)b.onclick=f};
   on('mqo',()=>mesQuizEcran()); on('stg',()=>stagiairesLecture()); on('qh',()=>quizHamidEcran());
