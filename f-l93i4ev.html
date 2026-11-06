@@ -406,6 +406,7 @@ function prepTexte(j){const z=quizDe(j), n=(z&&z.questions||[]).length;
   addEventListener('DOMContentLoaded',()=>{document.body.appendChild(b);maj();new MutationObserver(maj).observe(document.getElementById('app'),{childList:true})});
   if(document.readyState!=='loading'){document.body.appendChild(b);setTimeout(maj,0);new MutationObserver(maj).observe(document.getElementById('app'),{childList:true})}
 })();
+let MENU_RET=null;
 // 06/11 : calendrier du mois pour « Mon agenda » (menu ☰)
 const MOIS_FR=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
 function calAgenda(){
@@ -488,7 +489,14 @@ function accueil(){
   document.getElementById('rev').onclick=()=>revisionEcran();
   {
    calAgenda();
-   [['mo-liste','mo-b'],['ag-liste','ag-b']].forEach(([l,b])=>{const ml=document.getElementById(l),mb=document.getElementById(b);mb.onclick=()=>{const o=ml.classList.toggle('hide');mb.querySelector('span').textContent=o?'▸':'▾'}})}
+   [['mo-liste','mo-b'],['ag-liste','ag-b']].forEach(([l,b])=>{const ml=document.getElementById(l),mb=document.getElementById(b);mb.onclick=()=>{const o=ml.classList.toggle('hide');mb.querySelector('span').textContent=o?'▸':'▾'}})
+   // 06/11 : ce qu'on ouvre depuis le menu : « ← Retour » ramène au menu, à la même partie ouverte
+   const menu=document.getElementById('menu-outils');
+   menu.addEventListener('click',e=>{const t=e.target.closest('button');if(!t||['mo-b','ag-b','tbm'].includes(t.id))return;
+     MENU_RET={mo:!document.getElementById('mo-liste').classList.contains('hide'),ag:!document.getElementById('ag-liste').classList.contains('hide'),y:menu.scrollTop}},true);
+   if(MENU_RET){const r=MENU_RET;MENU_RET=null;menu.classList.remove('hide');
+     [['mo-liste','mo-b',r.mo],['ag-liste','ag-b',r.ag]].forEach(([l,b,o])=>{if(o){document.getElementById(l).classList.remove('hide');document.getElementById(b).querySelector('span').textContent='▾'}});
+     setTimeout(()=>{menu.scrollTop=r.y||0},0)}}
   {const b=document.getElementById('roue');if(b)b.onclick=()=>roueSimple()}
   document.getElementById('fiches').onclick=()=>mesExercices();
 
