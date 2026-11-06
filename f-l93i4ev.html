@@ -499,7 +499,7 @@ function accueil(){
    document.getElementById('menu-t').onclick=()=>{[['mo-liste','mo-b'],['ag-liste','ag-b'],['me-liste','me-b']].forEach(([l,b])=>{document.getElementById(l).classList.add('hide');document.getElementById(b).querySelector('span').textContent='▸'});document.getElementById('menu-outils').scrollTop=0};
    // 06/11 : ce qu'on ouvre depuis le menu : « ← Retour » ramène au menu, à la même partie ouverte
    const menu=document.getElementById('menu-outils');
-   menu.addEventListener('click',e=>{const t=e.target.closest('button');if(!t||['mo-b','ag-b','me-b','pa-b','tbm','rz','out'].includes(t.id))return;
+   menu.addEventListener('click',e=>{const t=e.target.closest('button');if(!t||['mo-b','ag-b','me-b','pa-b','rz','out'].includes(t.id))return;
      MENU_RET={mo:!document.getElementById('mo-liste').classList.contains('hide'),ag:!document.getElementById('ag-liste').classList.contains('hide'),me:!document.getElementById('me-liste').classList.contains('hide'),y:menu.scrollTop}},true);
    const par=document.getElementById('param-o');
    par.addEventListener('click',e=>{const t=e.target.closest('button');if(!t||['tbm','rz','out'].includes(t.id))return;PARAM_RET={y:par.scrollTop}},true);
