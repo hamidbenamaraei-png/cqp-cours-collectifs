@@ -163,7 +163,7 @@ body.avec-barre .wrap{padding-bottom:120px}
 <script src="tabata.js?v=202610301300"></script>
 <script src="cours.js?v=202610301300"></script>
 <script src="fpc-commun.js?v=202611061500"></script>
-<script src="depot-pc.js?v=202611060800"></script>
+<script src="depot-pc.js?v=202611061900"></script>
 <script>
 // ======= Réglages propres au formateur =======
 // Empreinte du code d'accès (le code lui-même n'est pas écrit ici)
@@ -653,18 +653,23 @@ async function bilanStagiaire(x){
   const H=historiqueStagiaire(x).filter(e=>adm||!e.qf||(moiF()&&e.qf.auteur.id===moiF().id)), RT=adm?retoursDe(x.id):[];
   const NG=adm?notesGardees(x.id):[], TOUT=NG.map(n=>Object.assign({garde:true},n)).concat(RT).sort((a,b)=>b.at-a.at);
   const CS=adm?crRecoller(COURS_LIGNES).filter(k=>k.sid===x.id):[];
+  // 06/11 : documents ajoutés par le formateur sous ce stagiaire (gardés sur cet appareil)
+  const DPK=dpProprio()+'|stg:'+x.id, DS=adm?await dpFichiers(DPK).catch(()=>[]):[];
   let h='';
   if(adm){h+=`<div class="card j"><h2>📝 Mes notes et retours (${TOUT.length})</h2><p class="muted" style="margin-top:0">🔒 Gardée pour moi : ${esc(x.prenom)} ne la voit pas · 📤 Envoyée : elle est dans son espace.</p>`+(TOUT.length?TOUT.map(r=>`<div class="stag"><div class="d" style="color:var(--soft)">${r.garde?'🔒 Gardée pour moi':'📤 Envoyée'} · ${esc(r.date||dateJour(r.at))}${r.titre?' · <b>'+esc(r.titre)+'</b>':''}</div><div style="white-space:pre-wrap;margin-top:4px">${esc(r.texte)}</div>${r.garde?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn small" data-nenv="${esc(r.nid)}">📤 Lui envoyer</button><button class="btn small ko" data-nsup="${esc(r.nid)}">🗑️ Supprimer</button></div>`:''}</div>`).join(''):`<p class="muted" style="margin:0">Aucune note pour l'instant.</p>`)+`<button class="btn sec" id="nobs">📝 Nouvelle observation</button></div>`;
   h+=`<details class="card j"><summary style="cursor:pointer;list-style:none;font-weight:700;font-size:18px">📲 Nouveau téléphone ? <span class="muted" style="font-weight:400">▸</span></summary><p class="muted">Envoie-lui un lien qui récupère son espace, son évolution et tes retours sur son nouveau téléphone (valable 7 jours, à ouvrir une seule fois). Son ancien téléphone se fermera. Il peut aussi le faire seul : « 📲 Passer sur un nouveau téléphone », en bas de son accueil.</p>
     <button class="btn wa" id="tel">📲 Envoyer son historique sur son nouveau téléphone</button><div class="muted hide" id="telinfo" style="margin-top:8px"></div></details>`;
   // 29/10 : ses cours préparés (📝 Je prépare mon cours), le plus récent en haut
-  h+=`<details class="card o"><summary style="cursor:pointer;list-style:none;font-weight:700;font-size:18px">📝 Ses cours préparés (${CS.filter(k=>!k.incomplet).length}) <span class="muted" style="font-weight:400">▸</span></summary>`+
+  h+=`<details class="card o"><summary style="cursor:pointer;list-style:none;font-weight:700;font-size:18px">📝 Ses cours préparés (${CS.filter(k=>!k.incomplet).length+DS.length}) <span class="muted" style="font-weight:400">▸</span></summary>`+
+    `<div id="dp-stg" style="margin-top:10px"><input type="file" id="stg-f" multiple class="hide"><button class="btn small" style="margin:0" id="stg-aj">📎 Ajouter un document</button><div class="muted" style="font-size:13px;margin-top:4px">Ou glisse-le ici depuis ton ordinateur. Visible seulement par toi, sur cet appareil.</div><div id="stg-msg" class="muted hide" style="margin-top:6px"></div>`+
+    DS.slice().reverse().map(f=>`<div class="stag"><b>${dpIcone(f)} ${esc(f.nom)}</b><div class="muted" style="font-size:13px">${dpTaille(f.taille||(f.blob&&f.blob.size))} · ${new Date(f.at).toLocaleDateString('fr-FR')}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><button class="btn small" style="margin:0" data-sgv="${esc(f.id)}">👁️ Ouvrir</button><button class="btn small sec" style="margin:0" data-sgp="${esc(f.id)}">📤 Partager</button><button class="btn small ko" style="margin:0" data-sgs="${esc(f.id)}">🗑️ Supprimer</button></div><div data-sgz="${esc(f.id)}"></div></div>`).join('')+`</div>`+
     (CS.length?CS.map((k,i)=>{if(k.incomplet)return `<div class="stag"><div class="d" style="color:var(--ja)">⏳ Un envoi du ${esc(k.h)} n'est pas complet (morceaux manquants). Demande-lui de le renvoyer.</div></div>`;
       const K=crCalc(k.c);
       return `<details class="stag" data-crb="${i}"><summary style="cursor:pointer;list-style:none"><b>${esc(k.c.nom||'Cours')}</b> <span class="muted" style="font-weight:400">▸</span>
         <div class="d">Envoyé le ${esc(k.h||(k.at?new Date(k.at).toLocaleString('fr-FR'):''))} · ⏱️ ${crFmt(K.total)} / ${crFmt(K.cible)} · ${K.alertes.length?`<span style="color:var(--ja)">⚠️ ${K.alertes.length} alerte${K.alertes.length>1?'s':''}</span>`:'<span style="color:var(--ok)">✅ temps OK</span>'}</div></summary>
         <div style="margin-top:10px">${crFeuille(k.c,(k.prenom||x.prenom)+' '+(k.nom||x.nom))}</div>
-        <button class="btn small sec" data-crimp="${i}">🖨️ Imprimer / PDF</button></details>`}).join(''):`<p class="muted" style="margin:10px 0 0">Aucun cours envoyé pour l'instant.</p>`)+`</details>`;}
+        <button class="btn small sec" data-crimp="${i}">🖨️ Imprimer / PDF</button></details>`}).join(''):(DS.length?'':`<p class="muted" style="margin:10px 0 0">Aucun cours envoyé pour l'instant.</p>`))+`</details>`;}
   if(!H.length)h+=`<div class="card"><p class="muted" style="margin:0">Pas encore de réponse pour ce stagiaire.</p></div>`;
   // 29/10 : ses notes, quiz après quiz (la plus ancienne en haut) — le ressenti ne compte pas dans la note
   else{let avant=null;
@@ -697,6 +702,19 @@ async function bilanStagiaire(x){
   document.getElementById('zb').innerHTML=h;
   if(!adm)return;
   document.getElementById('nobs').onclick=()=>noteObservation(x);
+  // 06/11 : documents du stagiaire (ajout, glisser depuis le PC, ouvrir, partager, supprimer)
+  const sgRe=async m=>{const y=window.scrollY;await bilanStagiaire(x);window.scrollTo(0,y);const d=document.querySelector('#dp-stg');if(d){d.closest('details').open=true;if(m){const z=document.getElementById('stg-msg');z.textContent=m;z.classList.remove('hide')}}};
+  const sgAjout=async F=>{F=[...F].filter(Boolean);if(!F.length)return;let n=0;
+    try{for(const f of F){await dpOp('f','readwrite',s=>s.put({id:dpId(),proprio:DPK,dossier:'',nom:f.name||'document',type:f.type||'',taille:f.size,at:Date.now()+n,blob:f}));n++}}
+    catch(e){return sgRe(dpEstQuota(e)?'⚠️ Plus de place sur cet appareil.':'⚠️ Le document n\'a pas pu être ajouté.')}
+    sgRe('✅ '+(n>1?n+' documents ajoutés':'Document ajouté')+' pour '+x.prenom+'.')};
+  window.DP_STG=sgAjout;
+  {const i=document.getElementById('stg-f');document.getElementById('stg-aj').onclick=()=>i.click();i.onchange=()=>sgAjout(i.files)}
+  const sgF=id=>DS.find(f=>f.id===id);
+  app.querySelectorAll('[data-sgv]').forEach(b=>b.onclick=()=>{const f=sgF(b.dataset.sgv);if(f)dpVoir(f)});
+  app.querySelectorAll('[data-sgp]').forEach(b=>b.onclick=()=>{const f=sgF(b.dataset.sgp);if(f)dpPartager(f)});
+  app.querySelectorAll('[data-sgs]').forEach(b=>b.onclick=()=>{const f=sgF(b.dataset.sgs);if(!f)return;
+    confirmerIci(app.querySelector(`[data-sgz="${CSS.escape(f.id)}"]`),`Supprimer « ${esc(f.nom)} » ?`,'🗑️ Supprimer',async()=>{await dpOp('f','readwrite',s=>s.delete(f.id));sgRe('✅ Document supprimé.')})});
   app.querySelectorAll('[data-crimp]').forEach(b=>b.onclick=()=>{const k=CS[+b.dataset.crimp];crImprimer(k.c,()=>bilanStagiaire(x),x.prenom+' '+x.nom)});
   app.querySelectorAll('[data-nenv]').forEach(b=>b.onclick=async()=>{const n=NG.find(z=>z.nid===b.dataset.nenv);if(!n)return;
     if(!x.pub)return alert(`${x.prenom} n'a pas encore ouvert son espace avec la nouvelle version : demande-lui de l'ouvrir, puis réessaie dans quelques minutes.`);

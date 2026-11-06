@@ -430,7 +430,8 @@ function dpVoir(f){
   document.addEventListener('dragover',e=>{if(!avecFichiers(e)||!connecte())return;e.preventDefault();e.dataTransfer.dropEffect='copy'});
   document.addEventListener('dragleave',e=>{if(!avecFichiers(e))return;cpt=Math.max(0,cpt-1);if(!cpt)voile(false)});
   document.addEventListener('drop',e=>{if(!avecFichiers(e))return;e.preventDefault();cpt=0;voile(false);if(!connecte())return;
-    const F=[...(e.dataTransfer.files||[])];if(F.length)dpOuRanger(F)});
+    const F=[...(e.dataTransfer.files||[])];if(!F.length)return;
+    if(document.getElementById('dp-stg')&&typeof window.DP_STG==='function')return window.DP_STG(F);dpOuRanger(F)});
 })();
 async function dpOuRanger(F){
   const p=dpProprio(), mus=F.every(f=>dpEstMusique(f.name,f.type)), admin=estAdmin();
