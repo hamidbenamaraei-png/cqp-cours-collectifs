@@ -285,6 +285,14 @@ function estOuvert(e){if(!e||!e.ouvert)return false;const f=finQuiz(e);return !(
 // - la roue : colonne Journée = « roue » ; Statut = tirage (le tirage complet, le plus récent gagne),
 //   lance (un stagiaire a lancé la roue), liste (cases d'une roue modifiée), perso (« Ma roue » enregistrée).
 const CLES_EN_ATTENTE={};
+// 06/11 : autres formateurs. Ce qu'ils peuvent voir (réglage commun, choisi par Hamid) — valeurs de départ :
+const PARTAGE_DEFAUT={stag:true,rep:false,cours:false,roue:false,quiz:false};
+// Les quiz des autres formateurs encore ouverts (et dont l'auteur a toujours accès), pour l'espace stagiaires
+function quizFOuverts(g){
+  const actifs=new Set(((g&&g.formateurs)||[]).map(f=>f.id));
+  return Object.values((g&&g.quizF)||{}).filter(q=>q.auteur&&actifs.has(q.auteur.id)&&estOuvert(q)&&!quizVide(q.quiz))
+    .sort((a,b)=>(b.ouvertAt||0)-(a.ouvertAt||0));
+}
 // ===== Retours d'observation : chiffrés pour que seul le stagiaire concerné puisse les lire =====
 function b64(u8){let s='';u8.forEach(x=>s+=String.fromCharCode(x));return btoa(s)}
 function deB64(t){return Uint8Array.from(atob(t),c=>c.charCodeAt(0))}
@@ -314,6 +322,8 @@ async function etatGeneral(){
   const stag={}, revs={}, roue={tirage:null,lances:{},listes:{},persos:{}}, fiches={ouverts:[]}, diapos={ouverts:[]}, reouv=[], retours=[];
   const deroules={}, minuteur={montrer:false}, prepCours={montrer:false,modeles:null,choisi:null};
   const appareils={}, liensUtilises={}; // 05/11 : un téléphone et un PC actifs par stagiaire
+  // 06/11 : autres formateurs (liste complète, la dernière ligne gagne), ce qu'ils peuvent voir, et leurs quiz
+  let formateurs=[], formateursLus=false, partage=Object.assign({},PARTAGE_DEFAUT); const quizF={};
   const L=await lireCSV(CSV_QUIZ);
   if(L.length){
     const h=L[0].map(x=>x.trim().toLowerCase());
@@ -350,6 +360,42 @@ async function etatGeneral(){
         const at=+c.at||horoVersMs(l[0])||0, A=appareils[c.sid]||(appareils[c.sid]={});
         if(!A[c.slot]||at>=A[c.slot].at)A[c.slot]={dev:String(c.dev),at};
         if(c.lien&&!liensUtilises[c.lien])liensUtilises[c.lien]=String(c.dev);
+        return;
+      }
+      // 06/11 : Journée = « formateurs », Statut = « liste », Contenu = {liste:[{id,prenom,nom,h,at}]} (h = empreinte du code)
+      if(id==='formateurs'){
+        let c;try{c=JSON.parse(l[iC]||'')}catch(e){return}
+        if(st==='liste'&&c&&Array.isArray(c.liste)){formateursLus=true;
+          formateurs=c.liste.filter(f=>f&&f.id&&f.h).map(f=>({id:String(f.id),prenom:String(f.prenom||'').trim(),nom:String(f.nom||'').trim(),h:String(f.h),at:+f.at||0}))}
+        return;
+      }
+      // 06/11 : Journée = « partage », Statut = « etat », Contenu = {stag,rep,cours,roue,quiz} — la dernière ligne gagne
+      if(id==='partage'){
+        let c;try{c=JSON.parse(l[iC]||'')}catch(e){return}
+        if(st==='etat'&&c&&typeof c==='object'){partage=Object.assign({},PARTAGE_DEFAUT);Object.keys(PARTAGE_DEFAUT).forEach(k=>{if(typeof c[k]==='boolean')partage[k]=c[k]})}
+        return;
+      }
+      // 06/11 : quiz d'un autre formateur : Journée = « quizf », Statut = quiz / ouvert / ferme / supprime,
+      //   Contenu = {id, titre, quand, label, auteur:{id,nom}, quiz}. L'auteur et le label ne changent jamais.
+      if(id==='quizf'){
+        let c;try{c=JSON.parse(l[iC]||'')}catch(e){return}
+        if(!c||!c.id)return;
+        const q=quizF[c.id]||(quizF[c.id]={id:String(c.id),titre:'Quiz',label:'',quand:'',auteur:null,quiz:null,ouvert:false,duree:0,ouvertAt:null,ouvCle:'',cree:n+1,supprime:false});
+        if(st==='quiz'){
+          if(quizValide(c.quiz))q.quiz=c.quiz;
+          if(c.titre)q.titre=String(c.titre); if(c.quand)q.quand=String(c.quand);
+          if(c.label&&!q.label)q.label=String(c.label);
+          if(c.auteur&&c.auteur.id&&!q.auteur)q.auteur={id:String(c.auteur.id),nom:String(c.auteur.nom||'').trim()};
+        }
+        else if(st==='ouvert'){q.ouvert=true;q.duree=+c.duree||0;q.ouvertAt=horoVersMs(l[0]);q.ouvCle=String(l[0]||'')+'#'+(n+1)}
+        else if(st==='ferme')q.ouvert=false;
+        else if(st==='supprime'){q.supprime=true;q.ouvert=false}
+        return;
+      }
+      // 06/11 : lien « 💻 Ouvrir mon espace sur mon PC » (espace formateur) déjà utilisé : {n, dev}
+      if(id==='lienf'){
+        let c;try{c=JSON.parse(l[iC]||'')}catch(e){return}
+        if(st==='utilise'&&c&&c.n&&c.dev&&!liensUtilises[c.n])liensUtilises[c.n]=String(c.dev);
         return;
       }
       // fiches de révision ouvertes aux stagiaires (la dernière ligne gagne)
@@ -421,8 +467,9 @@ async function etatGeneral(){
     });
   }
   Object.keys(revs).forEach(k=>{if(!revs[k].quiz)delete revs[k]});
+  Object.keys(quizF).forEach(k=>{const q=quizF[k];if(!q.quiz||!q.auteur||!q.label||q.supprime)delete quizF[k]});
   Object.entries(CLES_EN_ATTENTE).forEach(([k,v])=>{if(stag[k]&&!stag[k].pub)stag[k].pub=v});
-  return {quiz:etat,stagiaires:stag,revisions:revs,roue,fiches,diapos,reouv,retours,deroules,minuteur,prepCours,appareils,liensUtilises};
+  return {quiz:etat,stagiaires:stag,revisions:revs,roue,fiches,diapos,reouv,retours,deroules,minuteur,prepCours,appareils,liensUtilises,formateurs,formateursLus,partage,quizF};
 }
 async function etatQuiz(){return (await etatGeneral()).quiz}
 // La révision « en cours » = la dernière préparée

@@ -75,6 +75,8 @@ textarea{min-height:90px;resize:vertical}
 .choix{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .choix .btn{flex:1 1 30%;margin:0}
 .ordre{flex:none;width:40px;height:38px;border-radius:10px;border:2px solid var(--line);background:#1c2442;color:#fff;font-size:17px;cursor:pointer;padding:0}
+.qr{max-width:320px;margin:12px auto 4px;padding:10px;background:#fff;border-radius:14px}
+.lien{background:#141b33;border:2px solid var(--line);border-radius:12px;padding:10px 12px;font-size:13px;word-break:break-all;color:var(--soft);max-height:120px;overflow:auto;margin-top:10px}
 .duree{display:inline-block;margin-top:6px;padding:3px 10px;border-radius:999px;background:#141b33;color:var(--soft);font-size:14px;font-weight:700}
 /* Barre de dictée, collée en bas sur tous les écrans */
 #barre-dictee{position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;gap:8px;align-items:center;padding:10px 12px;background:var(--ko);color:#fff;box-shadow:0 -4px 14px rgba(0,0,0,.4)}
@@ -152,7 +154,8 @@ body.avec-barre .wrap{padding-bottom:120px}
 </head>
 <body>
 <div class="wrap" id="app"></div>
-<script src="commun.js?v=202611051500"></script>
+<script src="commun.js?v=202611061200"></script>
+<script src="qr.js?v=202611051500"></script>
 <script src="roue.js?v=202610260957"></script>
 <script src="bonhommes3d.js?v=202610261832"></script>
 <script src="fiches.js?v=202610261640"></script>
@@ -210,6 +213,12 @@ async function chargerReponses(){
 // Le tableau Google met quelques minutes à se mettre à jour : pendant 15 min, ce téléphone
 // se fie à ce que tu viens d'enregistrer.
 let ETAT = null, STAG = {}, REVS = {}, DEROULES = {}, MINUTEUR_MONTRE = false, PREP_COURS = null, APPAREILS = {};
+// 06/11 : autres formateurs. Hamid = celui qui a le code CODE_HASH (le patron). Les autres : liste en ligne.
+let FORMATEURS = [], FORMATEURS_LUS = false, PARTAGE = Object.assign({},PARTAGE_DEFAUT), QUIZF = {};
+function estAdmin(){return lire('ok','')===CODE_HASH}
+function moiF(){const q=lire('qui',null);return q&&q.id&&q.h&&q.h===lire('ok','')?q:null}
+function peut(k){return estAdmin()||!!PARTAGE[k]}
+function retirerAcces(){ecrire('ok','');ecrire('qui',null);ecranCode("Ton accès à l'espace formateur n'est plus actif. Si c'est une erreur, parles-en à Hamid.")}
 async function chargerEtat(){
   let g=null;
   try{g=await etatGeneral()}catch(e){g=null}
@@ -220,6 +229,17 @@ async function chargerEtat(){
   MINUTEUR_MONTRE=!!(g&&g.minuteur&&g.minuteur.montrer);
   {const lm=lire('local_minuteur',null);if(lm&&typeof lm.montrer==='boolean'&&Date.now()-lm.at<15*60*1000)MINUTEUR_MONTRE=lm.montrer}
   PREP_COURS=crPrep(g);
+  FORMATEURS=(g&&g.formateurs)||[]; FORMATEURS_LUS=!!(g&&g.formateursLus);
+  PARTAGE=Object.assign({},PARTAGE_DEFAUT,(g&&g.partage)||{}); QUIZF=(g&&g.quizF)||{};
+  {const lf=lire('local_formateurs',null);if(lf&&Array.isArray(lf.liste)&&Date.now()-lf.at<15*60*1000){FORMATEURS=lf.liste;FORMATEURS_LUS=true}}
+  {const lp=lire('local_partage',null);if(lp&&lp.v&&Date.now()-lp.at<15*60*1000)PARTAGE=Object.assign({},PARTAGE_DEFAUT,lp.v)}
+  {const lq=lire('local_quizf',{});Object.entries(lq).forEach(([id,v])=>{if(Date.now()-v.at>=15*60*1000)return;
+    if(v.supprime){delete QUIZF[id];return}const c=Object.assign({},v);delete c.at;QUIZF[id]=Object.assign(QUIZF[id]||{id,ouvert:false,duree:0},c)});
+   Object.keys(QUIZF).forEach(k=>{const q=QUIZF[k];if(!q.quiz||!q.auteur||!q.label)delete QUIZF[k]})}
+  // un autre formateur retiré par Hamid : retour à l'écran du code (jamais à cause d'un problème de connexion)
+  if(!estAdmin()){const q=moiF();
+    if(g&&(!q||!FORMATEURS.some(f=>f.id===q.id&&f.h===q.h))){retirerAcces();throw new Error('retire')}
+    if(g){const f=FORMATEURS.find(f=>f.id===q.id);if(f&&(f.prenom!==q.prenom||f.nom!==q.nom))ecrire('qui',Object.assign({},q,{prenom:f.prenom,nom:f.nom}))}}
   roueChargerLocal(g);
   fichesChargerLocal(g);
   // décisions prises sur ce téléphone depuis moins de 15 min (le temps que Google se mette à jour)
@@ -281,19 +301,39 @@ function messageWhatsApp(titre,e){
 }
 
 // ======= Écran : code =======
-function ecranCode(){
+// 06/11 : le code d'Hamid (CODE_HASH) ouvre tout ; le code d'un autre formateur (liste en ligne) ouvre son espace à lui.
+let LIEN_PC=null; // lien « 💻 Ouvrir mon espace sur mon PC » reçu sur cet appareil (#p=…) : appliqué seulement après le bon code
+function ecranCode(msg){
   app.innerHTML=`<div class="tag">CQP Instructeur Fitness – Cours collectifs</div><h1>Espace formateur</h1>
+  ${msg?`<div class="card r nopli"><p style="margin:0">${esc(msg)}</p></div>`:''}
+  ${LIEN_PC?`<div class="card j nopli"><h2>🔗 Lien reçu</h2><p style="margin:0">Entre ton code : ton espace, tes notes et tes réglages arriveront sur cet appareil.</p><button class="link" id="sanslien">Ne pas utiliser ce lien</button></div>`:''}
   <div class="card o"><h2>Code d'accès</h2>
    <input type="password" id="c" inputmode="numeric" autocomplete="off" placeholder="••••••">
+   <button class="link" id="lettres">🔤 Mon code a des lettres</button>
    <div class="err hide" id="er">Code incorrect.</div>
    <button class="btn" id="go">Entrer</button>
    <p class="muted" style="margin-top:14px"><a href="./" style="color:var(--mute)">← Retour à l'espace stagiaires</a></p></div>`;
+  const sl=document.getElementById('sanslien');
+  if(sl)sl.onclick=()=>{LIEN_PC=null;(estAdmin()||moiF())?demarrer():ecranCode()};
+  document.getElementById('lettres').onclick=e=>{const c=document.getElementById('c');c.setAttribute('inputmode','text');e.currentTarget.classList.add('hide');c.focus()};
+  let enCours=false;
   const go=async()=>{
-    const er=document.getElementById('er');
+    if(enCours)return;
+    const er=document.getElementById('er'), bt=document.getElementById('go');
     const bl=lire('bloque',{n:0,jusqua:0});
     if(Date.now()<bl.jusqua){er.textContent=`Trop d'essais. Réessaie dans ${Math.ceil((bl.jusqua-Date.now())/60000)} min.`;er.classList.remove('hide');return}
-    const h=await empreinte(document.getElementById('c').value.trim());
-    if(h===CODE_HASH){ecrire('bloque',{n:0,jusqua:0});ecrire('ok',h);demarrer();return}
+    const code=document.getElementById('c').value.trim();
+    if(!code){er.textContent='Écris ton code.';er.classList.remove('hide');return}
+    const h=await empreinte(code);
+    const entrer=qui=>{ecrire('bloque',{n:0,jusqua:0});ecrire('ok',h);ecrire('qui',qui);LIEN_PC?appliquerLienPC():demarrer()};
+    if(h===CODE_HASH)return entrer(null);
+    // un autre formateur ? (liste en ligne)
+    enCours=true;bt.disabled=true;bt.textContent='⏳ Vérification…';
+    let g=null;try{g=await etatGeneral()}catch(e){g=null}
+    enCours=false;bt.disabled=false;bt.textContent='Entrer';
+    if(!g){er.textContent="Je n'arrive pas à vérifier ton code. Vérifie ta connexion internet et réessaie.";er.classList.remove('hide');return}
+    const f=(g.formateurs||[]).find(x=>x.h===h);
+    if(f)return entrer({id:f.id,prenom:f.prenom,nom:f.nom,h});
     bl.n++;
     if(bl.n>=5){const min=Math.pow(2,Math.min(bl.n-5,10));bl.jusqua=Date.now()+min*60000;er.textContent=`Code incorrect. Trop d'essais : réessaie dans ${min} min.`}
     else er.textContent=`Code incorrect (${5-bl.n} essai${5-bl.n>1?'s':''} avant blocage).`;
@@ -304,8 +344,16 @@ function ecranCode(){
 }
 async function demarrer(){
   app.innerHTML=`<p class="muted">Chargement…</p>`;
-  await chargerEtat(); accueil();
+  try{await chargerEtat()}catch(e){if(e&&e.message==='retire')return;throw e}
+  accueil();
 }
+// 06/11 : un autre formateur retiré : son appareil revient au code quand il revient sur l'appli (toutes les 3 min au plus)
+let DERNIER_CTRL_F=Date.now();
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState!=='visible'||estAdmin()||!moiF()||Date.now()-DERNIER_CTRL_F<3*60000)return;
+  DERNIER_CTRL_F=Date.now();
+  etatGeneral().then(g=>{const q=moiF();if(g&&q&&!(g.formateurs||[]).some(f=>f.id===q.id&&f.h===q.h))retirerAcces()}).catch(()=>{});
+});
 
 // ======= Planning de mes interventions (29/10/2026) : sert à afficher la journée du jour ou la prochaine =======
 const PLANNING=[
@@ -326,6 +374,7 @@ function prepTexte(j){const z=quizDe(j), n=(z&&z.questions||[]).length;
   return (n?`📝 Quiz : ${n} question${n>1?'s':''}`:'🛠️ Quiz à préparer')+(j.diapos?` · 📚 ${j.diapos} diapos`:'')}
 // ======= Écran : accueil =======
 function accueil(){
+  if(!estAdmin())return accueilFormateur();
   let h=`<div class="tag">Espace formateur</div><h1>Bonjour Hamid 👋</h1>`;
   const nAtt=Object.values(STAG).filter(x=>x.statut==='attente').length, nAcc=Object.values(STAG).filter(x=>x.statut==='accepte').length;
   // 29/10 : la journée du jour (ou la prochaine) en haut, selon le planning ; les journées passées dans un dossier
@@ -368,6 +417,12 @@ function accueil(){
   h+=`<div class="card j"><h2>🧠 Quiz de révision</h2>
     <p style="margin:0" class="${rc?'':'muted'}">${rc?`${esc(rc.titre)} · ${ro?'<b style="color:var(--ok)">ouvert</b>':'caché aux stagiaires'}`:'Des questions de toutes les journées, depuis le début.'}</p>
     <button class="btn sec" id="rev">Ouvrir les révisions</button></div>`;
+  // 06/11 : les autres formateurs et « 💻 Ouvrir mon espace sur mon PC »
+  {const nF=FORMATEURS.length, LQ=Object.values(QUIZF), nO=LQ.filter(estOuvert).length;
+  h+=`<div class="card"><h2>👥 Autres formateurs</h2><p style="margin:0" class="muted">${nF?`${nF} formateur${nF>1?'s':''} : ${esc(FORMATEURS.map(f=>f.prenom).join(', '))}.`:'Personne pour l\'instant.'} Chacun a son code et ses propres quiz. Tu choisis ce qu'ils peuvent voir.</p>
+    <button class="btn sec" id="afo">Gérer les autres formateurs</button>
+    ${LQ.length?`<button class="btn sec" id="afq">📝 Leurs quiz (${LQ.length})${nO?` · ${nO} ouvert${nO>1?'s':''}`:''}</button>`:''}</div>`;}
+  h+=htmlMesAppareils();
   h+=`<p class="muted"><a href="./" style="color:var(--mute)">Voir l'espace stagiaires / apprentis</a> · <button class="link" id="out">Se déconnecter</button></p>
   <p class="muted"><button class="link" id="rz">Pour mes tests : changer de nom dans l'espace stagiaires (sur ce téléphone)</button></p><div class="ok hide" id="rzok">✅ C'est fait : l'espace stagiaires te redemandera ton nom.</div>`;
   app.innerHTML=h;
@@ -393,7 +448,10 @@ function accueil(){
     catch(err){alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");return accueil()}
     const y=window.scrollY;accueil();window.scrollTo(0,y);
     const ok=document.getElementById('crmok');ok.textContent=nv?"✅ « Je prépare mon cours » apparaîtra dans l'espace stagiaires / apprentis d'ici quelques minutes.":"✅ « Je prépare mon cours » disparaîtra de l'espace stagiaires / apprentis d'ici quelques minutes.";ok.classList.remove('hide')};
-  document.getElementById('out').onclick=()=>{ecrire('ok','');ecranCode()};
+  document.getElementById('out').onclick=()=>{ecrire('ok','');ecrire('qui',null);ecranCode()};
+  document.getElementById('afo').onclick=()=>autresFormateurs();
+  {const b=document.getElementById('afq');if(b)b.onclick=()=>quizFAdmin()}
+  document.getElementById('rpc').onclick=()=>ecranPC();
   document.getElementById('rz').onclick=()=>{try{localStorage.removeItem('cqp_moi')}catch(e){};document.getElementById('rzok').classList.remove('hide')};
   haut();
 }
@@ -407,6 +465,7 @@ async function enregistrerPrepCours(P){
 }
 let CRP_TRAVAIL=null; // modèles en cours de modification (pas encore enregistrés)
 function coursPrepEcran(msg){
+  if(!estAdmin())return accueil(); // 06/11 : écran d'Hamid seulement
   if(!CRP_TRAVAIL)CRP_TRAVAIL=copie({choisi:PREP_COURS.choisi,modeles:PREP_COURS.modeles});
   const W=CRP_TRAVAIL, modif=JSON.stringify({choisi:W.choisi,modeles:W.modeles})!==JSON.stringify({choisi:PREP_COURS.choisi,modeles:PREP_COURS.modeles});
   let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>📝 Mes modèles de cours</h1>
@@ -473,6 +532,7 @@ async function decider(liste,statut){
 }
 const LIEN_STAG='https://hamidbenamaraei-png.github.io/cqp-cours-collectifs/';
 function mesStagiaires(msg){
+  if(!estAdmin())return stagiairesLecture(); // 06/11 : les autres formateurs voient la liste sans rien pouvoir changer
   const tous=Object.values(STAG);
   const att=tous.filter(x=>x.statut==='attente'), acc=acceptes(), aut=tous.filter(x=>x.statut==='refuse'||x.statut==='supprime');
   const doublon=x=>acc.some(a=>a.id!==x.id&&memeNom(a.prenom+' '+a.nom,x.prenom+' '+x.nom));
@@ -554,6 +614,8 @@ function mesStagiaires(msg){
 // La question n°i d'une ligne : celle de la banque si la ligne garde son numéro, sinon celle du quiz
 function questionDe(R,i,z){const id=R.ids[i];const b=id&&questionParId(id);return b||(z&&z.questions[i])||null}
 function quizDeLigne(lab){
+  const qf=Object.values(QUIZF).find(q=>q.label===lab);
+  if(qf)return {qf,z:qf.quiz,tag:'Quiz de '+qf.auteur.nom,titre:qf.titre};
   const j=JOURNEES.find(j=>lab.startsWith(j.titre));
   if(j)return {j,z:quizDe(j),tag:j.titre,titre:j.theme};
   const r=Object.values(REVS).find(r=>r.titre===lab);
@@ -574,24 +636,27 @@ function historiqueStagiaire(x){
 
 // ======= Écran : bilan d'un stagiaire =======
 async function bilanStagiaire(x){
-  app.innerHTML=`<button class="back" id="bk">← Retour</button><div class="tag">Bilan du stagiaire</div><h1 style="margin-bottom:4px">${esc(x.prenom)} ${esc(x.nom)}</h1>${ligneAppareils(x)}<div id="zb" style="margin-top:14px"><p class="muted">Chargement…</p></div>`;
+  const adm=estAdmin(); if(!adm&&!PARTAGE.rep)return accueil();
+  app.innerHTML=`<button class="back" id="bk">← Retour</button><div class="tag">Bilan du stagiaire</div><h1 style="margin-bottom:4px">${esc(x.prenom)} ${esc(x.nom)}</h1>${adm?ligneAppareils(x):''}<div id="zb" style="margin-top:14px"><p class="muted">Chargement…</p></div>`;
   document.getElementById('bk').onclick=()=>mesStagiaires();
   haut();
   try{await chargerReponses()}catch(e){document.getElementById('zb').innerHTML=`<div class="card r"><h2>Impossible de lire les réponses</h2><p>Vérifie ta connexion internet, puis réessaie.</p><button class="btn" id="re">Réessayer</button></div>`;document.getElementById('re').onclick=()=>bilanStagiaire(x);return}
-  const H=historiqueStagiaire(x), RT=retoursDe(x.id);
-  const NG=notesGardees(x.id), TOUT=NG.map(n=>Object.assign({garde:true},n)).concat(RT).sort((a,b)=>b.at-a.at);
-  let h=`<div class="card j"><h2>📝 Mes notes et retours (${TOUT.length})</h2><p class="muted" style="margin-top:0">🔒 Gardée pour moi : ${esc(x.prenom)} ne la voit pas · 📤 Envoyée : elle est dans son espace.</p>`+(TOUT.length?TOUT.map(r=>`<div class="stag"><div class="d" style="color:var(--soft)">${r.garde?'🔒 Gardée pour moi':'📤 Envoyée'} · ${esc(r.date||dateJour(r.at))}${r.titre?' · <b>'+esc(r.titre)+'</b>':''}</div><div style="white-space:pre-wrap;margin-top:4px">${esc(r.texte)}</div>${r.garde?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn small" data-nenv="${esc(r.nid)}">📤 Lui envoyer</button><button class="btn small ko" data-nsup="${esc(r.nid)}">🗑️ Supprimer</button></div>`:''}</div>`).join(''):`<p class="muted" style="margin:0">Aucune note pour l'instant.</p>`)+`<button class="btn sec" id="nobs">📝 Nouvelle observation</button></div>`;
+  // 06/11 : un autre formateur ne voit ni les notes et retours d'Hamid, ni les quiz des autres formateurs
+  const H=historiqueStagiaire(x).filter(e=>adm||!e.qf||(moiF()&&e.qf.auteur.id===moiF().id)), RT=adm?retoursDe(x.id):[];
+  const NG=adm?notesGardees(x.id):[], TOUT=NG.map(n=>Object.assign({garde:true},n)).concat(RT).sort((a,b)=>b.at-a.at);
+  const CS=adm?crRecoller(COURS_LIGNES).filter(k=>k.sid===x.id):[];
+  let h='';
+  if(adm){h+=`<div class="card j"><h2>📝 Mes notes et retours (${TOUT.length})</h2><p class="muted" style="margin-top:0">🔒 Gardée pour moi : ${esc(x.prenom)} ne la voit pas · 📤 Envoyée : elle est dans son espace.</p>`+(TOUT.length?TOUT.map(r=>`<div class="stag"><div class="d" style="color:var(--soft)">${r.garde?'🔒 Gardée pour moi':'📤 Envoyée'} · ${esc(r.date||dateJour(r.at))}${r.titre?' · <b>'+esc(r.titre)+'</b>':''}</div><div style="white-space:pre-wrap;margin-top:4px">${esc(r.texte)}</div>${r.garde?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn small" data-nenv="${esc(r.nid)}">📤 Lui envoyer</button><button class="btn small ko" data-nsup="${esc(r.nid)}">🗑️ Supprimer</button></div>`:''}</div>`).join(''):`<p class="muted" style="margin:0">Aucune note pour l'instant.</p>`)+`<button class="btn sec" id="nobs">📝 Nouvelle observation</button></div>`;
   h+=`<details class="card j"><summary style="cursor:pointer;list-style:none;font-weight:700;font-size:18px">📲 Nouveau téléphone ? <span class="muted" style="font-weight:400">▸</span></summary><p class="muted">Envoie-lui un lien qui récupère son espace, son évolution et tes retours sur son nouveau téléphone (valable 7 jours, à ouvrir une seule fois). Son ancien téléphone se fermera. Il peut aussi le faire seul : « 📲 Passer sur un nouveau téléphone », en bas de son accueil.</p>
     <button class="btn wa" id="tel">📲 Envoyer son historique sur son nouveau téléphone</button><div class="muted hide" id="telinfo" style="margin-top:8px"></div></details>`;
   // 29/10 : ses cours préparés (📝 Je prépare mon cours), le plus récent en haut
-  const CS=crRecoller(COURS_LIGNES).filter(k=>k.sid===x.id);
   h+=`<details class="card o"><summary style="cursor:pointer;list-style:none;font-weight:700;font-size:18px">📝 Ses cours préparés (${CS.filter(k=>!k.incomplet).length}) <span class="muted" style="font-weight:400">▸</span></summary>`+
     (CS.length?CS.map((k,i)=>{if(k.incomplet)return `<div class="stag"><div class="d" style="color:var(--ja)">⏳ Un envoi du ${esc(k.h)} n'est pas complet (morceaux manquants). Demande-lui de le renvoyer.</div></div>`;
       const K=crCalc(k.c);
       return `<details class="stag" data-crb="${i}"><summary style="cursor:pointer;list-style:none"><b>${esc(k.c.nom||'Cours')}</b> <span class="muted" style="font-weight:400">▸</span>
         <div class="d">Envoyé le ${esc(k.h||(k.at?new Date(k.at).toLocaleString('fr-FR'):''))} · ⏱️ ${crFmt(K.total)} / ${crFmt(K.cible)} · ${K.alertes.length?`<span style="color:var(--ja)">⚠️ ${K.alertes.length} alerte${K.alertes.length>1?'s':''}</span>`:'<span style="color:var(--ok)">✅ temps OK</span>'}</div></summary>
         <div style="margin-top:10px">${crFeuille(k.c,(k.prenom||x.prenom)+' '+(k.nom||x.nom))}</div>
-        <button class="btn small sec" data-crimp="${i}">🖨️ Imprimer / PDF</button></details>`}).join(''):`<p class="muted" style="margin:10px 0 0">Aucun cours envoyé pour l'instant.</p>`)+`</details>`;
+        <button class="btn small sec" data-crimp="${i}">🖨️ Imprimer / PDF</button></details>`}).join(''):`<p class="muted" style="margin:10px 0 0">Aucun cours envoyé pour l'instant.</p>`)+`</details>`;}
   if(!H.length)h+=`<div class="card"><p class="muted" style="margin:0">Pas encore de réponse pour ce stagiaire.</p></div>`;
   // 29/10 : ses notes, quiz après quiz (la plus ancienne en haut) — le ressenti ne compte pas dans la note
   else{let avant=null;
@@ -622,6 +687,7 @@ async function bilanStagiaire(x){
     h+=`<label>Difficulté signalée</label><p style="margin:0" class="${e.dif?'':'muted'}">${e.dif?esc(e.dif):'Aucune.'}</p></details>`;
   });
   document.getElementById('zb').innerHTML=h;
+  if(!adm)return;
   document.getElementById('nobs').onclick=()=>noteObservation(x);
   app.querySelectorAll('[data-crimp]').forEach(b=>b.onclick=()=>{const k=CS[+b.dataset.crimp];crImprimer(k.c,()=>bilanStagiaire(x),x.prenom+' '+x.nom)});
   app.querySelectorAll('[data-nenv]').forEach(b=>b.onclick=async()=>{const n=NG.find(z=>z.nid===b.dataset.nenv);if(!n)return;
@@ -701,6 +767,7 @@ function brancherSuite(j){
     const y=scrollY;journee(j);scrollTo(0,y);const ok=document.getElementById('rtok')||document.getElementById('dok');if(ok){ok.textContent=`✅ « ${titreDoc(x,i)} » montré aux stagiaires / apprentis (d'ici quelques minutes).`;ok.classList.remove('hide')}});
 }
 function journee(j){
+  if(!estAdmin())return accueil(); // 06/11 : écran d'Hamid seulement
   const e=ETAT[j.id], o=estOuvert(e);
   app.innerHTML=`<button class="back" id="bk">← Retour</button>
   <div class="tag">${esc(j.titre)}</div><h1>${esc(j.theme)}</h1>
@@ -784,6 +851,7 @@ function brancherDeroule(j){
 
 // ======= Écran : diapos et documents =======
 function diapos(j){
+  if(!estAdmin())return diaposLecture(j);
   let h=`<button class="back" id="bk">← Retour</button><div class="tag">${esc(j.titre)}</div><h1>Diapos et documents</h1>
    ${(j.docs||[]).map(d=>`<a class="btn" href="${d.fichier}" download>⬇️ ${esc(d.titre)}</a>`).join('')}
    <p class="muted" style="margin-top:16px">Coche les documents que les stagiaires / apprentis peuvent voir. Case vide = ils ne le voient pas. Touche un document pour l'ouvrir en grand.</p>
@@ -808,6 +876,7 @@ function diapos(j){
 
 // ======= Écran : mon quiz du jour (voir + modifier) =======
 function monQuiz(j,zDepart,msg,opts){
+  if(!estAdmin())return accueil(); // 06/11 : écran d'Hamid seulement
   opts=opts||{};
   editeur({tag:j.titre,titre:'Mon quiz du jour',z:zDepart||copie(quizDe(j)),msg,banque:j,max:5,focus:opts.focus,
     retour:opts.retour||(()=>journee(j)),
@@ -899,7 +968,7 @@ function editeur(cfg){
       if(q.o.length<4)h+=`<button class="btn small sec" data-qoa="${i}">+ Ajouter une réponse</button>`;
       h+=`<label>Explication (affichée après l'envoi)</label><textarea data-qe="${i}" style="min-height:70px">${esc(q.e||'')}</textarea></div>`;
     });
-    h+=htmlGen(z)+`<button class="btn small sec" id="addq">✏️ Écrire ma propre question</button></div>
+    h+=(cfg.sansGen?'':htmlGen(z))+`<button class="btn small sec" id="addq">✏️ Écrire ma propre question</button></div>
     <div class="err hide" id="er"></div>
     <button class="btn" id="sav">💾 ${esc(cfg.texteEnregistrer||'Enregistrer le quiz')}</button>
     <div class="ok hide" id="okk"></div>
@@ -1039,6 +1108,7 @@ function apercu(cfg){
 
 // ======= Quiz de révision =======
 function revisionEcran(msg){
+  if(!estAdmin())return accueil(); // 06/11 : écran d'Hamid seulement
   const rc=revisionCourante(REVS);
   const autres=Object.values(REVS).filter(r=>!rc||r.id!==rc.id).sort((a,b)=>b.cree-a.cree);
   let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>🧠 Quiz de révision</h1>
@@ -1227,6 +1297,7 @@ async function reponses(c){
 
 function afficher(c,tests){
   const z=c.z, nq=z.questions.length;
+  const adm=estAdmin(); // 06/11 : un autre formateur ne voit ni les observations, ni le résumé, ni les retours d'Hamid
   const iH=0,iN=1,iP=2,iJ=3,iR=4,iQ=5,iD=6;
   let rep=lignes.slice(1).filter(l=>!estObs(l)&&c.filtre(l));
   const nbTests=c.dateMin?rep.filter(l=>dateFR(l[iH])<c.dateMin).length:0;
@@ -1241,12 +1312,12 @@ function afficher(c,tests){
   if(masques)h+=`<p class="muted">${masques} réponse${masques>1?'s':''} de personnes non acceptées ou supprimées ${masques>1?'sont masquées':'est masquée'}.</p>`;
   if(nbTests)h+=`<label class="check"><input type="checkbox" id="tst" ${tests?'checked':''}> Afficher aussi les réponses de test ${esc(c.testTexte)} (${nbTests})</label>`;
   if(!rep.length){
-    h+=htmlRetoursJour(c);
+    if(adm)h+=htmlRetoursJour(c);
     h+=`<div class="card"><h2>Pas encore de réponses</h2><p class="muted">Les réponses arrivent dès qu'un stagiaire envoie son quiz${c.dateMin?' (ou que tu saisis une feuille papier)':''}.</p><button class="btn sec" id="maj">🔄 Actualiser</button></div>`;
     zone.innerHTML=h;
     document.getElementById('maj').onclick=()=>reponses(c);
     if(nbTests)document.getElementById('tst').onchange=e=>afficher(c,e.target.checked);
-    observations(c,null,zone);return;
+    if(adm)observations(c,null,zone);return;
   }
   const RR=rep.map(l=>lireReponses(l[iQ]));
   const res={};
@@ -1279,8 +1350,8 @@ function afficher(c,tests){
      z.questions.map((q,i)=>`<div class="row"><span>${i+1}. ${esc(q.q)}${sansRep[i]?` <span style="color:var(--ja)">· ⏳ ${sansRep[i]}</span>`:''}</span><span class="pill ${classe(bonnes[i],rep.length)}">${bonnes[i]}/${rep.length}</span></div>`).join('')+`</div>`;
   h+=`<div class="card ${diffs.length?'r':'g'}"><h2>Difficultés signalées</h2>`+
      (diffs.length?diffs.map((x,k)=>{const q=x.d.startsWith('🚪'), m=q&&x.d.match(/il lui restait ([0-9]+ min [0-9]+)/), a=q&&acceptes().find(s=>memeNom(s.prenom+' '+s.nom,x.n));
-       return `<div class="stag"><b>${esc(x.n)}</b><div class="d">${esc(x.d)}</div>${q&&a?`<button class="btn small" style="margin-top:8px" data-reouv="${esc(a.id)}" data-rt="${esc(m?m[1]:'')}">🔓 Lui redonner accès${m?` (${esc(m[1])})`:''}</button>`:''}</div>`}).join(''):`<p class="muted" style="margin:0">Aucune difficulté signalée.</p>`)+`</div>`;
-  h+=htmlRetoursJour(c);
+       return `<div class="stag"><b>${esc(x.n)}</b><div class="d">${esc(x.d)}</div>${q&&a&&adm?`<button class="btn small" style="margin-top:8px" data-reouv="${esc(a.id)}" data-rt="${esc(m?m[1]:'')}">🔓 Lui redonner accès${m?` (${esc(m[1])})`:''}</button>`:''}</div>`}).join(''):`<p class="muted" style="margin:0">Aucune difficulté signalée.</p>`)+`</div>`;
+  if(adm)h+=htmlRetoursJour(c);
   h+=`<div class="card"><h2>Détail par stagiaire</h2>`+rep.map((l,n)=>{
        const R=RR[n], sc=R.score||0;
        const rs=lireRessenti(l[iR]).map(x=>x.n||'-').join(' · ');
@@ -1314,7 +1385,7 @@ function afficher(c,tests){
     const d=(l[iD]||'').trim(); if(d)pts.push(`a écrit : « ${d} »`);
     return {nom,pts};
   }).filter(x=>x.pts.length);
-  observations(c,{n:rep.length,moy,bonnes,sansRep,diffs,scoreTot,eleves},zone);
+  if(adm)observations(c,{n:rep.length,moy,bonnes,sansRep,diffs,scoreTot,eleves},zone);
 }
 
 // ======= Mes observations : gardées sur ce téléphone ET sauvegardées en ligne =======
@@ -1653,6 +1724,7 @@ async function envoyerRetour(x,titre,texte,nid){
 function dateJour(ms){return new Date(ms).toLocaleDateString('fr-FR',{timeZone:'Europe/Paris',weekday:'long',day:'numeric',month:'long'})}
 function jourISO(ms){return new Date(ms).toLocaleDateString('fr-CA',{timeZone:'Europe/Paris'})}
 async function observationsEcran(msg){
+  if(!estAdmin())return accueil(); // 06/11 : écran d'Hamid seulement
   app.innerHTML=`<p class="muted">Chargement…</p>`;
   try{await chargerReponses()}catch(e){}
   const acc=acceptes();
@@ -1735,9 +1807,9 @@ function mesExercices(msg){
   const nb=cat=>fxCles(cat).filter(k=>FICHES_OUV.includes(k)).length;
   let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>📋 Exercices</h1>
   ${msg?`<div class="ok">${esc(msg)}</div>`:''}
-  <p class="muted" style="margin-top:0">Touche une catégorie. Dans chaque partie, tu choisis ce que les stagiaires peuvent voir pour réviser.</p>`;
+  <p class="muted" style="margin-top:0">${estAdmin()?'Touche une catégorie. Dans chaque partie, tu choisis ce que les stagiaires peuvent voir pour réviser.':'Touche une catégorie pour voir les exercices.'}</p>`;
   Object.entries(FICHES_CATS).forEach(([k,c])=>{const o=nb(k),t=fxCles(k).length;
-    h+=`<button class="btn sec" data-fcat="${k}" style="text-align:left">${c.emoji} ${esc(c.titre)}<br><span class="muted" style="font-weight:400;font-size:14px">${o?`👀 ${o===t?(t>1?'tout est montré':'montré'):o+' partie'+(o>1?'s':'')+' sur '+t+' montrée'+(o>1?'s':'')} aux stagiaires`:'🙈 caché aux stagiaires'}</span></button>`});
+    h+=`<button class="btn sec" data-fcat="${k}" style="text-align:left">${c.emoji} ${esc(c.titre)}${estAdmin()?`<br><span class="muted" style="font-weight:400;font-size:14px">${o?`👀 ${o===t?(t>1?'tout est montré':'montré'):o+' partie'+(o>1?'s':'')+' sur '+t+' montrée'+(o>1?'s':'')} aux stagiaires`:'🙈 caché aux stagiaires'}</span>`:''}</button>`});
   h+=`<button class="btn sec" id="bk2">← Retour à l'accueil</button>`;
   app.innerHTML=h;
   document.getElementById('bk').onclick=accueil;document.getElementById('bk2').onclick=accueil;
@@ -1746,7 +1818,7 @@ function mesExercices(msg){
 }
 function ecranFiches(cat,msg,ouverte){
   const C=FICHES_CATS[cat];
-  const tg=cle=>{const on=FICHES_OUV.includes(cle);
+  const tg=cle=>{if(!estAdmin())return '';const on=FICHES_OUV.includes(cle);
     return `<button class="btn small ${on?'':'sec'} fx-tg" data-tg="${cle}" data-on="${on?1:0}">${on?'👀 Montré aux stagiaires · toucher pour cacher':'🙈 Caché aux stagiaires · toucher pour montrer'}</button>`};
   let h=`<button class="back" id="bk">← Retour</button><div class="tag">📋 Exercices</div><h1>${C.emoji} ${esc(C.titre)}</h1>
   ${msg?`<div class="${msg.startsWith('⚠️')?'err':'ok'}">${esc(msg)}</div>`:''}
@@ -1949,6 +2021,7 @@ function choisirApres(T,X,k,c){
 function texteRes(T,s,m){const v=T.res[s]&&T.res[s][m];if(!v)return '';return T.roues.map((r,k)=>`${r.emoji} ${(v[k]||[]).map(i=>r.cases[i]?etiquetteCase(r.cases[i]):'?').join(' + ')}`).join(' · ')}
 function roueAccueilTexte(){const T=ROUE.tirage;if(!T)return 'Pas encore de tirage.';return (T.actif?'<b style="color:var(--ok)">Activée</b> chez les stagiaires':'Pas activée chez les stagiaires')+' · '+T.roues.map(r=>r.emoji+' '+esc(r.titre)).join(' + ')}
 async function roueEcran(msg,garderScroll){
+  if(!estAdmin())return accueil(); // 06/11 : écran d'Hamid seulement
   if(!RC)RC=roueConf();
   const y=window.scrollY;
   const T=ROUE.tirage, acc=acceptes(), n=acc.length;
@@ -2238,6 +2311,402 @@ function projection(){
   return P;
 }
 
+// ======= 06/11 : les autres formateurs =======
+// Hamid (code CODE_HASH) voit tout. Un autre formateur entre avec son code (liste « formateurs » en ligne) :
+// il voit ses propres quiz et seulement ce qu'Hamid a coché dans « Ce que les autres formateurs peuvent voir ».
+function ecranPermis(nom){
+  if(estAdmin())return true;
+  return !!({accueil:1,mesStagiaires:PARTAGE.stag||PARTAGE.rep,bilanStagiaire:PARTAGE.rep,mesExercices:PARTAGE.cours,ecranFiches:PARTAGE.cours,diapos:PARTAGE.cours})[nom];
+}
+async function recharger(suite){
+  app.innerHTML=`<p class="muted">Chargement…</p>`;
+  try{await chargerEtat()}catch(e){if(e&&e.message==='retire')return;throw e}
+  suite();
+}
+// confirmation dans la page (jamais de fenêtre du navigateur)
+function confirmerIci(zone,texte,oui,faire){
+  zone.innerHTML=`<div class="stag" style="border:2px solid var(--ko);margin-top:10px"><p style="margin:0 0 6px">${texte}</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn small ko" data-ci="oui">${esc(oui)}</button><button class="btn small sec" data-ci="non">Annuler</button></div></div>`;
+  zone.querySelector('[data-ci="non"]').onclick=()=>{zone.innerHTML=''};
+  zone.querySelector('[data-ci="oui"]').onclick=e=>{e.currentTarget.disabled=true;e.currentTarget.textContent='⏳ Un instant…';faire()};
+}
+function jourTxt(iso){const m=String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);if(!m)return '';
+  try{return new Date(+m[1],+m[2]-1,+m[3],12).toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}catch(e){return m[3]+'/'+m[2]}}
+function htmlMesAppareils(){
+  return `<div class="card" style="border-top-color:var(--line)"><div class="tag" style="color:var(--soft)">📱 Mes appareils</div>
+    <p class="muted" style="margin:4px 0 0">Ton espace formateur peut aussi être sur ton ordinateur, avec tes notes et tes réglages.</p>
+    <button class="btn sec" id="rpc">💻 Ouvrir mon espace sur mon PC</button></div>`;
+}
+
+// ---- accueil d'un autre formateur ----
+function accueilFormateur(){
+  const q=moiF()||{prenom:''}, L=mesQuizF(), nO=L.filter(estOuvert).length;
+  let h=`<div class="tag">Espace formateur</div><h1>Bonjour ${esc(q.prenom)} 👋</h1>`;
+  h+=`<div class="card o"><h2>📝 Mes quiz</h2><p style="margin:0" class="muted">${L.length?`${L.length} quiz${nO?` · <b style="color:var(--ok)">${nO} ouvert${nO>1?'s':''}</b>`:''}.`:"Tu n'as pas encore de quiz."} Les stagiaires / apprentis le voient avec ton prénom : « Quiz de ${esc(q.prenom)} ».</p>
+    <button class="btn" id="mqn">➕ Nouveau quiz</button>${L.length?`<button class="btn sec" id="mqo">Ouvrir mes quiz</button>`:''}</div>`;
+  if(PARTAGE.stag||PARTAGE.rep){const n=acceptes().filter(x=>!estTest(x)).length;
+    h+=`<div class="card g"><h2>👥 Stagiaires / Apprentis</h2><p style="margin:0">${n} accepté${n>1?'s':''}</p><button class="btn sec" id="stg">Voir la liste</button></div>`}
+  if(PARTAGE.quiz)h+=`<div class="card j"><h2>📂 Les quiz de Hamid</h2><p style="margin:0" class="muted">Ses quiz et ses questions, pour les voir.</p><button class="btn sec" id="qh">Voir les quiz de Hamid</button></div>`;
+  if(PARTAGE.cours)h+=`<div class="card"><h2>📚 Cours, diapos et documents</h2><p style="margin:0" class="muted">Les diapos, les documents et les exercices de Hamid.</p><button class="btn sec" id="crs">Ouvrir</button></div>`;
+  if(PARTAGE.roue)h+=`<div class="card o"><h2>🎡 La roue</h2><p style="margin:0" class="muted">Exercices, étirements ou répartition tirés au hasard. Sur ton téléphone seulement.</p><button class="btn sec" id="roue">Ouvrir la roue</button></div>`;
+  h+=htmlMesAppareils();
+  h+=`<p class="muted"><a href="./" style="color:var(--mute)">Voir l'espace stagiaires / apprentis</a> · <button class="link" id="out">Se déconnecter</button></p>`;
+  app.innerHTML=h;
+  document.getElementById('mqn').onclick=()=>nouveauQuizF();
+  const on=(id,f)=>{const b=document.getElementById(id);if(b)b.onclick=f};
+  on('mqo',()=>mesQuizEcran()); on('stg',()=>stagiairesLecture()); on('qh',()=>quizHamidEcran());
+  on('crs',()=>coursLecture()); on('roue',()=>roueSimple()); on('rpc',()=>ecranPC());
+  on('out',()=>{ecrire('ok','');ecrire('qui',null);ecranCode()});
+  haut();
+}
+
+// ---- les stagiaires, sans rien pouvoir changer ----
+function stagiairesLecture(){
+  if(estAdmin())return mesStagiaires();
+  if(!PARTAGE.stag&&!PARTAGE.rep)return accueil();
+  const acc=acceptes().filter(x=>!estTest(x));
+  let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>👥 Stagiaires / Apprentis</h1>
+   <div class="card g"><h2>Acceptés (${acc.length})</h2>`+(acc.length?acc.map(x=>`<div class="stag"><b>${esc(x.prenom)} ${esc(x.nom)}</b> <span class="muted">· ${typeTxt(x)}${x.str?' · '+esc(x.str):''}</span>${PARTAGE.rep?`<div><button class="btn small" data-bil="${esc(x.id)}">📊 Bilan</button></div>`:''}</div>`).join(''):`<p class="muted" style="margin:0">Personne pour l'instant.</p>`)+`</div>
+   <button class="btn sec" id="maj">🔄 Actualiser</button>`;
+  app.innerHTML=h;
+  document.getElementById('bk').onclick=accueil;
+  document.getElementById('maj').onclick=()=>recharger(stagiairesLecture);
+  app.querySelectorAll('[data-bil]').forEach(b=>b.onclick=()=>bilanStagiaire(STAG[b.dataset.bil]));
+  haut();
+}
+
+// ---- cours, diapos et documents (sans les cases « montrer aux stagiaires ») ----
+function coursLecture(){
+  if(!peut('cours'))return accueil();
+  const js=JOURNEES.filter(j=>j.diapos);
+  let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>📚 Cours, diapos et documents</h1>`;
+  js.forEach(j=>{h+=`<div class="card"><div class="tag" style="color:var(--soft)">${esc(j.titre)}</div><h2 style="margin-top:4px">${esc(j.theme)}</h2><p class="muted" style="margin:0">${j.diapos} document${j.diapos>1?'s':''}</p><button class="btn sec" data-dj="${esc(j.id)}">📚 Voir les documents</button></div>`});
+  h+=`<div class="card"><h2>📋 Exercices</h2><p style="margin:0" class="muted">Renforcement musculaire, étirements et méthodes d'étirement.</p><button class="btn sec" id="fx">Ouvrir les exercices</button></div>`;
+  app.innerHTML=h;
+  document.getElementById('bk').onclick=accueil;
+  document.getElementById('fx').onclick=()=>mesExercices();
+  app.querySelectorAll('[data-dj]').forEach(b=>b.onclick=()=>diapos(JOURNEES.find(j=>j.id===b.dataset.dj)));
+  haut();
+}
+function diaposLecture(j){
+  if(!j||!peut('cours'))return accueil();
+  let h=`<button class="back" id="bk">← Retour</button><div class="tag">${esc(j.titre)}</div><h1>${esc(j.theme)}</h1>
+   ${(j.docs||[]).map(d=>`<a class="btn" href="${d.fichier}" download>⬇️ ${esc(d.titre)}</a>`).join('')}
+   <p class="muted" style="margin-top:16px">Touche un document pour l'ouvrir en grand.</p>`;
+  for(let i=1;i<=j.diapos;i++){const s=`${j.dossier}/${String(i).padStart(2,'0')}.jpg`;h+=`<a href="${s}" target="_blank" rel="noopener"><img class="slide" loading="lazy" src="${s}" alt="Document ${i}"></a>`}
+  h+=`<button class="btn sec" id="bk2">← Retour</button>`;
+  app.innerHTML=h;
+  document.getElementById('bk').onclick=coursLecture;document.getElementById('bk2').onclick=coursLecture;
+  haut();
+}
+
+// ---- voir un quiz (bonnes réponses en vert), sans rien changer ----
+function voirQuiz(tag,titre,z,retour){
+  let h=`<button class="back" id="bk">← Retour</button><div class="tag">${esc(tag)}</div><h1>${esc(titre)}</h1><p><span class="duree">${texteDuree(z)}</span></p>`;
+  if((z.ressenti||[]).length)h+=`<div class="card o"><h2>Ressenti « J'ai compris… »</h2>${z.ressenti.map(t=>`<div class="row"><span>${esc(t)}</span></div>`).join('')}</div>`;
+  h+=`<div class="card"><h2>Les questions (${z.questions.length})</h2>`+z.questions.map((q,i)=>`<div class="apq"><b>${i+1}. ${esc(q.q)}</b>
+     ${q.o.map((o,k)=>`<div class="${k===q.b?'bon':'muted'}" style="margin-top:6px">${k===q.b?'✓':'•'} ${esc(o)}</div>`).join('')}
+     ${q.e?`<div class="expl">💡 ${esc(q.e)}</div>`:''}</div>`).join('')+`</div><button class="btn sec" id="bk2">← Retour</button>`;
+  app.innerHTML=h;
+  document.getElementById('bk').onclick=retour;document.getElementById('bk2').onclick=retour;
+  haut();
+}
+// ---- les quiz d'Hamid, pour un autre formateur (si Hamid l'a coché) ----
+function quizHamidEcran(){
+  if(!peut('quiz'))return accueil();
+  const L=[];
+  JOURNEES.forEach(j=>{const z=quizDe(j);if(!quizVide(z))L.push({tag:j.titre,titre:j.theme,z,o:estOuvert(ETAT[j.id]),c:()=>Object.assign(cibleJournee(j),{retour:quizHamidEcran,editer:null})})});
+  Object.values(REVS).sort((a,b)=>b.cree-a.cree).forEach(r=>L.push({tag:'Révision',titre:r.titre,z:r.quiz,o:estOuvert(r),c:()=>Object.assign(cibleRevision(r),{retour:quizHamidEcran,editer:null})}));
+  let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>📂 Les quiz de Hamid</h1>`;
+  if(!L.length)h+=`<div class="card"><p class="muted" style="margin:0">Pas encore de quiz.</p></div>`;
+  L.forEach((x,i)=>{h+=`<div class="card"><div class="tag" style="color:var(--soft)">${esc(x.tag)}</div><h2 style="margin-top:4px">${esc(x.titre)}</h2>
+    <p class="muted" style="margin:0">${x.z.questions.length} question${x.z.questions.length>1?'s':''}${x.o?' · <b style="color:var(--ok)">ouvert</b>':''}</p>
+    <button class="btn sec" data-qv="${i}">👀 Voir les questions</button>${PARTAGE.rep?`<button class="btn sec" data-qr="${i}">📊 Réponses</button>`:''}</div>`});
+  app.innerHTML=h;
+  document.getElementById('bk').onclick=accueil;
+  app.querySelectorAll('[data-qv]').forEach(b=>b.onclick=()=>{const x=L[+b.dataset.qv];voirQuiz(x.tag,x.titre,x.z,quizHamidEcran)});
+  app.querySelectorAll('[data-qr]').forEach(b=>b.onclick=()=>reponses(L[+b.dataset.qr].c()));
+  haut();
+}
+
+// ---- les quiz d'un autre formateur ----
+// En ligne : « Mes quiz CQP », Journée = quizf (voir commun.js). Les stagiaires envoient leurs réponses avec le
+// « label » du quiz (« Quiz de Paul – Les squats (06/11) »), comme pour les quiz d'Hamid.
+function mesQuizF(){const q=moiF();return Object.values(QUIZF).filter(x=>q&&x.auteur&&x.auteur.id===q.id).sort((a,b)=>String(b.quand||'').localeCompare(String(a.quand||''))||(b.cree||0)-(a.cree||0))}
+function noterLocalQF(id,champs){
+  const lq=lire('local_quizf',{});
+  let v=lq[id]; if(!v||Date.now()-v.at>15*60*1000)v={};
+  lq[id]=Object.assign(v,champs,{at:Date.now()});
+  Object.keys(lq).forEach(k=>{if(Date.now()-lq[k].at>24*3600*1000)delete lq[k]});
+  ecrire('local_quizf',lq);
+  if(champs.supprime)delete QUIZF[id];else QUIZF[id]=Object.assign(QUIZF[id]||{id,ouvert:false,duree:0},champs);
+}
+async function enregistrerQuizF(r,propre){
+  const c={id:r.id,titre:r.titre,quand:r.quand,label:r.label,auteur:r.auteur,quiz:propre};
+  await envoyerForm(FORM_QUIZ,{[EQ.journee]:'quizf',[EQ.statut]:'quiz',[EQ.contenu]:JSON.stringify(c)});
+  noterLocalQF(r.id,{titre:r.titre,quand:r.quand,label:r.label,auteur:r.auteur,quiz:propre,cree:r.cree||Date.now()});
+}
+async function changerQF(q,ouvrir,duree){
+  await envoyerForm(FORM_QUIZ,{[EQ.journee]:'quizf',[EQ.statut]:ouvrir?'ouvert':'ferme',[EQ.contenu]:JSON.stringify(ouvrir?{id:q.id,duree}:{id:q.id})});
+  noterLocalQF(q.id,ouvrir?{ouvert:true,duree,ouvertAt:Date.now()}:{ouvert:false});
+}
+function cibleQF(q,retour){
+  const moi=moiF(), auteur=!!(moi&&q.auteur&&q.auteur.id===moi.id);
+  return {cle:'qf:'+q.id,tag:'Quiz de '+q.auteur.nom,titre:q.titre,sousTitre:q.label,z:q.quiz,dateMin:null,
+    filtre:l=>(l[3]||'').trim()===q.label,retour,
+    editer:auteur?i=>editeurQF(QUIZF[q.id]||q,{focus:i,retour:()=>reponses(cibleQF(QUIZF[q.id]||q,retour))}):null};
+}
+function editeurQF(q,opts){
+  opts=opts||{};
+  editeur({tag:'Quiz de '+q.auteur.nom,titre:q.titre,z:copie(q.quiz),focus:opts.focus,sansGen:!peut('quiz'),
+    retour:opts.retour||(()=>mesQuizEcran()),reouvrir:()=>mesQuizEcran(),
+    note:'Si le quiz est déjà ouvert, les changements s\'appliquent aux stagiaires qui ne l\'ont pas encore rempli.',
+    enregistrer:async propre=>{await enregistrerQuizF(q,propre);return `✅ Quiz enregistré${estOuvert(QUIZF[q.id])?" : les stagiaires verront la nouvelle version d'ici quelques minutes.":'.'}`}});
+}
+function mesQuizEcran(msg){
+  if(estAdmin())return quizFAdmin();
+  const L=mesQuizF();
+  let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>📝 Mes quiz</h1>
+   ${msg?`<div class="ok" style="margin:-6px 0 14px">${esc(msg)}</div>`:''}
+   <button class="btn" id="new" style="margin-bottom:16px">➕ Nouveau quiz</button>`;
+  if(!L.length)h+=`<div class="card"><p class="muted" style="margin:0">Tu n'as pas encore de quiz.</p></div>`;
+  L.forEach((q,i)=>{const o=estOuvert(q);
+    h+=`<div class="card ${o?'g':''}"><div class="tag" style="color:var(--soft)">${esc(jourTxt(q.quand))}</div><h2 style="margin-top:4px">${esc(q.titre)}</h2>
+     <div class="statut" style="font-size:15px"><span class="dot" style="background:${o?'var(--ok)':'var(--mute)'}"></span>${esc(etatTexte(q))}</div>
+     <p class="muted" style="margin:6px 0 0">${q.quiz.questions.length} question${q.quiz.questions.length>1?'s':''} · ${texteDuree(q.quiz)}</p>
+     ${o?`<button class="btn wa" data-qwa="${i}">📲 Prévenir les stagiaires sur WhatsApp</button><button class="btn ko" data-qtog="${i}">🔒 Fermer le quiz</button>`:`<button class="btn" data-qtog="${i}">🔓 Ouvrir le quiz aux stagiaires</button>`}
+     <div data-qdur="${i}"></div>
+     <button class="btn sec" data-qrep="${i}">📊 Réponses</button>
+     <button class="btn sec" data-qmod="${i}">✏️ Modifier les questions</button>
+     <button class="btn small ko" data-qsup="${i}">🗑️ Supprimer ce quiz</button><div data-qconf="${i}"></div></div>`});
+  h+=`<button class="btn sec" id="maj">🔄 Actualiser</button><p class="muted">Un changement met quelques minutes à arriver chez les stagiaires (le temps que Google se mette à jour).</p>`;
+  app.innerHTML=h;
+  document.getElementById('bk').onclick=accueil;
+  document.getElementById('new').onclick=()=>nouveauQuizF();
+  document.getElementById('maj').onclick=()=>recharger(()=>mesQuizEcran());
+  const Q=b=>L[+(b.dataset.qwa||b.dataset.qtog||b.dataset.qrep||b.dataset.qmod||b.dataset.qsup)];
+  app.querySelectorAll('[data-qwa]').forEach(b=>b.onclick=()=>{const q=Q(b);ouvrirWhatsApp(messageWhatsApp(`Le quiz « ${q.titre} » de ${q.auteur.nom}`,q))});
+  app.querySelectorAll('[data-qrep]').forEach(b=>b.onclick=()=>{const q=Q(b);reponses(cibleQF(q,()=>mesQuizEcran()))});
+  app.querySelectorAll('[data-qmod]').forEach(b=>b.onclick=()=>editeurQF(Q(b)));
+  app.querySelectorAll('[data-qtog]').forEach(b=>b.onclick=()=>{const q=Q(b), i=b.dataset.qtog;
+    const faire=async(ouvrir,duree)=>{b.disabled=true;b.textContent='Un instant…';
+      try{await changerQF(q,ouvrir,duree)}catch(e){alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");return mesQuizEcran()}
+      mesQuizEcran(ouvrir?`✅ « ${q.titre} » ouvert${duree?` avec un chrono de ${duree} min`:''}. Il apparaîtra chez les stagiaires d'ici quelques minutes.`:`✅ « ${q.titre} » fermé.`)};
+    if(estOuvert(q))return faire(false);
+    choixDuree(app.querySelector(`[data-qdur="${i}"]`),d=>faire(true,d))});
+  app.querySelectorAll('[data-qsup]').forEach(b=>b.onclick=()=>{const q=Q(b);
+    confirmerIci(app.querySelector(`[data-qconf="${b.dataset.qsup}"]`),`Supprimer le quiz « ${esc(q.titre)} » ? Les stagiaires ne le verront plus. Les réponses déjà envoyées restent chez Hamid.`,'🗑️ Oui, supprimer',async()=>{
+      try{await envoyerForm(FORM_QUIZ,{[EQ.journee]:'quizf',[EQ.statut]:'supprime',[EQ.contenu]:JSON.stringify({id:q.id})})}
+      catch(e){alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");return mesQuizEcran()}
+      noterLocalQF(q.id,{supprime:true});mesQuizEcran(`🗑️ « ${q.titre} » supprimé.`)})});
+  haut();
+}
+function nouveauQuizF(){
+  const moi=moiF(); if(!moi)return accueil();
+  app.innerHTML=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>➕ Nouveau quiz</h1>
+   <div class="card o"><label for="qt" style="margin-top:0">Titre du quiz</label><input type="text" id="qt" placeholder="Par exemple : Les squats" maxlength="80">
+    <label for="qd">Date</label><input type="date" id="qd" value="${isoJour(new Date())}">
+    <div class="err hide" id="qer"></div>
+    <button class="btn" id="go">Continuer : écrire les questions</button></div>`;
+  document.getElementById('bk').onclick=accueil;
+  document.getElementById('go').onclick=()=>{
+    const titre=document.getElementById('qt').value.trim().replace(/\s+/g,' '), quand=document.getElementById('qd').value||isoJour(new Date());
+    const er=document.getElementById('qer');
+    if(!titre){er.textContent='Écris un titre.';er.classList.remove('hide');return}
+    const m=quand.match(/^\d{4}-(\d{2})-(\d{2})$/), jm=m?m[2]+'/'+m[1]:jjmm(Date.now());
+    // le « label » ne change plus jamais : c'est lui qui relie les réponses des stagiaires à ce quiz
+    let label=`Quiz de ${moi.prenom} – ${titre} (${jm})`, k=2; const base=label;
+    while(Object.values(QUIZF).some(q=>q.label===label))label=`${base} n°${k++}`;
+    const r={id:nouvelId(),titre,quand,label,auteur:{id:moi.id,nom:moi.prenom},cree:Date.now()};
+    editeur({tag:'Nouveau quiz · '+jourTxt(quand),titre,z:{ressenti:[],questions:[{q:'',o:['','',''],b:-1,e:''}]},sansGen:!peut('quiz'),
+      retour:()=>mesQuizEcran(),reouvrir:()=>mesQuizEcran(),texteEnregistrer:'Enregistrer mon quiz',
+      enregistrer:async propre=>{await enregistrerQuizF(r,propre);return `✅ « ${titre} » enregistré. Il reste caché tant que tu ne l'as pas ouvert.`},
+      apres:m=>mesQuizEcran(m)});
+  };
+  haut();
+}
+// ---- Hamid : les quiz des autres formateurs ----
+function quizFAdmin(msg){
+  if(!estAdmin())return mesQuizEcran();
+  const actifs=new Set(FORMATEURS.map(f=>f.id));
+  const L=Object.values(QUIZF).sort((a,b)=>String(a.auteur.nom).localeCompare(String(b.auteur.nom),'fr')||String(b.quand||'').localeCompare(String(a.quand||'')));
+  let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>📝 Les quiz des autres formateurs</h1>
+   ${msg?`<div class="ok" style="margin:-6px 0 14px">${esc(msg)}</div>`:''}`;
+  if(!L.length)h+=`<div class="card"><p class="muted" style="margin:0">Pas encore de quiz.</p></div>`;
+  L.forEach((q,i)=>{const o=estOuvert(q);
+    h+=`<div class="card ${o?'g':''}"><div class="tag" style="color:var(--soft)">Quiz de ${esc(q.auteur.nom)}${actifs.has(q.auteur.id)?'':' (accès retiré)'} · ${esc(jourTxt(q.quand))}</div><h2 style="margin-top:4px">${esc(q.titre)}</h2>
+     <div class="statut" style="font-size:15px"><span class="dot" style="background:${o?'var(--ok)':'var(--mute)'}"></span>${esc(etatTexte(q))}</div>
+     <p class="muted" style="margin:6px 0 0">${q.quiz.questions.length} question${q.quiz.questions.length>1?'s':''}</p>
+     <button class="btn sec" data-qv="${i}">👀 Voir les questions</button><button class="btn sec" data-qr="${i}">📊 Réponses et résumé</button>
+     ${o?`<button class="btn small ko" data-qf="${i}">🔒 Fermer ce quiz</button>`:''}</div>`});
+  h+=`<button class="btn sec" id="maj">🔄 Actualiser</button>`;
+  app.innerHTML=h;
+  document.getElementById('bk').onclick=accueil;
+  document.getElementById('maj').onclick=()=>recharger(()=>quizFAdmin());
+  app.querySelectorAll('[data-qv]').forEach(b=>b.onclick=()=>{const q=L[+b.dataset.qv];voirQuiz('Quiz de '+q.auteur.nom,q.titre,q.quiz,()=>quizFAdmin())});
+  app.querySelectorAll('[data-qr]').forEach(b=>b.onclick=()=>reponses(cibleQF(L[+b.dataset.qr],()=>quizFAdmin())));
+  app.querySelectorAll('[data-qf]').forEach(b=>b.onclick=async()=>{const q=L[+b.dataset.qf];b.disabled=true;b.textContent='Un instant…';
+    try{await changerQF(q,false)}catch(e){alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");return quizFAdmin()}
+    quizFAdmin(`✅ « ${q.titre} » fermé.`)});
+  haut();
+}
+// ---- Hamid : ajouter / retirer un formateur, et ce qu'ils peuvent voir ----
+async function enregistrerFormateurs(liste){
+  await envoyerForm(FORM_QUIZ,{[EQ.journee]:'formateurs',[EQ.statut]:'liste',[EQ.contenu]:JSON.stringify({liste})});
+  FORMATEURS=liste;FORMATEURS_LUS=true;ecrire('local_formateurs',{liste,at:Date.now()});
+}
+async function enregistrerPartage(v){
+  await envoyerForm(FORM_QUIZ,{[EQ.journee]:'partage',[EQ.statut]:'etat',[EQ.contenu]:JSON.stringify(v)});
+  PARTAGE=Object.assign({},PARTAGE_DEFAUT,v);ecrire('local_partage',{v,at:Date.now()});
+}
+const PARTAGE_TEXTES=[['stag','Voir la liste des stagiaires / apprentis'],['rep','Voir les réponses et bilans des stagiaires'],['cours','Voir mes cours, diapos et documents'],['roue','Utiliser la roue'],['quiz','Voir mes quiz et mes questions']];
+function autresFormateurs(msg){
+  if(!estAdmin())return accueil();
+  let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>👥 Autres formateurs</h1>
+   ${msg?`<div class="ok" style="margin:-6px 0 14px">${esc(msg)}</div>`:''}
+   <p class="muted" style="margin-top:0">Tu restes le seul à tout voir et à tout décider. Chaque autre formateur entre avec son propre code et fait ses propres quiz.</p>
+   <div class="card g"><h2>Ont accès (${FORMATEURS.length})</h2>`+(FORMATEURS.length?FORMATEURS.map(f=>`<div class="stag"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><span><b>${esc(f.prenom)} ${esc(f.nom)}</b>${f.at?`<div class="d">Ajouté le ${esc(jjmm(f.at))}</div>`:''}</span><button class="btn small ko" style="margin:0;flex:none" data-fret="${esc(f.id)}">Retirer</button></div><div data-fconf="${esc(f.id)}"></div></div>`).join(''):`<p class="muted" style="margin:0">Personne pour l'instant.</p>`)+`</div>
+   <div class="card o"><h2>➕ Ajouter un formateur</h2>
+    <label for="fp" style="margin-top:0">Prénom</label><input id="fp" type="text" autocomplete="off" maxlength="40">
+    <label for="fno">Nom (facultatif)</label><input id="fno" type="text" autocomplete="off" maxlength="40">
+    <label for="fc1">Son code (au moins 6 chiffres ou lettres)</label><input id="fc1" type="password" autocomplete="new-password">
+    <label for="fc2">Écris le code une deuxième fois</label><input id="fc2" type="password" autocomplete="new-password">
+    <label class="check"><input type="checkbox" id="fvoir"> Afficher le code</label>
+    <div class="err hide" id="fer"></div>
+    <button class="btn" id="fadd">➕ Ajouter ce formateur</button>
+    <p class="muted" style="margin-bottom:0">Donne-lui son code et l'adresse de l'espace formateur. Son code marche d'ici quelques minutes (le temps que Google se mette à jour).</p>
+    <button class="btn small sec" id="fadr">📋 Copier l'adresse de l'espace formateur</button></div>
+   <div class="card j"><h2>👀 Ce que les autres formateurs peuvent voir</h2>
+    <p class="muted" style="margin-top:0">Le même réglage pour tous. Ils voient toujours leurs propres quiz et les réponses à leurs quiz.</p>`+
+    PARTAGE_TEXTES.map(([k,t])=>`<label class="check"><input type="checkbox" data-pk="${k}" ${PARTAGE[k]?'checked':''}> ${esc(t)}</label>`).join('')+`
+    <p class="muted">Jamais pour eux : accepter ou supprimer des stagiaires, tes observations et ton résumé WhatsApp, tes réglages, cet écran, tes codes.</p>
+    <button class="btn" id="psave" disabled>💾 Enregistrer ce réglage</button><div class="err hide" id="per"></div></div>
+   ${Object.keys(QUIZF).length?`<button class="btn sec" id="afq">📝 Leurs quiz (${Object.keys(QUIZF).length})</button>`:''}
+   <button class="btn sec" id="maj">🔄 Actualiser</button>`;
+  app.innerHTML=h;
+  document.getElementById('bk').onclick=accueil;
+  document.getElementById('maj').onclick=()=>recharger(()=>autresFormateurs());
+  {const b=document.getElementById('afq');if(b)b.onclick=()=>quizFAdmin()}
+  document.getElementById('fvoir').onchange=e=>{['fc1','fc2'].forEach(i=>document.getElementById(i).type=e.target.checked?'text':'password')};
+  document.getElementById('fadr').onclick=async e=>{const b=e.currentTarget, u=location.origin+location.pathname, ok=await copier(u);
+    b.textContent=ok?'✅ Adresse copiée':u;setTimeout(()=>{b.textContent='📋 Copier l\'adresse de l\'espace formateur'},ok?2500:15000)};
+  document.getElementById('fadd').onclick=async e=>{
+    const er=document.getElementById('fer'), b=e.currentTarget, dire=t=>{er.textContent=t;er.classList.remove('hide')};
+    er.classList.add('hide');
+    const prenom=document.getElementById('fp').value.trim().replace(/\s+/g,' '), nom=document.getElementById('fno').value.trim().replace(/\s+/g,' ');
+    const c1=document.getElementById('fc1').value.trim(), c2=document.getElementById('fc2').value.trim();
+    if(!prenom)return dire('Écris son prénom.');
+    if(c1.length<6)return dire('Le code doit avoir au moins 6 chiffres ou lettres.');
+    if(c1!==c2)return dire('Les deux codes ne sont pas pareils. Écris-les encore une fois.');
+    const h=await empreinte(c1);
+    if(h===CODE_HASH)return dire("C'est ton code à toi : choisis-en un autre pour lui.");
+    if(FORMATEURS.some(f=>f.h===h))return dire('Ce code est déjà celui d\'un autre formateur : choisis-en un autre.');
+    b.disabled=true;b.textContent='⏳ Un instant…';
+    try{await enregistrerFormateurs(FORMATEURS.concat([{id:nouvelId(),prenom,nom,h,at:Date.now()}]))}
+    catch(err){b.disabled=false;b.textContent='➕ Ajouter ce formateur';return dire("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.")}
+    autresFormateurs(`✅ ${prenom} est ajouté. Donne-lui son code et l'adresse de l'espace formateur : son code marchera d'ici quelques minutes.`);
+  };
+  app.querySelectorAll('[data-fret]').forEach(b=>b.onclick=()=>{const f=FORMATEURS.find(x=>x.id===b.dataset.fret);if(!f)return;
+    confirmerIci(app.querySelector(`[data-fconf="${f.id}"]`),`Retirer l'accès de <b>${esc(f.prenom)} ${esc(f.nom)}</b> ? Il ne pourra plus ouvrir l'espace formateur (d'ici quelques minutes, dès que son espace se recharge). Ses quiz ne seront plus montrés aux stagiaires.`,'Oui, retirer',async()=>{
+      try{await enregistrerFormateurs(FORMATEURS.filter(x=>x.id!==f.id))}
+      catch(e){alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");return autresFormateurs()}
+      autresFormateurs(`✅ ${f.prenom} n'a plus accès.`)})});
+  const ps=document.getElementById('psave');
+  app.querySelectorAll('[data-pk]').forEach(c=>c.onchange=()=>{ps.disabled=false});
+  ps.onclick=async()=>{
+    const v={};PARTAGE_TEXTES.forEach(([k])=>{v[k]=!!app.querySelector(`[data-pk="${k}"]`).checked});
+    ps.disabled=true;ps.textContent='⏳ Enregistrement…';
+    try{await enregistrerPartage(v)}
+    catch(e){ps.disabled=false;ps.textContent='💾 Enregistrer ce réglage';const er=document.getElementById('per');er.textContent="Ça n'a pas marché. Vérifie ta connexion internet et réessaie.";er.classList.remove('hide');return}
+    const y=window.scrollY;autresFormateurs('✅ Réglage enregistré. Les autres formateurs le verront d\'ici quelques minutes.');window.scrollTo(0,y);
+  };
+  haut();
+}
+
+// ======= 06/11 : « 💻 Ouvrir mon espace sur mon PC » : QR code + lien (#p=…) =======
+// Le lien emporte les notes et réglages de cet appareil (clés cqpf_…), jamais le code ni le blocage.
+// Sur l'autre appareil, le code est toujours demandé ; les données ne sont copiées qu'après le bon code,
+// et seulement si c'est la même personne. Une seule fois, 7 jours ; jamais bloqué à cause de la connexion.
+function idAppareilF(){let d=lire('dev_id','');if(!d){d=nouvelId();ecrire('dev_id',d)}return d}
+function empreinteLienF(t){let h=5381;for(let i=0;i<t.length;i++)h=((h*33)^t.charCodeAt(i))>>>0;return h.toString(36)+'_'+t.length}
+const CLES_NON_TRANSPORT=['ok','bloque','qui','dev_id','liens_utilises'];
+function cleTransportable(k){return typeof k==='string'&&!!k&&!CLES_NON_TRANSPORT.includes(k)}
+function donneesAppareil(){
+  const s={};
+  try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);
+    if(k&&k.startsWith('cqpf_')&&cleTransportable(k.slice(5))){const v=localStorage.getItem(k);if(v!=null)s[k.slice(5)]=v}}}catch(e){}
+  return s;
+}
+async function lienPC(n){
+  const s=donneesAppareil(), q=estAdmin()?'admin':((moiF()||{}).id||'');
+  // si c'est trop long : on enlève d'abord les copies de 15 min (local_…), puis les plus longues
+  const ordre=Object.keys(s).sort((a,b)=>((a.startsWith('local_')?0:1)-(b.startsWith('local_')?0:1))||(s[b].length-s[a].length));
+  let retires=0;
+  for(;;){
+    const t=await encoderLien({v:1,c:Math.round(Date.now()/1000),n,d:idAppareilF(),q,s});
+    if(t.length<=60000||!ordre.length)return {lien:location.origin+location.pathname+'#p='+t,retires};
+    delete s[ordre.shift()];retires++;
+  }
+}
+async function ecranPC(){
+  const adm=estAdmin(), titre='💻 Ouvrir mon espace sur mon PC';
+  app.innerHTML=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>${titre}</h1><p class="muted">Préparation…</p>`;
+  document.getElementById('bk').onclick=accueil;
+  haut();
+  let R=null;try{R=await lienPC(nouvelId().slice(0,10))}catch(e){R=null}
+  if(!R){app.innerHTML=`<button class="back" id="bk">← Retour</button><div class="card r"><h2>Je n'ai pas pu préparer le lien</h2><p>Réessaie dans un moment.</p></div>`;document.getElementById('bk').onclick=accueil;return}
+  let qr=null;try{qr=R.lien.length<=2900&&typeof qrSvg==='function'?qrSvg(R.lien):null}catch(e){qr=null}
+  app.innerHTML=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>${titre}</h1>
+   <div class="card o nopli">
+    <h2>Ouvre ce lien sur ton ordinateur</h2>
+    <p style="margin:0">Touche « 📤 M'envoyer le lien », envoie-le-toi (par e-mail ou WhatsApp), puis ouvre-le sur ton ordinateur. Ton code te sera demandé.</p>
+    ${qr?`<div class="qr">${qr}</div><p class="muted" style="margin:4px 0 0;text-align:center">Si ton ordinateur a une caméra, tu peux aussi viser ce code.</p>`:`<p class="muted" style="margin:10px 0 0">Tes notes sont trop longues pour tenir dans un code à viser : utilise « 📤 M'envoyer le lien ».</p>`}
+    <button class="btn" id="env">📤 M'envoyer le lien</button>
+    <div class="lien hide" id="lien"></div>
+    <div class="ok hide" id="okl" style="margin-top:10px"></div>
+   </div>
+   <div class="card j nopli"><h2>⚠️ À savoir</h2>
+    <p style="margin:0 0 8px">• Le lien marche <b>une seule fois</b>, pendant <b>7 jours</b>.</p>
+    <p style="margin:0 0 8px">• Ton code est demandé sur l'ordinateur : le lien seul n'ouvre pas ton espace.</p>
+    <p style="margin:0">• Il emporte tes notes et tes réglages de cet appareil${adm?' (pas tes musiques : elles restent sur ce téléphone)':''}. Ton espace reste aussi ouvert sur ce téléphone.</p>
+    ${R.retires?`<p style="margin:8px 0 0;color:var(--ja)">• Tes notes sont très nombreuses : les plus longues ne sont pas dans le lien.</p>`:''}</div>
+   <button class="btn sec" id="bk2">← Retour à l'accueil</button>`;
+  document.getElementById('bk').onclick=accueil;document.getElementById('bk2').onclick=accueil;
+  document.getElementById('env').onclick=async()=>{
+    const ok=document.getElementById('okl'), zl=document.getElementById('lien');
+    if(navigator.share){try{await navigator.share({title:'Mon espace formateur CQP',text:'Mon lien pour ouvrir mon espace formateur CQP sur mon ordinateur (une seule fois) :',url:R.lien});return}catch(e){if(e&&e.name==='AbortError')return}}
+    const c=await copier(R.lien);
+    zl.textContent=R.lien;zl.classList.remove('hide');
+    ok.textContent=c?'✅ Lien copié : colle-le dans un message pour toi (e-mail ou WhatsApp).':'Appuie longtemps sur le lien ci-dessus, puis choisis « Copier ».';
+    ok.classList.remove('hide');
+  };
+}
+// Sur le nouvel appareil, juste après le bon code
+async function appliquerLienPC(){
+  const t=LIEN_PC; LIEN_PC=null;
+  const fin=(titre,texte,cls)=>{app.innerHTML=`<div class="tag">Espace formateur</div><h1>💻 Mon espace sur cet appareil</h1>
+    <div class="card nopli ${cls}"><h2>${titre}</h2><p>${texte}</p><button class="btn" id="okc">Continuer</button></div>`;
+    document.getElementById('okc').onclick=demarrer;haut()};
+  app.innerHTML=`<p class="muted">Chargement…</p>`;
+  let p;
+  try{p=await decoderLien(t);if(!p||p.v!==1||!p.s||typeof p.s!=='object')throw 0}
+  catch(e){return fin('Lien abîmé',"Ce lien ne marche pas. Fabrique-en un nouveau depuis ton autre appareil.",'r')}
+  if(!p.c||Date.now()-p.c*1000>7*24*3600*1000)return fin('Lien expiré',"Ce lien n'est plus valable (7 jours). Fabrique-en un nouveau depuis ton autre appareil.",'r');
+  const qui=estAdmin()?'admin':((moiF()||{}).id||'');
+  if(!qui||p.q!==qui)return fin("Ce lien n'est pas le tien","Ce lien a été fabriqué dans l'espace d'un autre formateur. Rien n'a été copié sur cet appareil.",'r');
+  const cle=empreinteLienF(t), U=lire('liens_utilises',[]);
+  if(U.includes(cle))return fin('Lien déjà utilisé',"Ce lien a déjà été utilisé sur cet appareil.",'j');
+  if(p.d&&p.d===idAppareilF())return fin("Ouvre-le sur l'autre appareil","Ce lien a été fabriqué sur cet appareil-ci. Ouvre-le sur ton ordinateur.",'j');
+  // lien déjà ouvert sur un autre appareil ? (si le tableau répond ; sinon on continue)
+  if(p.n){try{const g=await etatGeneral(), u=g.liensUtilises&&g.liensUtilises[p.n];
+    if(u&&u!==idAppareilF())return fin('Lien déjà utilisé',"Ce lien a déjà été ouvert sur un autre appareil. Fabrique-en un nouveau depuis ton autre appareil.",'j')}catch(e){}}
+  let n=0;
+  Object.entries(p.s).forEach(([k,v])=>{if(!cleTransportable(k)||typeof v!=='string')return;try{localStorage.setItem('cqpf_'+k,v);n++}catch(e){}});
+  U.push(cle);ecrire('liens_utilises',U.slice(-50));
+  if(p.n)envoyerForm(FORM_QUIZ,{[EQ.journee]:'lienf',[EQ.statut]:'utilise',[EQ.contenu]:JSON.stringify({n:p.n,dev:idAppareilF()})}).catch(()=>{});
+  fin("✅ C'est bon, ton espace est sur cet appareil",`Tes notes et tes réglages sont récupérés (${n} élément${n>1?'s':''}). La prochaine fois, ouvre simplement l'adresse habituelle de ton espace formateur.`,'g');
+}
+
 const MEMO_CLE='cqpf_ecran';
 const MEMO_ECRANS={
  accueil:{},
@@ -2261,14 +2730,18 @@ const MEMO_ECRANS={
   const accOrig=window.accueil;
   window.accueil=function(...a){
     if(premier){ premier=false; const m=ss.get();
-      if(m&&m.s&&m.s!=='accueil'&&cible[m.s]){ try{ const arg=cible[m.s].trouver?cible[m.s].trouver(m.k):undefined;
+      if(m&&m.s&&m.s!=='accueil'&&cible[m.s]&&ecranPermis(m.s)){ try{ const arg=cible[m.s].trouver?cible[m.s].trouver(m.k):undefined;
           if(!cible[m.s].trouver||arg){ enCours=true; const r=window[m.s](arg); enCours=false; ss.set(m);
             const y=+m.y||0; if(y) Promise.resolve(r).then(()=>setTimeout(()=>window.scrollTo(0,y),350));
             return r } }catch(e){ enCours=false } } }
     return accOrig.apply(this,a) };
   addEventListener('scroll',()=>{ clearTimeout(tY); tY=setTimeout(()=>{ const m=ss.get(); if(m){ m.y=Math.round(window.scrollY); ss.set(m) } },250) },{passive:true});
 })();
-lire('ok','')===CODE_HASH ? demarrer() : ecranCode();
+{const t=location.hash.match(/^#p=([A-Za-z0-9_-]+)/);
+ if(t){LIEN_PC=t[1];try{history.replaceState(null,'',location.pathname+location.search)}catch(e){}}}
+LIEN_PC ? ecranCode() : (estAdmin()||moiF()) ? demarrer() : ecranCode();
+// si l'espace est déjà ouvert dans cet onglet, le lien ne recharge pas la page
+window.addEventListener('hashchange',()=>{const t=location.hash.match(/^#p=([A-Za-z0-9_-]+)/);if(t){LIEN_PC=t[1];try{history.replaceState(null,'',location.pathname+location.search)}catch(e){};ecranCode()}});
 </script>
 </body>
 </html>

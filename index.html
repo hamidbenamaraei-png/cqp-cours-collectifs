@@ -63,7 +63,7 @@ summary{cursor:pointer;font-weight:700}
 </head>
 <body>
 <div class="wrap" id="app"></div>
-<script src="commun.js?v=202611051500"></script>
+<script src="commun.js?v=202611061200"></script>
 <script src="qr.js?v=202611051500"></script>
 <script src="roue.js?v=202610260957"></script>
 <script src="bonhommes3d.js?v=202610261832"></script>
@@ -127,6 +127,7 @@ function confirmer(nom,prenom,st,str){
 
 // ======= Les quiz : une « session » = un quiz ouvert (journée ou révision) =======
 let ETAT = null, REVS = {}; // état des quiz (ouvert ou non), lu dans le tableau du formateur
+let QF = []; // 06/11 : quiz ouverts par d'autres formateurs (« Quiz de … »)
 let FICHES = [], MES_RETOURS = [], DIAPOS = []; // DIAPOS : journées dont Hamid montre les diapos // MES_RETOURS : retours d'Hamid déchiffrés sur ce téléphone // fiches de révision ouvertes par Hamid (renfo.bas, etir.haut, meth…)
 let ROUE = null, NOMS = {}, MINUTEUR = false; // MINUTEUR : Hamid montre le minuteur ⏱️ aux stagiaires // la roue (tirage préparé par Hamid) et les prénoms des stagiaires
 function sessionJournee(j){
@@ -135,6 +136,11 @@ function sessionJournee(j){
 }
 function sessionRevision(r){
   return {cle:'rev:'+r.id,label:r.titre,tag:'Révision',titre:'🧠 '+r.titre,z:r.quiz,duree:r.duree||0,ouvCle:r.ouvCle||''};
+}
+// 06/11 : quiz d'un autre formateur : mêmes réponses, même formulaire, avec son prénom
+function sessionQF(q){
+  const qui=(q.auteur&&q.auteur.nom)||'ton formateur';
+  return {cle:'qf:'+q.id,label:q.label,tag:'Quiz de '+qui,titre:'📝 '+q.titre,z:q.quiz,duree:q.duree||0,ouvCle:q.ouvCle||'',qui};
 }
 function revisionOuverte(){
   return Object.values(REVS||{}).filter(estOuvert).sort((a,b)=>(b.ouvertAt||0)-(a.ouvertAt||0))[0]||null;
@@ -152,7 +158,7 @@ function boutonQuiz(S,texte){
   if(dejaFerme(S)&&lire('fermes',{})[idSession(S)+'#quitte'])return `<p class="done" style="margin:12px 0 0;color:var(--ko)">🚪 Quiz fermé : tu as quitté la page.</p><p class="muted" style="margin:4px 0 0">Tes réponses déjà données ont été envoyées.</p>`;
   if(S.duree&&dejaFerme(S))return `<p class="done" style="margin:12px 0 0">✅ Quiz envoyé.</p><p class="muted" style="margin:4px 0 0">Ta correction est dans « 📈 Mes révisions ».</p>`;
   const D=brouillons()[idSession(S)];
-  if(D&&!D.envoye&&D.attenteReprise)return `<p class="muted" style="margin:12px 0 4px">🔓 Hamid t'a redonné accès au quiz.</p><button class="btn" data-ses="${esc(idSession(S))}">⏱️ Reprendre le quiz${D.duree?` (il te reste ${mmss(D.restant||0)})`:''}</button>`;
+  if(D&&!D.envoye&&D.attenteReprise)return `<p class="muted" style="margin:12px 0 4px">🔓 ${esc(S.qui||'Hamid')} t'a redonné accès au quiz.</p><button class="btn" data-ses="${esc(idSession(S))}">⏱️ Reprendre le quiz${D.duree?` (il te reste ${mmss(D.restant||0)})`:''}</button>`;
   if(D&&!D.envoye&&D.duree)return `<button class="btn" data-ses="${esc(idSession(S))}">⏱️ Reprendre le quiz (il reste ${mmss(reste(D))})</button>`;
   const envoyes=lire('envoyes',{});
   return `<button class="btn" data-ses="${esc(idSession(S))}">${texte}${envoyes[S.cle]&&!S.duree?' ✅':''}${S.duree?` · ⏱️ ${S.duree} min`:''}</button>`;
@@ -176,6 +182,10 @@ function accueil(){
     h+=`<div class="card o"><div class="tag">🧠 Révision</div><h2 style="margin-top:4px">${esc(rev.titre)}</h2>
       <p class="muted" style="margin:0">Un petit quiz pour revoir ce qu'on a vu depuis le début. ${texteDuree(rev.quiz)}</p>
       ${boutonQuiz(S,'🧠 Faire la révision')}</div>`}
+  QF.forEach(q=>{const S=sessionQF(q);sessions[idSession(S)]=S;
+    h+=`<div class="card o"><div class="tag">📝 Quiz de ${esc(S.qui)}</div><h2 style="margin-top:4px">${esc(q.titre)}</h2>
+      <p class="muted" style="margin:0">Un quiz préparé par ${esc(S.qui)}. ${texteDuree(q.quiz)}</p>
+      ${boutonQuiz(S,'📝 Faire le quiz')}</div>`});
   if(MES_RETOURS.length)h+=`<div class="card j"><div class="tag">📝 Mes retours</div><h2 style="margin-top:4px">${MES_RETOURS.length} retour${MES_RETOURS.length>1?'s':''} de Hamid</h2>
       <p class="muted" style="margin:0">Ses notes après tes passages, pour progresser.</p>
       <button class="btn" id="mr">📝 Lire mes retours</button></div>`;
@@ -315,7 +325,7 @@ async function verifier(){
     app.innerHTML = `<div class="card"><h2>Pas de connexion</h2><p>Vérifie ta connexion internet, puis réessaie.</p><button class="btn" id="re">Réessayer</button></div>`;
     document.getElementById('re').onclick=verifier;return;
   }
-  ETAT=g.quiz; REVS=g.revisions||{}; ROUE=g.roue||null; FICHES=fichesOuvertes(g); DIAPOS=diaposOuvertes(g); MINUTEUR=minuteurMontre(g);COURS_PREP=crPrep(g);
+  ETAT=g.quiz; REVS=g.revisions||{}; QF=quizFOuverts(g); ROUE=g.roue||null; FICHES=fichesOuvertes(g); DIAPOS=diaposOuvertes(g); MINUTEUR=minuteurMontre(g);COURS_PREP=crPrep(g);
   NOMS={};Object.values(g.stagiaires||{}).forEach(x=>NOMS[x.id]=x.prenom);
   if(!moi.id){moi.id=nouvelId();ecrire('moi',moi);envoyerDemande();return attente(true)}
   let s=g.stagiaires[moi.id];
@@ -706,7 +716,7 @@ async function rafraichirRoue(){
     app.innerHTML=`<div class="card"><h2>Pas de connexion</h2><p>Vérifie ta connexion internet, puis réessaie.</p><button class="btn" id="re">Réessayer</button><button class="btn sec" id="ac">← Retour</button></div>`;
     document.getElementById('re').onclick=rafraichirRoue;document.getElementById('ac').onclick=accueil;return;
   }
-  ETAT=g.quiz;REVS=g.revisions||{};ROUE=g.roue||null;FICHES=fichesOuvertes(g);DIAPOS=diaposOuvertes(g);MINUTEUR=minuteurMontre(g);COURS_PREP=crPrep(g);
+  ETAT=g.quiz;REVS=g.revisions||{};QF=quizFOuverts(g);ROUE=g.roue||null;FICHES=fichesOuvertes(g);DIAPOS=diaposOuvertes(g);MINUTEUR=minuteurMontre(g);COURS_PREP=crPrep(g);
   NOMS={};Object.values(g.stagiaires||{}).forEach(x=>NOMS[x.id]=x.prenom);
   const s=g.stagiaires[moi.id];
   if(!s||s.statut!=='accepte')return verifier();
