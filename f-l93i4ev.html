@@ -1252,7 +1252,7 @@ function testerQuiz(z,titre,retour,duree,corriger){
       <div class="card"><h2 style="margin-top:0">${esc(q.q)}</h2>${q.o.map((o,k)=>`<button class="btn sec" data-k="${k}" style="text-align:left">${esc(o)}</button>`).join('')}</div>
       <button class="btn small sec" id="tnote">✏️ Noter un souci${rem()[q.q]?' · ✅ noté':''}</button>
       <div id="tnz" class="hide card nopli" style="margin-top:8px"><div style="display:flex;flex-wrap:wrap;gap:8px">${['Faute','Mal formulée','Mal expliquée'].map(t=>`<button class="btn small sec" style="width:auto;margin:0" data-ty="${t}">${t}</button>`).join('')}</div>
-        <textarea id="tnt" placeholder="Ton remarque (facultatif) : écris ou dicte avec le micro du clavier" style="margin-top:8px;min-height:70px"></textarea>
+        <textarea id="tnt" placeholder="Ta remarque (facultatif) : écris ou dicte avec le micro du clavier" style="margin-top:8px;min-height:70px"></textarea>
         <button class="btn small" id="tnok">💾 Enregistrer la remarque</button><div class="ok hide" id="tnm"></div></div>`;
     {let ty=(rem()[q.q]||{}).type||'';const z2=document.getElementById('tnz'),ta=document.getElementById('tnt');ta.value=(rem()[q.q]||{}).txt||'';
      const marque=()=>z2.querySelectorAll('[data-ty]').forEach(b=>{b.classList.toggle('sec',b.dataset.ty!==ty)});marque();
