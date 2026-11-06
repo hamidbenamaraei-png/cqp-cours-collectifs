@@ -404,8 +404,11 @@ function prepTexte(j){const z=quizDe(j), n=(z&&z.questions||[]).length;
     const o=document.getElementById(autre);if(o)o.classList.add('hide');
     if(m){m.classList.remove('hide');m.scrollTop=0}};
   hb.onclick=()=>ouvrir('menu-outils','param-o'); pb.onclick=()=>ouvrir('param-o','menu-outils');
-  const maj=()=>{let h=true;try{h=!estAdmin()||!!document.getElementById('c')}catch(e){}hb.hidden=pb.hidden=h;const a=document.getElementById('app');if(a)a.style.paddingTop=h?'':'54px'};
-  addEventListener('DOMContentLoaded',()=>{document.body.appendChild(pb);document.body.appendChild(hb);maj();new MutationObserver(maj).observe(document.getElementById('app'),{childList:true})});
+  // 06/11 : 🏠 = revenir à l'accueil (le seul bouton qui y ramène quand on le veut)
+  const ab=mk('ab','🏠','Accueil','calc(max(12px,env(safe-area-inset-right,0px)) + 120px)');
+  ab.onclick=()=>{MENU_RET=null;PARAM_RET=null;accueil();haut()};
+  const maj=()=>{let h=true;try{h=!estAdmin()||!!document.getElementById('c')}catch(e){}hb.hidden=pb.hidden=ab.hidden=h;const a=document.getElementById('app');if(a)a.style.paddingTop=h?'':'54px'};
+  addEventListener('DOMContentLoaded',()=>{document.body.appendChild(ab);document.body.appendChild(pb);document.body.appendChild(hb);maj();new MutationObserver(maj).observe(document.getElementById('app'),{childList:true})});
 })();
 let MENU_RET=null, PARAM_RET=null;
 // 06/11 : calendrier du mois pour « Mon agenda » (menu ☰)
@@ -428,7 +431,7 @@ function calAgenda(){
 }
 function accueil(){
   if(!estAdmin())return accueilFormateur();
-  let h=`<div class="tag">Espace formateur</div><div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h1 style="margin-right:132px">Bonjour Hamid 👋</h1></div>`;
+  let h=`<div class="tag">Espace formateur</div><div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h1 style="margin-right:0">Bonjour Hamid 👋</h1></div>`;
   const nAtt=Object.values(STAG).filter(x=>x.statut==='attente').length, nAcc=Object.values(STAG).filter(x=>x.statut==='accepte').length;
   // 29/10 : la journée du jour (ou la prochaine) en haut, selon le planning ; les journées passées dans un dossier
   const auj=isoJour(new Date());
@@ -456,7 +459,7 @@ function accueil(){
   // 06/11 : « Exercices » déplacés dans le menu ☰ (ligne « 📋 Mes exercices »)
   // 06/11 : menu ☰ « Mes outils » (roue, minuteur, musiques)
   h+=`<div id="menu-outils" class="hide" style="position:fixed;inset:0;z-index:65;background:var(--bg);overflow:auto;padding:calc(10px + env(safe-area-inset-top,0px)) 16px 24px"><div style="max-width:640px;margin:0 auto">
-    <div style="display:flex;align-items:center;height:52px;margin:0 132px 16px 0"><h1 id="menu-t" style="margin:0;line-height:52px;cursor:pointer">Menu</h1></div>
+    <div style="display:flex;align-items:center;height:52px;margin:0 192px 16px 0"><h1 id="menu-t" style="margin:0;line-height:52px;cursor:pointer">Menu</h1></div>
     <button class="btn sec" id="mo-b" style="text-align:left;margin:0 0 14px">🧰 Mes outils <span class="muted" style="float:right">▸</span></button><div id="mo-liste" class="hide">`;
   // 06/11 : la roue retirée du menu à la demande de Hamid
   // 06/11 : « Mes musiques » retirée (les stagiaires cherchent eux-mêmes leurs musiques) ; les musiques déjà gardées restent sur le téléphone
@@ -465,7 +468,7 @@ function accueil(){
     <div class="ok hide" id="tbmok" style="margin-left:48px"></div>`;
   h+=`</div><button class="btn sec" id="ag-b" style="text-align:left;margin:0 0 14px">📅 Mon agenda <span class="muted" style="float:right">▸</span></button><div id="ag-liste" class="hide">${agA||'<p class="muted">Aucune journée pour l\'instant.</p>'}</div><button class="btn sec" id="mx-b" style="text-align:left;margin:0 0 14px">📋 Mes exercices <span class="muted" style="float:right">▸</span></button><button class="btn sec" id="me-b" style="text-align:left;margin:0 0 14px">📏 Méthodes <span class="muted" style="float:right">▸</span></button><div id="me-liste" class="hide"><button class="btn sec" id="meth-b" style="margin:0 0 14px;width:calc(100% - 24px);margin-left:24px;text-align:left">↳ Méthodes d'étirement</button></div></div></div>`;
   h+=`<div id="param-o" class="hide" style="position:fixed;inset:0;z-index:65;background:var(--bg);overflow:auto;padding:calc(10px + env(safe-area-inset-top,0px)) 16px 24px"><div style="max-width:640px;margin:0 auto">
-    <div style="display:flex;align-items:center;height:52px;margin:0 132px 16px 0"><h1 style="margin:0;line-height:52px">Paramètres</h1></div><div id="pa-liste"></div></div></div>`;
+    <div style="display:flex;align-items:center;height:52px;margin:0 192px 16px 0"><h1 style="margin:0;line-height:52px">Paramètres</h1></div><div id="pa-liste"></div></div></div>`;
   // 06/11 : carte « Je prépare mon cours » retirée de l'accueil à la demande de Hamid (la partie « Ses cours préparés » des fiches reste)
   if(false){const M=crModeleChoisi(PREP_COURS);
   h+=`<div class="card o"><h2>📝 Je prépare mon cours</h2><p style="margin:0" class="muted">Les stagiaires / apprentis préparent leur cours (musique, exercices, temps) à partir de ton modèle. Modèle proposé : <b style="color:var(--soft)">${esc(M.nom)}</b> (${crFmt(crCibleModele(M))}).</p>
