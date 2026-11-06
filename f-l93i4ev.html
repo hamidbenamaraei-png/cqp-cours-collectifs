@@ -1230,21 +1230,27 @@ function apercu(cfg){
 
 // ======= Quiz de révision =======
 // 06/11 : Hamid fait un quiz comme un stagiaire, sur son téléphone seulement (rien n'est envoyé)
-function testerQuiz(z,titre,retour){
-  const Q=(z.questions||[]).filter(q=>q&&q.q&&(q.o||[]).length), rep=[], t0=Date.now();
-  const fin=()=>{const sc=Q.filter((q,i)=>rep[i]===q.b).length, m=Math.round((Date.now()-t0)/60000);
+let TEST_CHRONO=null;
+function testerQuiz(z,titre,retour,duree){
+  clearInterval(TEST_CHRONO);
+  const Q=(z.questions||[]).filter(q=>q&&q.q&&(q.o||[]).length), rep=[], t0=Date.now(), finAt=duree?t0+duree*60000:0;
+  const sortir=()=>{clearInterval(TEST_CHRONO);retour()};
+  let fini=false;
+  const fin=(tempsFini)=>{if(fini)return;fini=true;clearInterval(TEST_CHRONO);const sc=Q.filter((q,i)=>rep[i]===q.b).length, m=Math.round((Date.now()-t0)/60000);
     let h=`<button class="back" id="bk">← Retour</button><div class="tag">🧪 Test · rien n'est envoyé</div><h1>${esc(titre)}</h1>
-      <div class="card ${sc/Math.max(1,Q.length)>=.7?'g':sc/Math.max(1,Q.length)>=.5?'j':'r'}"><h2 style="margin:0">Ta note : ${sc} / ${Q.length}</h2><p class="muted" style="margin:6px 0 0">Temps : environ ${Math.max(1,m)} min</p></div>
-      <div class="card"><h2>Les corrections</h2>`+Q.map((q,i)=>`<div class="apq"><b>${i+1}. ${esc(q.q)}</b><div class="d" style="margin-top:4px;color:${rep[i]===q.b?'var(--ok)':'var(--ko)'}">${rep[i]===q.b?'✅ Juste':'❌ Tu as répondu : '+esc(q.o[rep[i]]||'—')}</div>${rep[i]!==q.b?`<div class="d" style="color:var(--ok)">Bonne réponse : ${esc(q.o[q.b])}</div>`:''}${q.e?`<div class="expl">💡 ${esc(q.e)}</div>`:''}</div>`).join('')+`</div>
+      <div class="card ${sc/Math.max(1,Q.length)>=.7?'g':sc/Math.max(1,Q.length)>=.5?'j':'r'}"><h2 style="margin:0">Ta note : ${sc} / ${Q.length}</h2><p class="muted" style="margin:6px 0 0">${tempsFini?`⏰ Temps écoulé (${duree} min) : ${Q.length-rep.filter(x=>x!==undefined).length} question(s) sans réponse.`:`Temps : environ ${Math.max(1,m)} min${duree?` sur ${duree} min`:''}`}</p></div>
+      <div class="card"><h2>Les corrections</h2>`+Q.map((q,i)=>`<div class="apq"><b>${i+1}. ${esc(q.q)}</b><div class="d" style="margin-top:4px;color:${rep[i]===q.b?'var(--ok)':'var(--ko)'}">${rep[i]===q.b?'✅ Juste':rep[i]===undefined?'⏳ Pas répondu':'❌ Tu as répondu : '+esc(q.o[rep[i]]||'—')}</div>${rep[i]!==q.b?`<div class="d" style="color:var(--ok)">Bonne réponse : ${esc(q.o[q.b])}</div>`:''}${q.e?`<div class="expl">💡 ${esc(q.e)}</div>`:''}</div>`).join('')+`</div>
       <button class="btn" id="re">🔁 Recommencer</button><button class="btn sec" id="bk2">← Retour</button>`;
-    app.innerHTML=h;document.getElementById('bk').onclick=retour;document.getElementById('bk2').onclick=retour;document.getElementById('re').onclick=()=>testerQuiz(z,titre,retour);haut()};
-  const poser=i=>{if(i>=Q.length)return fin();const q=Q[i];
+    app.innerHTML=h;document.getElementById('bk').onclick=retour;document.getElementById('bk2').onclick=retour;document.getElementById('re').onclick=()=>testerQuiz(z,titre,retour,duree);haut()};
+  const poser=i=>{if(fini)return;if(i>=Q.length)return fin(false);const q=Q[i];
     app.innerHTML=`<button class="back" id="bk">← Arrêter le test</button><div class="tag">🧪 Test · question ${i+1} / ${Q.length}</div>
       <div style="height:6px;border-radius:3px;background:var(--line);margin:6px 0 14px"><div style="height:6px;border-radius:3px;background:var(--or);width:${Math.round(i/Q.length*100)}%"></div></div>
+      ${finAt?`<div id="tchr" style="font-size:22px;font-weight:900;text-align:center;margin:0 0 10px">⏱️ —</div>`:''}
       <div class="card"><h2 style="margin-top:0">${esc(q.q)}</h2>${q.o.map((o,k)=>`<button class="btn sec" data-k="${k}" style="text-align:left">${esc(o)}</button>`).join('')}</div>`;
-    document.getElementById('bk').onclick=retour;
+    document.getElementById('bk').onclick=sortir;
     app.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{rep[i]=+b.dataset.k;poser(i+1)});haut()};
   if(!Q.length){app.innerHTML=`<button class="back" id="bk">← Retour</button><div class="card"><p class="muted" style="margin:0">Ce quiz n'a pas encore de questions.</p></div>`;document.getElementById('bk').onclick=retour;return}
+  if(finAt)TEST_CHRONO=setInterval(()=>{const r=finAt-Date.now();if(r<=0)return fin(true);const el=document.getElementById('tchr');if(el){const m=Math.floor(r/60000),sec=Math.floor(r%60000/1000);el.textContent=`⏱️ ${m}:${String(sec).padStart(2,'0')}`;el.style.color=r<60000?'var(--ko)':''}},500);
   poser(0);
 }
 function revisionEcran(msg){
@@ -1262,7 +1268,7 @@ function revisionEcran(msg){
      <button class="btn sec" id="rep">📊 Réponses et résumé</button>
      <button class="btn sec" id="mod">✏️ Modifier ce quiz</button></div>`;
     // 06/11 : tester le quiz comme un stagiaire (rien n'est envoyé)
-    h+=`<div class="card"><h2>🧪 Tester le quiz</h2><p class="muted" style="margin-top:0">Fais ce quiz comme un stagiaire, même s'il est caché. Rien n'est envoyé : ça ne compte nulle part.</p><button class="btn sec" id="tst">▶️ Commencer le test</button></div>`}
+    h+=`<div class="card"><h2>🧪 Tester le quiz</h2><p class="muted" style="margin-top:0">Fais ce quiz comme un stagiaire, même s'il est caché. Rien n'est envoyé : ça ne compte nulle part.</p><button class="btn sec" id="tst">▶️ Commencer le test</button><div id="tstdur"></div></div>`}
   h+=`<div class="card o"><h2>🆕 Nouveau quiz</h2><p class="muted" style="margin-top:0">Choisis un ou plusieurs jours de formation : les questions sont tirées au hasard dedans.${rc?' Le quiz en cours sera fermé.':''}</p><button class="btn" id="new">Préparer un nouveau quiz</button></div>`;
   if(autres.length){h+=`<div class="card"><h2>Historique</h2>`+autres.map(r=>`<div class="row" style="align-items:center"><span>${esc(r.titre)} <span class="muted">· ${r.quiz.questions.length} questions</span></span><button class="btn small sec" style="margin:0" data-r="${esc(r.id)}">📊 Réponses</button></div>`).join('')+`</div>`}
   h+=`<button class="btn sec" id="maj">🔄 Actualiser</button>`;
@@ -1274,7 +1280,8 @@ function revisionEcran(msg){
   if(rc){
     const o=estOuvert(rc);
     document.getElementById('rep').onclick=()=>reponses(cibleRevision(rc));
-    document.getElementById('tst').onclick=()=>testerQuiz(rc.quiz,rc.titre,()=>revisionEcran());
+    document.getElementById('tst').onclick=()=>{const zd=document.getElementById('tstdur');choixDuree(zd,d=>testerQuiz(rc.quiz,rc.titre,()=>revisionEcran(),d)); // même choix de chrono que pour les stagiaires
+      zd.querySelector('p.muted').textContent=`Mets le même temps que pour les stagiaires (environ ${dureeQuiz(rc.quiz)} min pour ce quiz). Le chrono démarre tout de suite.`;zd.querySelector('#durok').textContent='▶️ Commencer avec ce temps';zd.querySelector('#dur0').textContent='▶️ Commencer sans chrono'};
     document.getElementById('mod').onclick=()=>editeur({tag:'Révision',titre:rc.titre,z:copie(rc.quiz),retour:()=>revisionEcran(),reouvrir:()=>revisionEcran(),
       note:'Si la révision est déjà ouverte, les changements s\'appliquent aux stagiaires qui ne l\'ont pas encore commencée.',
       enregistrer:async propre=>{await enregistrerRevision(rc,propre);return '✅ Révision enregistrée.'}});
