@@ -411,6 +411,11 @@ function prepTexte(j){const z=quizDe(j), n=(z&&z.questions||[]).length;
   addEventListener('DOMContentLoaded',()=>{document.body.appendChild(pb);document.body.appendChild(hb);maj();new MutationObserver(maj).observe(document.getElementById('app'),{childList:true})});
 })();
 let MENU_RET=null, PARAM_RET=null;
+// 06/11 : quand une catégorie du menu est ouverte, les autres se réduisent de moitié (à gauche)
+const MENU_CATS=[['mo-liste','mo-b'],['ag-liste','ag-b'],['mx-liste','mx-b'],['me-liste','me-b'],['st-liste','st-b'],['fo-liste','fo-b']];
+function menuReduire(){const ouv=MENU_CATS.find(([l])=>{const x=document.getElementById(l);return x&&!x.classList.contains('hide')});
+  MENU_CATS.forEach(([l,b])=>{const bt=document.getElementById(b);if(!bt)return;const w=bt.parentElement&&bt.parentElement.style.display==='flex'?bt.parentElement:bt;
+    w.style.transition='width .2s';w.style.width=ouv&&ouv[0]!==l?'50%':(w===bt?'100%':'')})}
 // 06/11 : ligne du menu avec œil : etat 2 = les stagiaires voient tout (case orange, œil ouvert), 1 = une partie (œil ouvert), 0 = rien (œil fermé)
 function ligneOeil(id,txt,etat,eid,sous){const t=etat===2;
   return `<div style="margin:${sous?'0 0 10px 24px;width:calc(100% - 24px)':'0 0 14px'};display:flex;align-items:stretch;border-radius:14px;overflow:hidden;background:${t?'var(--or)':'#2a3566'}"><button class="btn sec" ${id} style="flex:1;min-width:0;margin:0;text-align:left;background:transparent;border-radius:0;color:${t?'#10162b':'var(--txt)'}">${txt}</button>${eid?`<button ${eid} data-on="${etat?1:0}" aria-label="${etat?'Toucher pour cacher aux stagiaires':'Toucher pour montrer aux stagiaires'}" style="flex:none;width:58px;border:0;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:${t?'#10162b':etat?'var(--txt)':'var(--soft)'}">`:`<span aria-hidden="true" style="flex:none;width:58px;display:flex;align-items:center;justify-content:center;color:${t?'#10162b':etat?'var(--txt)':'var(--soft)'}">`}${etat?OEIL_O:OEIL_F}${eid?'</button>':'</span>'}</div>`}
@@ -510,11 +515,11 @@ function accueil(){
    calAgenda();
    [['mo-liste','mo-b'],['ag-liste','ag-b'],['mx-liste','mx-b'],['me-liste','me-b'],['st-liste','st-b'],['fo-liste','fo-b']].forEach(([l,b],_,T)=>{const ml=document.getElementById(l),mb=document.getElementById(b);mb.onclick=()=>{const o=ml.classList.toggle('hide');mb.querySelector('span').textContent=o?'▸':'▾';
      // 06/11 : une seule catégorie ouverte à la fois
-     if(!o)T.forEach(([l2,b2])=>{if(l2===l)return;const x=document.getElementById(l2);if(x&&!x.classList.contains('hide')){x.classList.add('hide');document.getElementById(b2).querySelector('span').textContent='▸'}})}})
+     if(!o)T.forEach(([l2,b2])=>{if(l2===l)return;const x=document.getElementById(l2);if(x&&!x.classList.contains('hide')){x.classList.add('hide');document.getElementById(b2).querySelector('span').textContent='▸'}});menuReduire()}})
    // 06/11 : toucher « Menu » referme tout et revient au menu de départ
    document.getElementById('menu-t').onclick=()=>{const L=[['mo-liste','mo-b'],['ag-liste','ag-b'],['mx-liste','mx-b'],['me-liste','me-b'],['st-liste','st-b'],['fo-liste','fo-b']];
      if(!L.some(([l])=>!document.getElementById(l).classList.contains('hide'))){document.getElementById('menu-outils').classList.add('hide');return} // tout est fermé : « Menu » ramène à l'accueil
-     L.forEach(([l,b])=>{document.getElementById(l).classList.add('hide');document.getElementById(b).querySelector('span').textContent='▸'});document.getElementById('menu-outils').scrollTop=0};
+     L.forEach(([l,b])=>{document.getElementById(l).classList.add('hide');document.getElementById(b).querySelector('span').textContent='▸'});menuReduire();document.getElementById('menu-outils').scrollTop=0};
    // 06/11 : ce qu'on ouvre depuis le menu : « ← Retour » ramène au menu, à la même partie ouverte
    const menu=document.getElementById('menu-outils');
    menu.addEventListener('click',e=>{const t=e.target.closest('button');if(!t||['mo-b','ag-b','mx-b','me-b','st-b','fo-b','pa-b','rz','out'].includes(t.id))return;
@@ -524,7 +529,7 @@ function accueil(){
    if(PARAM_RET){const r=PARAM_RET;PARAM_RET=null;par.classList.remove('hide');setTimeout(()=>{par.scrollTop=r.y||0},0)}
    if(MENU_RET){const r=MENU_RET;MENU_RET=null;menu.classList.remove('hide');
      [['mo-liste','mo-b',r.mo],['ag-liste','ag-b',r.ag],['mx-liste','mx-b',r.mx],['me-liste','me-b',r.me],['st-liste','st-b',r.st],['fo-liste','fo-b',r.fo]].forEach(([l,b,o])=>{if(o){document.getElementById(l).classList.remove('hide');document.getElementById(b).querySelector('span').textContent='▾'}});
-     setTimeout(()=>{menu.scrollTop=r.y||0},0)}}
+     menuReduire();setTimeout(()=>{menu.scrollTop=r.y||0},0)}}
   {const b=document.getElementById('roue');if(b)b.onclick=()=>roueSimple()}
   {const b=document.getElementById('fiches');if(b)b.onclick=()=>mesExercices()}
 
