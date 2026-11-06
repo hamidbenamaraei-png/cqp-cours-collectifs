@@ -433,7 +433,8 @@ function accueil(){
     <button class="btn small ${MINUTEUR_MONTRE?'':'sec'}" id="tbm">${MINUTEUR_MONTRE?'👀 Montrer le minuteur aux stagiaires / apprentis : Oui · toucher pour Non':'🙈 Montrer le minuteur aux stagiaires / apprentis : Non · toucher pour Oui'}</button>
     <div class="ok hide" id="tbmok"></div></div>`;
   h+=`</div></div></div>`;
-  {const M=crModeleChoisi(PREP_COURS);
+  // 06/11 : carte « Je prépare mon cours » retirée de l'accueil à la demande de Hamid (la partie « Ses cours préparés » des fiches reste)
+  if(false){const M=crModeleChoisi(PREP_COURS);
   h+=`<div class="card o"><h2>📝 Je prépare mon cours</h2><p style="margin:0" class="muted">Les stagiaires / apprentis préparent leur cours (musique, exercices, temps) à partir de ton modèle. Modèle proposé : <b style="color:var(--soft)">${esc(M.nom)}</b> (${crFmt(crCibleModele(M))}).</p>
     <button class="btn sec" id="crp">Ouvrir mes modèles de cours</button>
     <button class="btn small ${PREP_COURS.montrer?'':'sec'}" id="crm">${PREP_COURS.montrer?'👀 Montrer aux stagiaires / apprentis : Oui · toucher pour Non':'🙈 Montrer aux stagiaires / apprentis : Non · toucher pour Oui'}</button>
@@ -468,8 +469,8 @@ function accueil(){
     MINUTEUR_MONTRE=nv;ecrire('local_minuteur',{montrer:nv,at:Date.now()});
     const y=window.scrollY;accueil();window.scrollTo(0,y);
     const ok=document.getElementById('tbmok');ok.textContent=nv?"✅ Le minuteur apparaîtra dans l'espace stagiaires / apprentis d'ici quelques minutes.":"✅ Le minuteur disparaîtra de l'espace stagiaires / apprentis d'ici quelques minutes.";ok.classList.remove('hide')};
-  document.getElementById('crp').onclick=()=>coursPrepEcran();
-  document.getElementById('crm').onclick=async e=>{
+  if(document.getElementById('crp'))document.getElementById('crp').onclick=()=>coursPrepEcran();
+  if(document.getElementById('crm'))document.getElementById('crm').onclick=async e=>{
     const nv=!PREP_COURS.montrer, b=e.currentTarget;b.disabled=true;b.textContent='⏳ Un instant…';
     try{await enregistrerPrepCours(Object.assign({},PREP_COURS,{montrer:nv}))}
     catch(err){alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");return accueil()}
