@@ -414,3 +414,56 @@ function dpVoir(f){
   z.querySelector('#dp-vdl').onclick=()=>dpTelecharger(f);
   const vp=z.querySelector('#dp-vpdf');if(vp)vp.onclick=()=>{const u=sur('application/pdf');window.open(u,'_blank')};
 }
+
+/* ======= 06/11 : glisser un fichier N'IMPORTE OÙ sur l'espace formateur (ordinateur) : « Où le ranger ? » puis rangé ici ======= */
+(function(){
+  if(typeof document==='undefined')return;
+  let cpt=0;
+  const voile=on=>{let v=document.getElementById('dp-voile');
+    if(!on){if(v)v.remove();return}
+    if(v)return;v=document.createElement('div');v.id='dp-voile';
+    v.style.cssText='position:fixed;inset:0;z-index:70;background:rgba(10,14,35,.85);display:flex;align-items:center;justify-content:center;border:4px dashed var(--line);pointer-events:none';
+    v.innerHTML='<div style="font-size:26px;font-weight:900;text-align:center;padding:20px">📥 Lâche tes fichiers ici</div>';document.body.appendChild(v)};
+  const connecte=()=>{try{return (typeof estAdmin==='function'&&estAdmin())||(typeof moiF==='function'&&!!moiF())}catch(e){return false}};
+  const avecFichiers=e=>e.dataTransfer&&[...(e.dataTransfer.types||[])].includes('Files');
+  document.addEventListener('dragenter',e=>{if(!avecFichiers(e)||!connecte())return;e.preventDefault();cpt++;voile(true)});
+  document.addEventListener('dragover',e=>{if(!avecFichiers(e)||!connecte())return;e.preventDefault();e.dataTransfer.dropEffect='copy'});
+  document.addEventListener('dragleave',e=>{if(!avecFichiers(e))return;cpt=Math.max(0,cpt-1);if(!cpt)voile(false)});
+  document.addEventListener('drop',e=>{if(!avecFichiers(e))return;e.preventDefault();cpt=0;voile(false);if(!connecte())return;
+    const F=[...(e.dataTransfer.files||[])];if(F.length)dpOuRanger(F)});
+})();
+async function dpOuRanger(F){
+  const p=dpProprio(), mus=F.every(f=>dpEstMusique(f.name,f.type)), admin=estAdmin();
+  const cats=(admin&&typeof muCats==='function')?muCats():[], D=await dpDossiers(p).catch(()=>[]);
+  const fond=document.createElement('div');fond.style.cssText='position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px';
+  const nb=F.length>1?F.length+' fichiers':'« '+esc(F[0].name)+' »';
+  fond.innerHTML=`<div class="card o" style="max-width:520px;width:100%;max-height:85vh;overflow:auto;margin:0">
+    <h2 style="margin-top:0">Où ranger ${nb} ?</h2>
+    ${mus&&cats.length?`<div class="tag">🎵 Mes musiques</div><div style="display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 12px">${cats.map(c=>`<button class="btn sec" style="width:auto;margin:0" data-mu="${esc(c)}">${esc(c)}</button>`).join('')}<button class="btn sec" style="width:auto;margin:0" data-mu="">➕ Nouvelle catégorie</button></div>`:''}
+    <div class="tag">📁 Mes documents</div><div style="display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 12px">${D.map(d=>`<button class="btn sec" style="width:auto;margin:0" data-doc="${esc(d.id)}">📁 ${esc(d.nom)}</button>`).join('')}<button class="btn sec" style="width:auto;margin:0" data-doc="">➕ Nouveau dossier</button></div>
+    <div id="dp-nv" class="hide"><input id="dp-nvn" placeholder="Nom" style="margin-bottom:8px"><button class="btn" id="dp-nvok">Ranger ici</button></div>
+    <p class="muted hide" id="dp-msg"></p>
+    <button class="btn sec" id="dp-ann">Annuler</button></div>`;
+  document.body.appendChild(fond);
+  const fermer=()=>fond.remove(), msg=t=>{const m=fond.querySelector('#dp-msg');m.textContent=t;m.classList.remove('hide')};
+  fond.querySelector('#dp-ann').onclick=fermer;
+  let choix=null;
+  const ranger=async(k,val)=>{
+    fond.querySelectorAll('button').forEach(b=>b.disabled=true);msg('Rangement…');
+    try{
+      if(k==='mu'){const cat=val;for(const f of F){const nom=muNom({name:f.name});await muOp('readwrite',s=>s.put({id:dpId(),nom,cat,fmt:muEstTb(cat)?muFormat(nom):'',at:Date.now(),blob:f}))}
+        const C=muCats();if(!C.includes(cat)){C.push(cat);muCatsEcrire(C)}
+        fermer();if(typeof dpBandeau==='function')dpBandeau({ok:'✅ Rangé dans 🎵 Mes musiques › '+cat});
+        if(document.getElementById('mu-f')&&typeof mesMusiques==='function')mesMusiques('',1)}
+      else{let d=val.id?D.find(x=>x.id===val.id):D.find(x=>memeNom(x.nom,val.nouveau));
+        if(!d){d={id:dpId(),proprio:p,nom:val.nouveau,at:Date.now()};await dpOp('d','readwrite',s=>s.put(d))}
+        for(const f of F)await dpOp('f','readwrite',s=>s.put({id:dpId(),proprio:p,dossier:d.id,nom:f.name,type:f.type||'',taille:f.size,at:Date.now(),blob:f}));
+        fermer();if(typeof dpBandeau==='function')dpBandeau({ok:'✅ Rangé dans 📁 '+d.nom});
+        if(document.getElementById('dp-docs')&&typeof mesDocuments==='function')mesDocuments('',d.id,1)}
+    }catch(e){fond.querySelectorAll('button').forEach(b=>b.disabled=false);msg(dpEstQuota(e)?'Plus assez de place sur cet appareil.':'Je n\'ai pas réussi à ranger. Réessaie.')}
+  };
+  const demander=k=>{choix=k;fond.querySelector('#dp-nv').classList.remove('hide');const i=fond.querySelector('#dp-nvn');i.placeholder=k==='mu'?'Nom de la nouvelle catégorie':'Nom du nouveau dossier';i.focus()};
+  fond.querySelectorAll('[data-mu]').forEach(b=>b.onclick=()=>b.dataset.mu?ranger('mu',b.dataset.mu):demander('mu'));
+  fond.querySelectorAll('[data-doc]').forEach(b=>b.onclick=()=>b.dataset.doc?ranger('doc',{id:b.dataset.doc}):demander('doc'));
+  fond.querySelector('#dp-nvok').onclick=()=>{const n=(fond.querySelector('#dp-nvn').value||'').trim();if(!n){msg('Écris un nom.');return}ranger(choix,choix==='mu'?n:{nouveau:n})};
+}
