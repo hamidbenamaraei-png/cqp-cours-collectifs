@@ -487,7 +487,7 @@ function accueil(){
   <p class="muted"><button class="link" id="rz">Pour mes tests : changer de nom dans l'espace stagiaires (sur ce téléphone)</button></p><div class="ok hide" id="rzok">✅ C'est fait : l'espace stagiaires te redemandera ton nom.</div>`;
   app.innerHTML=h;
   // 06/11 : « 🧠 Quiz de révision » rangé dans « Mes outils »
-  {const c=document.getElementById('rev'),mo=document.getElementById('mo-liste');if(c&&mo){const t=document.getElementById('tbo');mo.insertBefore(c,t||null)}}
+  try{const c=document.getElementById('rev'),mo=document.getElementById('mo-liste');if(c&&mo)mo.insertBefore(c,mo.firstChild)}catch(e){}
   app.querySelectorAll('[data-fxm]').forEach(b=>b.onclick=()=>ecranFiches(b.dataset.fxm));
   {const b=document.getElementById('stg-m');if(b)b.onclick=()=>mesStagiaires()}
   {const b=document.getElementById('meth-b');if(b)b.onclick=()=>ecranFiches('meth')}
