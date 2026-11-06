@@ -154,7 +154,7 @@ body.avec-barre .wrap{padding-bottom:120px}
 </head>
 <body>
 <div class="wrap" id="app"></div>
-<script src="commun.js?v=202611061200"></script>
+<script src="commun.js?v=202611061650"></script>
 <script src="qr.js?v=202611051500"></script>
 <script src="roue.js?v=202610260957"></script>
 <script src="bonhommes3d.js?v=202610261832"></script>
@@ -162,8 +162,8 @@ body.avec-barre .wrap{padding-bottom:120px}
 <script src="musiques.js?v=202610261915"></script>
 <script src="tabata.js?v=202610301300"></script>
 <script src="cours.js?v=202610301300"></script>
-<script src="fpc-commun.js?v=202611061500"></script>
-<script src="depot-pc.js?v=202611061610"></script>
+<script src="fpc-commun.js?v=202611061650"></script>
+<script src="depot-pc.js?v=202611061650"></script>
 <script>
 // ======= Réglages propres au formateur =======
 // Empreinte du code d'accès (le code lui-même n'est pas écrit ici)
@@ -220,6 +220,8 @@ let FORMATEURS = [], FORMATEURS_LUS = false, PARTAGE = Object.assign({},PARTAGE_
 function estAdmin(){return lire('ok','')===CODE_HASH}
 function moiF(){const q=lire('qui',null);return q&&q.id&&q.h&&q.h===lire('ok','')?q:null}
 function peut(k){return estAdmin()||!!PARTAGE[k]}
+// 06/11 : « seulement ce que j'ai montré aux stagiaires » (si « tout » n'est pas coché)
+const seulMontre=()=>!estAdmin()&&!PARTAGE.cours&&!!PARTAGE.coursSt, peutCours=()=>peut('cours')||!!PARTAGE.coursSt;
 function retirerAcces(){ecrire('ok','');ecrire('qui',null);marqueHamid();ecranCode("Ton accès à l'espace formateur n'est plus actif. Si c'est une erreur, parles-en à Hamid.")}
 async function chargerEtat(){
   let g=null;
@@ -1835,7 +1837,7 @@ function mesExercices(msg){
   let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>📋 Exercices</h1>
   ${msg?`<div class="ok">${esc(msg)}</div>`:''}
   <p class="muted" style="margin-top:0">${estAdmin()?'Touche une catégorie. Dans chaque partie, tu choisis ce que les stagiaires peuvent voir pour réviser.':'Touche une catégorie pour voir les exercices.'}</p>`;
-  Object.entries(FICHES_CATS).forEach(([k,c])=>{const o=nb(k),t=fxCles(k).length;
+  Object.entries(FICHES_CATS).forEach(([k,c])=>{const o=nb(k),t=fxCles(k).length;if(seulMontre()&&!o)return;
     h+=`<button class="btn sec" data-fcat="${k}" style="text-align:left">${c.emoji} ${esc(c.titre)}${estAdmin()?`<br><span class="muted" style="font-weight:400;font-size:14px">${o?`👀 ${o===t?(t>1?'tout est montré':'montré'):o+' partie'+(o>1?'s':'')+' sur '+t+' montrée'+(o>1?'s':'')} aux stagiaires`:'🙈 caché aux stagiaires'}</span>`:''}</button>`});
   h+=`<button class="btn sec" id="bk2">← Retour à l'accueil</button>`;
   app.innerHTML=h;
@@ -1850,7 +1852,8 @@ function ecranFiches(cat,msg,ouverte){
   let h=`<button class="back" id="bk">← Retour</button><div class="tag">📋 Exercices</div><h1>${C.emoji} ${esc(C.titre)}</h1>
   ${msg?`<div class="${msg.startsWith('⚠️')?'err':'ok'}">${esc(msg)}</div>`:''}
   <p class="muted" style="margin-top:0">Touche une partie pour l'ouvrir ou la refermer.</p>`;
-  h+= cat==='meth' ? fxMethodes(tg('meth')) : C.parties.map(p=>fxPartie(cat,p,tg(cat+'.'+p.k))).join('');
+  const sm=seulMontre();
+  h+= cat==='meth' ? (sm&&!FICHES_OUV.includes('meth')?'':fxMethodes(tg('meth'))) : C.parties.filter(p=>!sm||FICHES_OUV.includes(cat+'.'+p.k)).map(p=>fxPartie(cat,p,tg(cat+'.'+p.k))).join('');
   h+=`<button class="btn sec" id="bk2">← Retour</button>`;
   app.innerHTML=h;
   if(ouverte){const d=app.querySelectorAll('.fx-p')[ouverte];if(d)d.open=true}
@@ -2343,7 +2346,7 @@ function projection(){
 // il voit ses propres quiz et seulement ce qu'Hamid a coché dans « Ce que les autres formateurs peuvent voir ».
 function ecranPermis(nom){
   if(estAdmin())return true;
-  return !!({accueil:1,mesDocuments:1,mesStagiaires:PARTAGE.stag||PARTAGE.rep,bilanStagiaire:PARTAGE.rep,mesExercices:PARTAGE.cours,ecranFiches:PARTAGE.cours,diapos:PARTAGE.cours})[nom];
+  return !!({accueil:1,mesDocuments:1,mesStagiaires:PARTAGE.stag||PARTAGE.rep,bilanStagiaire:PARTAGE.rep,mesExercices:peutCours(),ecranFiches:peutCours(),diapos:peutCours(),coursLecture:peutCours()})[nom];
 }
 async function recharger(suite){
   app.innerHTML=`<p class="muted">Chargement…</p>`;
@@ -2377,7 +2380,7 @@ function accueilFormateur(){
   if(PARTAGE.stag||PARTAGE.rep){const n=acceptes().filter(x=>!estTest(x)).length;
     h+=`<div class="card g"><h2>👥 Stagiaires / Apprentis</h2><p style="margin:0">${n} accepté${n>1?'s':''}</p><button class="btn sec" id="stg">Voir la liste</button></div>`}
   if(PARTAGE.quiz)h+=`<div class="card j"><h2>📂 Les quiz de Hamid</h2><p style="margin:0" class="muted">Ses quiz et ses questions, pour les voir.</p><button class="btn sec" id="qh">Voir les quiz de Hamid</button></div>`;
-  if(PARTAGE.cours)h+=`<div class="card"><h2>📚 Cours, diapos et documents</h2><p style="margin:0" class="muted">Les diapos, les documents et les exercices de Hamid.</p><button class="btn sec" id="crs">Ouvrir</button></div>`;
+  if(peutCours())h+=`<div class="card"><h2>📚 Cours, diapos et documents</h2><p style="margin:0" class="muted">${seulMontre()?'Les documents et exercices que Hamid a montrés aux stagiaires / apprentis.':'Les diapos, les documents et les exercices de Hamid.'}</p><button class="btn sec" id="crs">Ouvrir</button></div>`;
   if(PARTAGE.roue)h+=`<div class="card o"><h2>🎡 La roue</h2><p style="margin:0" class="muted">Exercices, étirements ou répartition tirés au hasard. Sur ton téléphone seulement.</p><button class="btn sec" id="roue">Ouvrir la roue</button></div>`;
   h+=htmlMesAppareils();
   h+=`<p class="muted"><a href="./" style="color:var(--mute)">Voir l'espace stagiaires / apprentis</a> · <button class="link" id="out">Se déconnecter</button></p>`;
@@ -2407,23 +2410,26 @@ function stagiairesLecture(){
 
 // ---- cours, diapos et documents (sans les cases « montrer aux stagiaires ») ----
 function coursLecture(){
-  if(!peut('cours'))return accueil();
-  const js=JOURNEES.filter(j=>j.diapos);
+  if(!peutCours())return accueil();
+  const sm=seulMontre(), nbV=j=>sm?diaposVisibles(DIAPOS_OUV,j).length:j.diapos;
+  const js=JOURNEES.filter(j=>j.diapos&&nbV(j)), fxV=!sm||Object.keys(FICHES_CATS).some(k=>fxCles(k).some(c=>FICHES_OUV.includes(c)));
   let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>📚 Cours, diapos et documents</h1>`;
-  js.forEach(j=>{h+=`<div class="card"><div class="tag" style="color:var(--soft)">${esc(j.titre)}</div><h2 style="margin-top:4px">${esc(j.theme)}</h2><p class="muted" style="margin:0">${j.diapos} document${j.diapos>1?'s':''}</p><button class="btn sec" data-dj="${esc(j.id)}">📚 Voir les documents</button></div>`});
-  h+=`<div class="card"><h2>📋 Exercices</h2><p style="margin:0" class="muted">Renforcement musculaire, étirements et méthodes d'étirement.</p><button class="btn sec" id="fx">Ouvrir les exercices</button></div>`;
+  js.forEach(j=>{h+=`<div class="card"><div class="tag" style="color:var(--soft)">${esc(j.titre)}</div><h2 style="margin-top:4px">${esc(j.theme)}</h2><p class="muted" style="margin:0">${nbV(j)} document${nbV(j)>1?'s':''}</p><button class="btn sec" data-dj="${esc(j.id)}">📚 Voir les documents</button></div>`});
+  if(fxV)h+=`<div class="card"><h2>📋 Exercices</h2><p style="margin:0" class="muted">Renforcement musculaire, étirements et méthodes d'étirement.</p><button class="btn sec" id="fx">Ouvrir les exercices</button></div>`;
+  if(!js.length&&!fxV)h+=`<div class="card"><p class="muted" style="margin:0">Hamid n'a encore rien montré aux stagiaires / apprentis.</p></div>`;
   app.innerHTML=h;
   document.getElementById('bk').onclick=accueil;
-  document.getElementById('fx').onclick=()=>mesExercices();
+  {const b=document.getElementById('fx');if(b)b.onclick=()=>mesExercices()}
   app.querySelectorAll('[data-dj]').forEach(b=>b.onclick=()=>diapos(JOURNEES.find(j=>j.id===b.dataset.dj)));
   haut();
 }
 function diaposLecture(j){
-  if(!j||!peut('cours'))return accueil();
+  if(!j||!peutCours())return accueil();
+  const V=seulMontre()?diaposVisibles(DIAPOS_OUV,j):Array.from({length:j.diapos},(_,i)=>i+1);
   let h=`<button class="back" id="bk">← Retour</button><div class="tag">${esc(j.titre)}</div><h1>${esc(j.theme)}</h1>
-   ${(j.docs||[]).map(d=>`<a class="btn" href="${d.fichier}" download>⬇️ ${esc(d.titre)}</a>`).join('')}
+   ${(V.length===j.diapos?(j.docs||[]):[]).map(d=>`<a class="btn" href="${d.fichier}" download>⬇️ ${esc(d.titre)}</a>`).join('')}
    <p class="muted" style="margin-top:16px">Touche un document pour l'ouvrir en grand.</p>`;
-  for(let i=1;i<=j.diapos;i++){const s=`${j.dossier}/${String(i).padStart(2,'0')}.jpg`;h+=`<a href="${s}" target="_blank" rel="noopener"><img class="slide" loading="lazy" src="${s}" alt="Document ${i}"></a>`}
+  V.forEach(i=>{const s=`${j.dossier}/${String(i).padStart(2,'0')}.jpg`;h+=`<a href="${s}" target="_blank" rel="noopener"><img class="slide" loading="lazy" src="${s}" alt="Document ${i}"></a>`});
   h+=`<button class="btn sec" id="bk2">← Retour</button>`;
   app.innerHTML=h;
   document.getElementById('bk').onclick=coursLecture;document.getElementById('bk2').onclick=coursLecture;
@@ -2589,22 +2595,28 @@ async function enregistrerPartage(v){
   await envoyerForm(FORM_QUIZ,{[EQ.journee]:'partage',[EQ.statut]:'etat',[EQ.contenu]:JSON.stringify(v)});
   PARTAGE=Object.assign({},PARTAGE_DEFAUT,v);ecrire('local_partage',{v,at:Date.now()});
 }
-const PARTAGE_TEXTES=[['stag','Voir la liste des stagiaires / apprentis'],['rep','Voir les réponses et bilans des stagiaires'],['cours','Voir mes cours, diapos et documents'],['roue','Utiliser la roue'],['quiz','Voir mes quiz et mes questions']];
-function autresFormateurs(msg){
+const PARTAGE_TEXTES=[['stag','Voir la liste des stagiaires / apprentis'],['rep','Voir les réponses et bilans des stagiaires'],['cours','Voir tous mes cours, diapos et documents'],['coursSt','Voir seulement les documents que j\'ai montrés aux stagiaires'],['roue','Utiliser la roue'],['quiz','Voir mes quiz et mes questions']];
+// 06/11 : un lien qui connecte directement l'autre formateur (le code est dans le lien, jamais gardé en clair)
+function codeAuto(){const A='abcdefghjkmnpqrstuvwxyz23456789',v=crypto.getRandomValues(new Uint8Array(14));return [...v].map(x=>A[x%A.length]).join('')}
+const lienFormateur=c=>location.origin+location.pathname+'#fc='+c;
+const texteLienF=(prenom,c)=>`Bonjour ${prenom} ! 👋\nVoici ton accès à l'espace formateur CQP (cours collectifs).\nTouche ce lien, tu seras connecté directement :\n${lienFormateur(c)}\n\nGarde ce lien pour toi, ne le partage pas. Il marche d'ici quelques minutes.`;
+function autresFormateurs(msg,envoi){
   if(!estAdmin())return accueil();
   let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>👥 Autres formateurs</h1>
    ${msg?`<div class="ok" style="margin:-6px 0 14px">${esc(msg)}</div>`:''}
+   ${envoi?`<div class="card o nopli"><h2>📲 Le lien de ${esc(envoi.prenom)}</h2><p class="muted" style="margin-top:0">Envoie-le-lui : il touche le lien et il est connecté, sans rien taper.</p><button class="btn wa" id="flwa">📲 Lui envoyer son lien sur WhatsApp</button><button class="btn small sec" id="flcp">📋 Copier le lien</button></div>`:''}
    <p class="muted" style="margin-top:0">Tu restes le seul à tout voir et à tout décider. Chaque autre formateur entre avec son propre code et fait ses propres quiz.</p>
-   <div class="card g"><h2>Ont accès (${FORMATEURS.length})</h2>`+(FORMATEURS.length?FORMATEURS.map(f=>`<div class="stag"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><span><b>${esc(f.prenom)} ${esc(f.nom)}</b>${f.at?`<div class="d">Ajouté le ${esc(jjmm(f.at))}</div>`:''}</span><button class="btn small ko" style="margin:0;flex:none" data-fret="${esc(f.id)}">Retirer</button></div><div data-fconf="${esc(f.id)}"></div></div>`).join(''):`<p class="muted" style="margin:0">Personne pour l'instant.</p>`)+`</div>
+   <div class="card g"><h2>Ont accès (${FORMATEURS.length})</h2>`+(FORMATEURS.length?FORMATEURS.map(f=>`<div class="stag"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><span><b>${esc(f.prenom)} ${esc(f.nom)}</b>${f.at?`<div class="d">Ajouté le ${esc(jjmm(f.at))}</div>`:''}</span><span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="btn small sec" style="margin:0;flex:none" data-flien="${esc(f.id)}">🔗 Nouveau lien</button><button class="btn small ko" style="margin:0;flex:none" data-fret="${esc(f.id)}">Retirer</button></span></div><div data-fconf="${esc(f.id)}"></div></div>`).join(''):`<p class="muted" style="margin:0">Personne pour l'instant.</p>`)+`</div>
    <div class="card o"><h2>➕ Ajouter un formateur</h2>
     <label for="fp" style="margin-top:0">Prénom</label><input id="fp" type="text" autocomplete="off" maxlength="40">
     <label for="fno">Nom (facultatif)</label><input id="fno" type="text" autocomplete="off" maxlength="40">
+    <details style="margin-top:10px"><summary class="muted" style="cursor:pointer">Choisir son code moi-même (facultatif)</summary>
     <label for="fc1">Son code (au moins 6 chiffres ou lettres)</label><input id="fc1" type="password" autocomplete="new-password">
     <label for="fc2">Écris le code une deuxième fois</label><input id="fc2" type="password" autocomplete="new-password">
-    <label class="check"><input type="checkbox" id="fvoir"> Afficher le code</label>
+    <label class="check"><input type="checkbox" id="fvoir"> Afficher le code</label></details>
     <div class="err hide" id="fer"></div>
     <button class="btn" id="fadd">➕ Ajouter ce formateur</button>
-    <p class="muted" style="margin-bottom:0">Donne-lui son code et l'adresse de l'espace formateur. Son code marche d'ici quelques minutes (le temps que Google se mette à jour).</p>
+    <p class="muted" style="margin-bottom:0">Écris juste son prénom : l'appli crée son code et te donne un lien à lui envoyer. Le lien marche d'ici quelques minutes (le temps que Google se mette à jour).</p>
     <button class="btn small sec" id="fadr">📋 Copier l'adresse de l'espace formateur</button></div>
    <div class="card j"><h2>👀 Ce que les autres formateurs peuvent voir</h2>
     <p class="muted" style="margin-top:0">Le même réglage pour tous. Ils voient toujours leurs propres quiz et les réponses à leurs quiz.</p>`+
@@ -2624,8 +2636,9 @@ function autresFormateurs(msg){
     const er=document.getElementById('fer'), b=e.currentTarget, dire=t=>{er.textContent=t;er.classList.remove('hide')};
     er.classList.add('hide');
     const prenom=document.getElementById('fp').value.trim().replace(/\s+/g,' '), nom=document.getElementById('fno').value.trim().replace(/\s+/g,' ');
-    const c1=document.getElementById('fc1').value.trim(), c2=document.getElementById('fc2').value.trim();
+    let c1=document.getElementById('fc1').value.trim(), c2=document.getElementById('fc2').value.trim();
     if(!prenom)return dire('Écris son prénom.');
+    if(!c1&&!c2){c1=c2=codeAuto()}
     if(c1.length<6)return dire('Le code doit avoir au moins 6 chiffres ou lettres.');
     if(c1!==c2)return dire('Les deux codes ne sont pas pareils. Écris-les encore une fois.');
     const h=await empreinte(c1);
@@ -2634,8 +2647,16 @@ function autresFormateurs(msg){
     b.disabled=true;b.textContent='⏳ Un instant…';
     try{await enregistrerFormateurs(FORMATEURS.concat([{id:nouvelId(),prenom,nom,h,at:Date.now()}]))}
     catch(err){b.disabled=false;b.textContent='➕ Ajouter ce formateur';return dire("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.")}
-    autresFormateurs(`✅ ${prenom} est ajouté. Donne-lui son code et l'adresse de l'espace formateur : son code marchera d'ici quelques minutes.`);
+    autresFormateurs(`✅ ${prenom} est ajouté.`,{prenom,code:c1});
   };
+  if(envoi){document.getElementById('flwa').onclick=()=>ouvrirWhatsApp(texteLienF(envoi.prenom,envoi.code));
+    document.getElementById('flcp').onclick=async e=>{const b=e.currentTarget,u=lienFormateur(envoi.code),ok=await copier(u);b.textContent=ok?'✅ Lien copié':u;setTimeout(()=>{b.textContent='📋 Copier le lien'},ok?2500:20000)}}
+  app.querySelectorAll('[data-flien]').forEach(b=>b.onclick=()=>{const f=FORMATEURS.find(x=>x.id===b.dataset.flien);if(!f)return;
+    confirmerIci(app.querySelector(`[data-fconf="${f.id}"]`),`Créer un nouveau lien pour <b>${esc(f.prenom)}</b> ? Son ancien lien et son ancien code ne marcheront plus.`,'🔗 Oui, nouveau lien',async()=>{
+      const c=codeAuto(), h=await empreinte(c);
+      try{await enregistrerFormateurs(FORMATEURS.map(x=>x.id===f.id?Object.assign({},x,{h}):x))}
+      catch(e){alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");return autresFormateurs()}
+      autresFormateurs(`✅ Nouveau lien prêt pour ${f.prenom}.`,{prenom:f.prenom,code:c})})});
   app.querySelectorAll('[data-fret]').forEach(b=>b.onclick=()=>{const f=FORMATEURS.find(x=>x.id===b.dataset.fret);if(!f)return;
     confirmerIci(app.querySelector(`[data-fconf="${f.id}"]`),`Retirer l'accès de <b>${esc(f.prenom)} ${esc(f.nom)}</b> ? Il ne pourra plus ouvrir l'espace formateur (d'ici quelques minutes, dès que son espace se recharge). Ses quiz ne seront plus montrés aux stagiaires.`,'Oui, retirer',async()=>{
       try{await enregistrerFormateurs(FORMATEURS.filter(x=>x.id!==f.id))}
@@ -2767,10 +2788,23 @@ const MEMO_ECRANS={
     return accOrig.apply(this,a) };
   addEventListener('scroll',()=>{ clearTimeout(tY); tY=setTimeout(()=>{ const m=ss.get(); if(m){ m.y=Math.round(window.scrollY); ss.set(m) } },250) },{passive:true});
 })();
+// 06/11 : lien d'un autre formateur (#fc=son code) : connexion directe, le code est retiré de l'adresse
+async function connexionLien(code){
+  app.innerHTML=`<p class="muted">Connexion…</p>`;
+  const h=await empreinte(code);
+  let g=null;try{g=await etatGeneral()}catch(e){g=null}
+  if(!g)return ecranCode("Je n'arrive pas à vérifier ton lien. Vérifie ta connexion internet, puis touche encore le lien.");
+  const f=(g.formateurs||[]).find(x=>x.h===h);
+  if(!f)return ecranCode("Ton lien n'est pas encore prêt, ou il a été remplacé. Réessaie dans quelques minutes, ou demande un nouveau lien à Hamid.");
+  ecrire('bloque',{n:0,jusqua:0});ecrire('ok',h);ecrire('qui',{id:f.id,prenom:f.prenom,nom:f.nom,h});demarrer();
+}
+const lireFC=()=>{const t=location.hash.match(/^#fc=([A-Za-z0-9]{6,40})/);if(t){try{history.replaceState(null,'',location.pathname+location.search)}catch(e){}return t[1]}return null};
 {const t=location.hash.match(/^#p=([A-Za-z0-9_-]+)/);
  if(t){LIEN_PC=t[1];try{history.replaceState(null,'',location.pathname+location.search)}catch(e){}}}
-LIEN_PC ? ecranCode() : (estAdmin()||moiF()) ? demarrer() : ecranCode();
+{const fc=lireFC();
+ fc&&!LIEN_PC&&!estAdmin() ? connexionLien(fc) : LIEN_PC ? ecranCode() : (estAdmin()||moiF()) ? demarrer() : ecranCode();}
 // si l'espace est déjà ouvert dans cet onglet, le lien ne recharge pas la page
+window.addEventListener('hashchange',()=>{const fc=lireFC();if(fc&&!estAdmin())return connexionLien(fc)});
 window.addEventListener('hashchange',()=>{const t=location.hash.match(/^#p=([A-Za-z0-9_-]+)/);if(t){LIEN_PC=t[1];try{history.replaceState(null,'',location.pathname+location.search)}catch(e){};ecranCode()}});
 </script>
 </body>

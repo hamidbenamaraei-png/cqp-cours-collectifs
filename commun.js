@@ -286,7 +286,7 @@ function estOuvert(e){if(!e||!e.ouvert)return false;const f=finQuiz(e);return !(
 //   lance (un stagiaire a lancé la roue), liste (cases d'une roue modifiée), perso (« Ma roue » enregistrée).
 const CLES_EN_ATTENTE={};
 // 06/11 : autres formateurs. Ce qu'ils peuvent voir (réglage commun, choisi par Hamid) — valeurs de départ :
-const PARTAGE_DEFAUT={stag:true,rep:false,cours:false,roue:false,quiz:false};
+const PARTAGE_DEFAUT={stag:true,rep:false,cours:false,coursSt:false,roue:false,quiz:false};
 // Les quiz des autres formateurs encore ouverts (et dont l'auteur a toujours accès), pour l'espace stagiaires
 function quizFOuverts(g){
   const actifs=new Set(((g&&g.formateurs)||[]).map(f=>f.id));
