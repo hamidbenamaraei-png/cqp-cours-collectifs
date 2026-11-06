@@ -154,7 +154,7 @@ body.avec-barre .wrap{padding-bottom:120px}
 </head>
 <body>
 <div class="wrap" id="app"></div>
-<script src="commun.js?v=202611061705"></script>
+<script src="commun.js?v=202611070035"></script>
 <script src="qr.js?v=202611051500"></script>
 <script src="roue.js?v=202610260957"></script>
 <script src="bonhommes3d.js?v=202610261832"></script>
@@ -162,7 +162,7 @@ body.avec-barre .wrap{padding-bottom:120px}
 <script src="musiques.js?v=202610261915"></script>
 <script src="tabata.js?v=202610301300"></script>
 <script src="cours.js?v=202610301300"></script>
-<script src="fpc-commun.js?v=202611061705"></script>
+<script src="fpc-commun.js?v=202611070035"></script>
 <script src="depot-pc.js?v=202611062250"></script>
 <script>
 // ======= Réglages propres au formateur =======
@@ -1318,11 +1318,11 @@ async function enregistrerRevision(r,propre){
   noterLocalRev(r.id,{titre:r.titre,journees:r.journees||[],quiz:propre,cree:r.cree||Date.now()});
 }
 // ======= 07/11 : Nouveau quiz : période (tout / dates / jours), exercices montrés, catégories =======
-const CATS_QUIZ=[['epmsp','🎓 EPMSP'],['secu','🦺 Sécurité'],['place','📍 Placements'],['consigne','🗣️ Consignes'],['posture','🧍 Postures'],['musique','🎵 Musique / Tabata']];
+const CATS_QUIZ=[['epmsp','🎓 EPMSP'],['secu','🦺 Sécurité'],['place','📍 Placements'],['consigne','🗣️ Consignes'],['posture','🧍 Postures'],['musique','🎵 Musique / Tabata'],['metier','📚 Le métier']];
 function catQuestion(q){
   const id=String(q.id||'');
   if(id.startsWith('g:')){const t=id.slice(-1);return t==='s'?'secu':(t==='p'||t==='c')?'posture':'consigne'}
-  return ({epmsp:'epmsp',jury:'epmsp',minutes:'epmsp',briefing:'secu',salle:'secu',placement:'place',musique:'musique',consigne:'consigne',posture:'posture',secu:'secu',securite:'secu'})[q.theme]||'epmsp';
+  return ({epmsp:'epmsp',jury:'epmsp',minutes:'epmsp',briefing:'secu',salle:'secu',placement:'place',musique:'musique',consigne:'consigne',posture:'posture',secu:'secu',securite:'secu',place:'place',metier:'metier'})[q.theme]||'epmsp';
 }
 // questions des exercices : seulement les parties montrées aux stagiaires
 function questionsExos(src){const T=genTout();return T.liste.filter(id=>T.par[id].theme.startsWith(src+'.')&&FICHES_OUV.includes(T.par[id].theme)).map(id=>genQuestion(id))}
