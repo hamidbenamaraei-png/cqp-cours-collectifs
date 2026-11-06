@@ -464,7 +464,7 @@ function accueil(){
     <button class="btn sec" id="tbo">Ouvrir le minuteur</button>
     <button class="btn small ${MINUTEUR_MONTRE?'':'sec'}" id="tbm">${MINUTEUR_MONTRE?'👀 Montrer le minuteur aux stagiaires / apprentis : Oui · toucher pour Non':'🙈 Montrer le minuteur aux stagiaires / apprentis : Non · toucher pour Oui'}</button>
     <div class="ok hide" id="tbmok"></div></div>`;
-  h+=`</div><button class="btn sec" id="ag-b" style="text-align:left;margin:0 0 14px">📅 Mon agenda <span class="muted" style="float:right">▸</span></button><div id="ag-liste" class="hide">${agA||'<p class="muted">Aucune journée pour l\'instant.</p>'}</div><button class="btn sec" id="mx-b" style="text-align:left;margin:0 0 14px">📋 Mes exercices <span class="muted" style="float:right">▸</span></button></div></div>`;
+  h+=`</div><button class="btn sec" id="ag-b" style="text-align:left;margin:0 0 14px">📅 Mon agenda <span class="muted" style="float:right">▸</span></button><div id="ag-liste" class="hide">${agA||'<p class="muted">Aucune journée pour l\'instant.</p>'}</div><button class="btn sec" id="mx-b" style="text-align:left;margin:0 0 14px">📋 Mes exercices <span class="muted" style="float:right">▸</span></button><button class="btn sec" id="me-b" style="text-align:left;margin:0 0 14px">📏 Méthodes <span class="muted" style="float:right">▸</span></button><div id="me-liste" class="hide"><button class="btn" id="meth-b" style="margin:0 0 14px">📏 Méthodes d'étirement</button></div></div></div>`;
   h+=`<div id="param-o" class="hide" style="position:fixed;inset:0;z-index:65;background:var(--bg);overflow:auto;padding:calc(10px + env(safe-area-inset-top,0px)) 16px 24px"><div style="max-width:640px;margin:0 auto">
     <div style="display:flex;align-items:center;height:52px;margin:0 132px 16px 0"><h1 style="margin:0;line-height:52px">Paramètres</h1></div><div id="pa-liste"></div></div></div>`;
   // 06/11 : carte « Je prépare mon cours » retirée de l'accueil à la demande de Hamid (la partie « Ses cours préparés » des fiches reste)
@@ -489,6 +489,7 @@ function accueil(){
   // 06/11 : « 🧠 Quiz de révision » rangé dans « Mes outils »
   {const c=document.getElementById('rev'),mo=document.getElementById('mo-liste');const k=c&&c.closest('.card');if(k&&mo)mo.appendChild(k)}
   {const b=document.getElementById('mx-b');if(b)b.onclick=()=>mesExercices()}
+  {const b=document.getElementById('meth-b');if(b)b.onclick=()=>ecranFiches('meth')}
   // 06/11 : « ⚙️ Paramètres » dans le menu ☰ : mes appareils, liens du bas (« Autres formateurs » reste sur l'accueil)
   {const pa=document.getElementById('pa-liste');if(pa){[document.getElementById('rpc'),document.getElementById('vef'),document.getElementById('rz')].forEach(el=>{const c=el&&(el.closest('.card')||el.closest('p'));if(c&&c.parentNode!==pa)pa.appendChild(c)});const ok=document.getElementById('rzok');if(ok)pa.appendChild(ok)}}
   app.querySelectorAll('[data-j]').forEach(b=>b.onclick=()=>journee(JOURNEES.find(j=>j.id===b.dataset.j)));
@@ -496,16 +497,16 @@ function accueil(){
   document.getElementById('rev').onclick=()=>revisionEcran();
   {
    calAgenda();
-   [['mo-liste','mo-b'],['ag-liste','ag-b']].forEach(([l,b])=>{const ml=document.getElementById(l),mb=document.getElementById(b);mb.onclick=()=>{const o=ml.classList.toggle('hide');mb.querySelector('span').textContent=o?'▸':'▾'}})
+   [['mo-liste','mo-b'],['ag-liste','ag-b'],['me-liste','me-b']].forEach(([l,b])=>{const ml=document.getElementById(l),mb=document.getElementById(b);mb.onclick=()=>{const o=ml.classList.toggle('hide');mb.querySelector('span').textContent=o?'▸':'▾'}})
    // 06/11 : ce qu'on ouvre depuis le menu : « ← Retour » ramène au menu, à la même partie ouverte
    const menu=document.getElementById('menu-outils');
-   menu.addEventListener('click',e=>{const t=e.target.closest('button');if(!t||['mo-b','ag-b','pa-b','tbm','rz','out'].includes(t.id))return;
-     MENU_RET={mo:!document.getElementById('mo-liste').classList.contains('hide'),ag:!document.getElementById('ag-liste').classList.contains('hide'),y:menu.scrollTop}},true);
+   menu.addEventListener('click',e=>{const t=e.target.closest('button');if(!t||['mo-b','ag-b','me-b','pa-b','tbm','rz','out'].includes(t.id))return;
+     MENU_RET={mo:!document.getElementById('mo-liste').classList.contains('hide'),ag:!document.getElementById('ag-liste').classList.contains('hide'),me:!document.getElementById('me-liste').classList.contains('hide'),y:menu.scrollTop}},true);
    const par=document.getElementById('param-o');
    par.addEventListener('click',e=>{const t=e.target.closest('button');if(!t||['tbm','rz','out'].includes(t.id))return;PARAM_RET={y:par.scrollTop}},true);
    if(PARAM_RET){const r=PARAM_RET;PARAM_RET=null;par.classList.remove('hide');setTimeout(()=>{par.scrollTop=r.y||0},0)}
    if(MENU_RET){const r=MENU_RET;MENU_RET=null;menu.classList.remove('hide');
-     [['mo-liste','mo-b',r.mo],['ag-liste','ag-b',r.ag]].forEach(([l,b,o])=>{if(o){document.getElementById(l).classList.remove('hide');document.getElementById(b).querySelector('span').textContent='▾'}});
+     [['mo-liste','mo-b',r.mo],['ag-liste','ag-b',r.ag],['me-liste','me-b',r.me]].forEach(([l,b,o])=>{if(o){document.getElementById(l).classList.remove('hide');document.getElementById(b).querySelector('span').textContent='▾'}});
      setTimeout(()=>{menu.scrollTop=r.y||0},0)}}
   {const b=document.getElementById('roue');if(b)b.onclick=()=>roueSimple()}
   {const b=document.getElementById('fiches');if(b)b.onclick=()=>mesExercices()}
@@ -1911,7 +1912,7 @@ function mesExercices(msg){
   let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>📋 Exercices</h1>
   ${msg?`<div class="ok">${esc(msg)}</div>`:''}
   <p class="muted" style="margin-top:0">${estAdmin()?'Touche une catégorie. Dans chaque partie, tu choisis ce que les stagiaires peuvent voir pour réviser.':'Touche une catégorie pour voir les exercices.'}</p>`;
-  Object.entries(FICHES_CATS).forEach(([k,c])=>{const o=nb(k),t=fxCles(k).length;if(seulMontre()&&!o)return;
+  Object.entries(FICHES_CATS).forEach(([k,c])=>{const o=nb(k),t=fxCles(k).length;if(seulMontre()&&!o)return;if(k==='meth'&&estAdmin())return; // 06/11 : pour Hamid, les méthodes sont dans le menu ☰ › Méthodes
     h+=`<button class="btn sec" data-fcat="${k}" style="text-align:left">${c.emoji} ${esc(c.titre)}${estAdmin()?`<br><span class="muted" style="font-weight:400;font-size:14px">${o?`👀 ${o===t?(t>1?'tout est montré':'montré'):o+' partie'+(o>1?'s':'')+' sur '+t+' montrée'+(o>1?'s':'')} aux stagiaires`:'🙈 caché aux stagiaires'}</span>`:''}</button>`});
   h+=`<button class="btn sec" id="bk2">← Retour à l'accueil</button>`;
   app.innerHTML=h;
@@ -1931,7 +1932,7 @@ function ecranFiches(cat,msg,ouverte){
   h+=`<button class="btn sec" id="bk2">← Retour</button>`;
   app.innerHTML=h;
   if(ouverte){const d=app.querySelectorAll('.fx-p')[ouverte];if(d)d.open=true}
-  document.getElementById('bk').onclick=()=>mesExercices();document.getElementById('bk2').onclick=()=>mesExercices();
+  {const ret=()=>cat==='meth'&&estAdmin()?accueil():mesExercices();document.getElementById('bk').onclick=ret;document.getElementById('bk2').onclick=ret}
   app.querySelectorAll('[data-tg]').forEach((b,i)=>b.onclick=async()=>{
     const montrer=b.dataset.on!=='1';
     const ouv=[...app.querySelectorAll('.fx-p')].findIndex(d=>d.open);
