@@ -508,7 +508,9 @@ function accueil(){
   document.getElementById('rev').onclick=()=>revisionEcran();
   {
    calAgenda();
-   [['mo-liste','mo-b'],['ag-liste','ag-b'],['mx-liste','mx-b'],['me-liste','me-b'],['st-liste','st-b'],['fo-liste','fo-b']].forEach(([l,b])=>{const ml=document.getElementById(l),mb=document.getElementById(b);mb.onclick=()=>{const o=ml.classList.toggle('hide');mb.querySelector('span').textContent=o?'▸':'▾'}})
+   [['mo-liste','mo-b'],['ag-liste','ag-b'],['mx-liste','mx-b'],['me-liste','me-b'],['st-liste','st-b'],['fo-liste','fo-b']].forEach(([l,b],_,T)=>{const ml=document.getElementById(l),mb=document.getElementById(b);mb.onclick=()=>{const o=ml.classList.toggle('hide');mb.querySelector('span').textContent=o?'▸':'▾';
+     // 06/11 : une seule catégorie ouverte à la fois
+     if(!o)T.forEach(([l2,b2])=>{if(l2===l)return;const x=document.getElementById(l2);if(x&&!x.classList.contains('hide')){x.classList.add('hide');document.getElementById(b2).querySelector('span').textContent='▸'}})}})
    // 06/11 : toucher « Menu » referme tout et revient au menu de départ
    document.getElementById('menu-t').onclick=()=>{const L=[['mo-liste','mo-b'],['ag-liste','ag-b'],['mx-liste','mx-b'],['me-liste','me-b'],['st-liste','st-b'],['fo-liste','fo-b']];
      if(!L.some(([l])=>!document.getElementById(l).classList.contains('hide'))){document.getElementById('menu-outils').classList.add('hide');return} // tout est fermé : « Menu » ramène à l'accueil
