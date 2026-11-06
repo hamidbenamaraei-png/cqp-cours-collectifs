@@ -485,8 +485,8 @@ function accueil(){
   h+=`<p class="muted"><a href="./" style="color:var(--mute)">Voir l'espace stagiaires / apprentis</a> · <button class="link" id="vef" style="color:var(--mute)">Voir l'espace formateur</button> · <button class="link" id="out">Se déconnecter</button></p>
   <p class="muted"><button class="link" id="rz">Pour mes tests : changer de nom dans l'espace stagiaires (sur ce téléphone)</button></p><div class="ok hide" id="rzok">✅ C'est fait : l'espace stagiaires te redemandera ton nom.</div>`;
   app.innerHTML=h;
-  // 06/11 : « ⚙️ Paramètres » dans le menu ☰ : autres formateurs, mes appareils, liens du bas
-  {const pa=document.getElementById('pa-liste');if(pa){[document.getElementById('afo'),document.getElementById('rpc'),document.getElementById('vef'),document.getElementById('rz')].forEach(el=>{const c=el&&(el.closest('.card')||el.closest('p'));if(c&&c.parentNode!==pa)pa.appendChild(c)});const ok=document.getElementById('rzok');if(ok)pa.appendChild(ok)}}
+  // 06/11 : « ⚙️ Paramètres » dans le menu ☰ : mes appareils, liens du bas (« Autres formateurs » reste sur l'accueil)
+  {const pa=document.getElementById('pa-liste');if(pa){[document.getElementById('rpc'),document.getElementById('vef'),document.getElementById('rz')].forEach(el=>{const c=el&&(el.closest('.card')||el.closest('p'));if(c&&c.parentNode!==pa)pa.appendChild(c)});const ok=document.getElementById('rzok');if(ok)pa.appendChild(ok)}}
   app.querySelectorAll('[data-j]').forEach(b=>b.onclick=()=>journee(JOURNEES.find(j=>j.id===b.dataset.j)));
   document.getElementById('stg').onclick=()=>mesStagiaires();
   document.getElementById('rev').onclick=()=>revisionEcran();
