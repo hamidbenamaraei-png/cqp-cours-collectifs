@@ -491,7 +491,7 @@ function accueil(){
     <button class="btn small ${PREP_COURS.montrer?'':'sec'}" id="crm">${PREP_COURS.montrer?'👀 Montrer aux stagiaires / apprentis : Oui · toucher pour Non':'🙈 Montrer aux stagiaires / apprentis : Non · toucher pour Oui'}</button>
     <div class="ok hide" id="crmok"></div></div>`;}
   const rc=revisionCourante(REVS), ro=rc&&estOuvert(rc);
-  h+=`<button class="btn sec" id="rev" style="margin:0 0 10px 24px;width:calc(100% - 24px);text-align:left">↳ 🧠 Quiz${rc?` <span class="muted" style="font-weight:400">· ${ro?'<b style="color:var(--ok)">ouvert</b>':'caché'}</span>`:''}</button>`;
+  h+=`<div id="rev">${ligneOeil('id="rev-o"','↳ 🧠 Quiz',ro?2:0,'',1)}</div>`;
   // 06/11 : les autres formateurs et « 💻 Ouvrir mon espace sur mon PC »
   h+=htmlMesAppareils();
   h+=`<p class="muted"><a href="./" style="color:var(--mute)">Voir l'espace stagiaires / apprentis</a> · <button class="link" id="vef" style="color:var(--mute)">Voir l'espace formateur</button> · <button class="link" id="out">Se déconnecter</button></p>
@@ -1273,10 +1273,11 @@ function revisionEcran(msg){
   let h=`<button class="back" id="bk">← Retour</button><div class="tag">Espace formateur</div><h1>🧠 Quiz</h1>
    ${msg?`<div class="ok" style="margin:-6px 0 14px">${esc(msg)}</div>`:''}`;
   if(rc){const o=estOuvert(rc);
-    h+=`<div class="card ${o?'g':'j'}"><div class="tag" style="color:var(--soft)">Quiz en cours</div><h2 style="margin-top:4px">${esc(rc.titre)}</h2>
-     <div class="statut" style="font-size:16px"><span class="dot" style="background:${o?'var(--ok)':'var(--mute)'}"></span>${esc(etatTexte(rc))}</div>
+    h+=`<div class="card ${o?'g':'j'}"><div class="tag" style="color:var(--soft)">Quiz en cours</div>
+     <div style="margin:6px 0 0;display:flex;align-items:center;border-radius:14px;overflow:hidden;background:${o?'var(--or)':'#2a3566'};color:${o?'#10162b':'var(--txt)'}"><h2 style="margin:0;padding:12px 14px;flex:1;min-width:0;color:inherit">${esc(rc.titre)}</h2><button id="tog" aria-label="${o?'Les stagiaires voient le quiz : toucher pour le fermer':'Les stagiaires ne voient pas le quiz : toucher pour l\'ouvrir'}" style="flex:none;width:62px;align-self:stretch;border:0;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:inherit">${o?OEIL_O:OEIL_F}</button></div>
+     ${o?`<div class="statut" style="font-size:15px;margin-top:8px"><span class="dot" style="background:var(--ok)"></span>${esc(etatTexte(rc))}</div>`:''}
      <p class="muted" style="margin:6px 0 0">${rc.quiz.questions.length} questions · ${texteDuree(rc.quiz)}${(rc.journees||[]).length?` · ${rc.journees.map(id=>{const j=JOURNEES.find(x=>x.id===id);return j?j.titre:id}).join(', ')}`:''}</p>
-     ${o?`<button class="btn wa" id="prev">📲 Prévenir les stagiaires sur WhatsApp</button><button class="btn ko" id="tog">🔒 Fermer la révision</button>`:`<button class="btn" id="tog">🔓 Ouvrir aux stagiaires</button>`}
+     ${o?`<button class="btn wa" id="prev">📲 Prévenir les stagiaires sur WhatsApp</button>`:''}
      <div id="dur"></div><div class="ok hide" id="togok"></div>
      <button class="btn sec" id="rep">📊 Réponses et résumé</button>
      <button class="btn sec" id="mod">✏️ Modifier ce quiz</button></div>`;
@@ -1302,7 +1303,7 @@ function revisionEcran(msg){
     if(prev)prev.onclick=()=>ouvrirWhatsApp(messageWhatsApp(`Le quiz de révision (${rc.titre}) 🧠`,rc));
     const tog=document.getElementById('tog');
     const changer=async(nouveau,duree)=>{
-      tog.disabled=true;tog.textContent='Un instant…';
+      tog.disabled=true;tog.textContent='⏳';
       try{await envoyerForm(FORM_QUIZ,{[EQ.journee]:'revision',[EQ.statut]:nouveau?'ouvert':'ferme',[EQ.contenu]:JSON.stringify(nouveau?{id:rc.id,duree}:{id:rc.id})})}
       catch(e){alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");revisionEcran();return}
       noterLocalRev(rc.id,nouveau?{ouvert:true,duree,ouvertAt:Date.now()}:{ouvert:false});
