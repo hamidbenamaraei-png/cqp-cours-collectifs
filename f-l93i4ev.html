@@ -395,7 +395,7 @@ function prepTexte(j){const z=quizDe(j), n=(z&&z.questions||[]).length;
 // ======= Écran : accueil =======
 function accueil(){
   if(!estAdmin())return accueilFormateur();
-  let h=`<div class="tag">Espace formateur</div><h1>Bonjour Hamid 👋</h1>`;
+  let h=`<div class="tag">Espace formateur</div><div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h1 style="margin-right:auto">Bonjour Hamid 👋</h1><button id="menu-o" aria-label="Menu" style="flex:none;width:52px;height:52px;border-radius:14px;border:2px solid var(--line);background:var(--card);color:var(--txt);font-size:28px;line-height:1;cursor:pointer">☰</button></div>`;
   const nAtt=Object.values(STAG).filter(x=>x.statut==='attente').length, nAcc=Object.values(STAG).filter(x=>x.statut==='accepte').length;
   // 29/10 : la journée du jour (ou la prochaine) en haut, selon le planning ; les journées passées dans un dossier
   const auj=isoJour(new Date());
@@ -420,6 +420,9 @@ function accueil(){
     <button class="btn ${nAtt?'':'sec'}" id="stg">${nAtt?'Voir les demandes':'Gérer la liste'}</button></div>`;
   h+=`<div class="card"><h2>📋 Exercices</h2><p style="margin:0" class="muted">Renforcement musculaire, étirements et méthodes d'étirement. Tu choisis ce que les stagiaires peuvent voir pour réviser.</p>
     <button class="btn sec" id="fiches">Ouvrir les exercices</button></div>`;
+  // 06/11 : menu ☰ « Mes outils » (roue, minuteur, musiques)
+  h+=`<div id="menu-outils" class="hide" style="position:fixed;inset:0;z-index:65;background:var(--bg);overflow:auto;padding:calc(16px + env(safe-area-inset-top,0px)) 16px 24px"><div style="max-width:640px;margin:0 auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px"><h1 style="margin:0">🧰 Mes outils</h1><button class="btn small sec" style="width:auto;margin:0;flex:none" id="menu-x">✕ Fermer</button></div>`;
   h+=`<div class="card o"><h2>🎡 La roue</h2><p style="margin:0" class="muted">Répartition du cours, exercices de renforcement ou d'étirement, tirés au hasard. Sur ton téléphone seulement.</p>
     <button class="btn sec" id="roue">Ouvrir la roue</button></div>`;
   h+=`<div class="card"><h2>🎵 Mes musiques</h2><p style="margin:0" class="muted">Tes musiques de cours, rangées par catégories. Seulement sur ce téléphone.</p>
@@ -428,6 +431,7 @@ function accueil(){
     <button class="btn sec" id="tbo">Ouvrir le minuteur</button>
     <button class="btn small ${MINUTEUR_MONTRE?'':'sec'}" id="tbm">${MINUTEUR_MONTRE?'👀 Montrer le minuteur aux stagiaires / apprentis : Oui · toucher pour Non':'🙈 Montrer le minuteur aux stagiaires / apprentis : Non · toucher pour Oui'}</button>
     <div class="ok hide" id="tbmok"></div></div>`;
+  h+=`</div></div>`;
   {const M=crModeleChoisi(PREP_COURS);
   h+=`<div class="card o"><h2>📝 Je prépare mon cours</h2><p style="margin:0" class="muted">Les stagiaires / apprentis préparent leur cours (musique, exercices, temps) à partir de ton modèle. Modèle proposé : <b style="color:var(--soft)">${esc(M.nom)}</b> (${crFmt(crCibleModele(M))}).</p>
     <button class="btn sec" id="crp">Ouvrir mes modèles de cours</button>
@@ -449,6 +453,7 @@ function accueil(){
   app.querySelectorAll('[data-j]').forEach(b=>b.onclick=()=>journee(JOURNEES.find(j=>j.id===b.dataset.j)));
   document.getElementById('stg').onclick=()=>mesStagiaires();
   document.getElementById('rev').onclick=()=>revisionEcran();
+  {const m=document.getElementById('menu-outils');document.getElementById('menu-o').onclick=()=>m.classList.remove('hide');document.getElementById('menu-x').onclick=()=>m.classList.add('hide')}
   document.getElementById('roue').onclick=()=>roueSimple();
   document.getElementById('fiches').onclick=()=>mesExercices();
 
