@@ -453,8 +453,7 @@ function accueil(){
   h+=`<div class="card ${nAtt?'o':'g'}"><h2>👥 Stagiaires / Apprentis</h2>
     <p style="margin:0">${nAcc} accepté${nAcc>1?'s':''}${nAtt?` · <b style="color:var(--or)">${nAtt} demande${nAtt>1?'s':''} en attente</b>`:''}</p>
     <button class="btn ${nAtt?'':'sec'}" id="stg">${nAtt?'Voir les demandes':'Gérer la liste'}</button></div>`;
-  h+=`<div class="card"><h2>📋 Exercices</h2><p style="margin:0" class="muted">Renforcement musculaire, étirements et méthodes d'étirement. Tu choisis ce que les stagiaires peuvent voir pour réviser.</p>
-    <button class="btn sec" id="fiches">Ouvrir les exercices</button></div>`;
+  // 06/11 : « Exercices » déplacés dans le menu ☰ (ligne « 📋 Mes exercices »)
   // 06/11 : menu ☰ « Mes outils » (roue, minuteur, musiques)
   h+=`<div id="menu-outils" class="hide" style="position:fixed;inset:0;z-index:65;background:var(--bg);overflow:auto;padding:calc(10px + env(safe-area-inset-top,0px)) 16px 24px"><div style="max-width:640px;margin:0 auto">
     <div style="display:flex;align-items:center;height:52px;margin:0 132px 16px 0"><h1 style="margin:0;line-height:52px">Menu</h1></div>
@@ -465,7 +464,7 @@ function accueil(){
     <button class="btn sec" id="tbo">Ouvrir le minuteur</button>
     <button class="btn small ${MINUTEUR_MONTRE?'':'sec'}" id="tbm">${MINUTEUR_MONTRE?'👀 Montrer le minuteur aux stagiaires / apprentis : Oui · toucher pour Non':'🙈 Montrer le minuteur aux stagiaires / apprentis : Non · toucher pour Oui'}</button>
     <div class="ok hide" id="tbmok"></div></div>`;
-  h+=`</div><button class="btn sec" id="ag-b" style="text-align:left;margin:0 0 14px">📅 Mon agenda <span class="muted" style="float:right">▸</span></button><div id="ag-liste" class="hide">${agA||'<p class="muted">Aucune journée pour l\'instant.</p>'}</div></div></div>`;
+  h+=`</div><button class="btn sec" id="ag-b" style="text-align:left;margin:0 0 14px">📅 Mon agenda <span class="muted" style="float:right">▸</span></button><div id="ag-liste" class="hide">${agA||'<p class="muted">Aucune journée pour l\'instant.</p>'}</div><button class="btn sec" id="mx-b" style="text-align:left;margin:0 0 14px">📋 Mes exercices <span class="muted" style="float:right">▸</span></button></div></div>`;
   h+=`<div id="param-o" class="hide" style="position:fixed;inset:0;z-index:65;background:var(--bg);overflow:auto;padding:calc(10px + env(safe-area-inset-top,0px)) 16px 24px"><div style="max-width:640px;margin:0 auto">
     <div style="display:flex;align-items:center;height:52px;margin:0 132px 16px 0"><h1 style="margin:0;line-height:52px">Paramètres</h1></div><div id="pa-liste"></div></div></div>`;
   // 06/11 : carte « Je prépare mon cours » retirée de l'accueil à la demande de Hamid (la partie « Ses cours préparés » des fiches reste)
@@ -487,6 +486,9 @@ function accueil(){
   h+=`<p class="muted"><a href="./" style="color:var(--mute)">Voir l'espace stagiaires / apprentis</a> · <button class="link" id="vef" style="color:var(--mute)">Voir l'espace formateur</button> · <button class="link" id="out">Se déconnecter</button></p>
   <p class="muted"><button class="link" id="rz">Pour mes tests : changer de nom dans l'espace stagiaires (sur ce téléphone)</button></p><div class="ok hide" id="rzok">✅ C'est fait : l'espace stagiaires te redemandera ton nom.</div>`;
   app.innerHTML=h;
+  // 06/11 : « 🧠 Quiz de révision » rangé dans « Mes outils »
+  {const c=document.getElementById('rev'),mo=document.getElementById('mo-liste');const k=c&&c.closest('.card');if(k&&mo)mo.appendChild(k)}
+  {const b=document.getElementById('mx-b');if(b)b.onclick=()=>mesExercices()}
   // 06/11 : « ⚙️ Paramètres » dans le menu ☰ : mes appareils, liens du bas (« Autres formateurs » reste sur l'accueil)
   {const pa=document.getElementById('pa-liste');if(pa){[document.getElementById('rpc'),document.getElementById('vef'),document.getElementById('rz')].forEach(el=>{const c=el&&(el.closest('.card')||el.closest('p'));if(c&&c.parentNode!==pa)pa.appendChild(c)});const ok=document.getElementById('rzok');if(ok)pa.appendChild(ok)}}
   app.querySelectorAll('[data-j]').forEach(b=>b.onclick=()=>journee(JOURNEES.find(j=>j.id===b.dataset.j)));
@@ -506,7 +508,7 @@ function accueil(){
      [['mo-liste','mo-b',r.mo],['ag-liste','ag-b',r.ag]].forEach(([l,b,o])=>{if(o){document.getElementById(l).classList.remove('hide');document.getElementById(b).querySelector('span').textContent='▾'}});
      setTimeout(()=>{menu.scrollTop=r.y||0},0)}}
   {const b=document.getElementById('roue');if(b)b.onclick=()=>roueSimple()}
-  document.getElementById('fiches').onclick=()=>mesExercices();
+  {const b=document.getElementById('fiches');if(b)b.onclick=()=>mesExercices()}
 
   {const b=document.getElementById('mus');if(b)b.onclick=()=>mesMusiques()}
   document.getElementById('tbo').onclick=()=>tabataEcran(accueil,'Espace formateur');
