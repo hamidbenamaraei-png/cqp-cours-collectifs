@@ -1317,12 +1317,37 @@ async function enregistrerRevision(r,propre){
   await envoyerForm(FORM_QUIZ,{[EQ.journee]:'revision',[EQ.statut]:'quiz',[EQ.contenu]:JSON.stringify({id:r.id,titre:r.titre,journees:r.journees||[],quiz:propre})});
   noterLocalRev(r.id,{titre:r.titre,journees:r.journees||[],quiz:propre,cree:r.cree||Date.now()});
 }
+// ======= 07/11 : Nouveau quiz : période (tout / dates / jours), exercices montrés, catégories =======
+const CATS_QUIZ=[['epmsp','🎓 EPMSP'],['secu','🦺 Sécurité'],['place','📍 Placements'],['consigne','🗣️ Consignes'],['posture','🧍 Postures'],['musique','🎵 Musique / Tabata']];
+function catQuestion(q){
+  const id=String(q.id||'');
+  if(id.startsWith('g:')){const t=id.slice(-1);return t==='s'?'secu':(t==='p'||t==='c')?'posture':'consigne'}
+  return ({epmsp:'epmsp',jury:'epmsp',minutes:'epmsp',briefing:'secu',salle:'secu',placement:'place',musique:'musique',consigne:'consigne',posture:'posture',secu:'secu',securite:'secu'})[q.theme]||'epmsp';
+}
+// questions des exercices : seulement les parties montrées aux stagiaires
+function questionsExos(src){const T=genTout();return T.liste.filter(id=>T.par[id].theme.startsWith(src+'.')&&FICHES_OUV.includes(T.par[id].theme)).map(id=>genQuestion(id))}
 function nouvelleRevision(){
-  const choix={j:JOURNEES.map(j=>j.id).filter(id=>{const j=JOURNEES.find(x=>x.id===id);return j.banque&&j.banque.questions.length}),duree:5,ressenti:false};
+  const JQ=JOURNEES.filter(j=>j.banque&&j.banque.questions.length);
+  const choix={mode:'tout',du:'',au:'',j:JQ.map(j=>j.id),ex:{renfo:true,etir:true},cats:new Set(CATS_QUIZ.map(([k])=>k)),duree:5,ressenti:false};
+  const sources=()=>{let js=choix.mode==='tout'?JQ:choix.mode==='dates'?JQ.filter(j=>(!choix.du||j.id>=choix.du)&&(!choix.au||j.id<=choix.au)):JQ.filter(j=>choix.j.includes(j.id));
+    const ex=choix.mode==='tout'?{renfo:true,etir:true}:choix.ex;
+    const qs=[].concat(...js.map(j=>j.banque.questions),ex.renfo?questionsExos('renfo'):[],ex.etir?questionsExos('etir'):[]);
+    return {js,ex,qs}};
   const dessiner=()=>{
+    const S=sources(), nbCat=k=>S.qs.filter(q=>catQuestion(q)===k).length, nR=questionsExos('renfo').length, nE=questionsExos('etir').length;
+    const radio=(v,t)=>`<label class="check"><input type="radio" name="rvm" value="${v}" ${choix.mode===v?'checked':''}> ${t}</label>`;
     let h=`<button class="back" id="bk">← Retour</button><div class="tag">Quiz</div><h1>🆕 Nouveau quiz</h1>
-     <div class="card"><h2>Quelles journées ?</h2>`+
-     JOURNEES.filter(j=>j.banque&&j.banque.questions.length).map(j=>`<label class="check"><input type="checkbox" data-j="${j.id}" ${choix.j.includes(j.id)?'checked':''}> ${esc(j.titre)} – ${esc(j.theme)}</label>`).join('')+`</div>
+     <div class="card"><h2>Sur quelle période ?</h2>
+      ${radio('tout','Tout depuis le début de la formation')}
+      ${radio('dates','Du … au …')}
+      ${choix.mode==='dates'?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px 34px"><label style="margin:0">Du <input type="date" id="rvdu" value="${choix.du}" style="width:auto"></label><label style="margin:0">au <input type="date" id="rvau" value="${choix.au}" style="width:auto"></label></div>`:''}
+      ${radio('jours','Je choisis les jours')}
+      ${choix.mode==='jours'?`<div style="margin-left:34px">`+JQ.map(j=>`<label class="check"><input type="checkbox" data-j="${j.id}" ${choix.j.includes(j.id)?'checked':''}> ${esc(j.titre)} – ${esc(j.theme)}</label>`).join('')+`</div>`:''}
+      <div class="tag" style="margin-top:12px">Exercices (seulement ce qui est montré aux stagiaires)</div>
+      <label class="check"><input type="checkbox" data-ex="renfo" ${S.ex.renfo?'checked':''} ${choix.mode==='tout'||!nR?'disabled':''}> 💪 Exercices de renforcement ${nR?`<span class="muted">(${nR} questions)</span>`:'<span class="muted">(rien de montré)</span>'}</label>
+      <label class="check"><input type="checkbox" data-ex="etir" ${S.ex.etir?'checked':''} ${choix.mode==='tout'||!nE?'disabled':''}> 🧘 Exercices d'étirement ${nE?`<span class="muted">(${nE} questions)</span>`:'<span class="muted">(rien de montré)</span>'}</label>
+      <p class="muted" style="margin:6px 0 0">${S.js.length} journée${S.js.length>1?'s':''} : ${S.js.map(j=>esc(j.titre)).join(', ')||'aucune'}.</p></div>
+     <div class="card"><h2>Quelles catégories ?</h2>`+CATS_QUIZ.map(([k,t])=>{const n=nbCat(k);return `<label class="check"><input type="checkbox" data-cat="${k}" ${choix.cats.has(k)&&n?'checked':''} ${n?'':'disabled'}> ${t} <span class="muted">(${n?n+' question'+(n>1?'s':''):'pas encore de questions'})</span></label>`}).join('')+`</div>
      <div class="card"><h2>Combien de temps ?</h2>
       <label for="rvmin" style="margin-top:0">Nombre de minutes</label>
       <input type="number" id="rvmin" inputmode="numeric" min="1" max="60" step="1" value="${choix.duree}">
@@ -1330,29 +1355,34 @@ function nouvelleRevision(){
       <label class="check"><input type="checkbox" id="rs" ${choix.ressenti?'checked':''}> Ajouter le ressenti « J'ai compris… » (facultatif)</label></div>
      <div class="err hide" id="er"></div>
      <button class="btn" id="go">🎲 Tirer les questions</button>`;
-    app.innerHTML=h;
+    const y=window.scrollY;app.innerHTML=h;window.scrollTo(0,y);
     document.getElementById('bk').onclick=()=>revisionEcran();
-    app.querySelectorAll('[data-j]').forEach(c=>c.onchange=()=>{choix.j=[...app.querySelectorAll('[data-j]')].filter(x=>x.checked).map(x=>x.dataset.j)});
+    app.querySelectorAll('[name="rvm"]').forEach(r=>r.onchange=()=>{choix.mode=r.value;dessiner()});
+    app.querySelectorAll('[data-j]').forEach(c=>c.onchange=()=>{choix.j=[...app.querySelectorAll('[data-j]')].filter(x=>x.checked).map(x=>x.dataset.j);dessiner()});
+    app.querySelectorAll('[data-ex]').forEach(c=>c.onchange=()=>{choix.ex[c.dataset.ex]=c.checked;dessiner()});
+    app.querySelectorAll('[data-cat]').forEach(c=>c.onchange=()=>{c.checked?choix.cats.add(c.dataset.cat):choix.cats.delete(c.dataset.cat)});
+    {const du=document.getElementById('rvdu'),au=document.getElementById('rvau');if(du)du.onchange=()=>{choix.du=du.value;dessiner()};if(au)au.onchange=()=>{choix.au=au.value;dessiner()}}
     document.getElementById('rvmin').oninput=e=>{const d=lireMinutes(e.target.value);if(d&&d<=60){choix.duree=d;document.getElementById('rvnb').textContent=`Environ ${d*2} questions.`}};
     document.getElementById('rs').onchange=e=>{choix.ressenti=e.target.checked};
-    document.getElementById('go').onclick=()=>{
-      if(!choix.j.length){const er=document.getElementById('er');er.textContent='Coche au moins une journée.';er.classList.remove('hide');return}
-      {const d=lireMinutes(document.getElementById('rvmin').value);if(!d||d>60){const er=document.getElementById('er');er.textContent='Écris un nombre de minutes entre 1 et 60.';er.classList.remove('hide');return}choix.duree=d}
-      tirerRevision(choix);
+    document.getElementById('go').onclick=()=>{const er=document.getElementById('er'),dire=t=>{er.textContent=t;er.classList.remove('hide')};
+      {const d=lireMinutes(document.getElementById('rvmin').value);if(!d||d>60)return dire('Écris un nombre de minutes entre 1 et 60.');choix.duree=d}
+      const S2=sources(), pool=S2.qs.filter(q=>choix.cats.has(catQuestion(q)));
+      if(!pool.length)return dire('Aucune question avec ce choix : coche au moins une journée ou des exercices, et une catégorie.');
+      tirerRevision({js:S2.js,ex:S2.ex,cats:choix.cats,pool,duree:choix.duree,ressenti:choix.ressenti});
     };
   };
   dessiner(); haut();
 }
 function tirerRevision(choix){
-  const js=JOURNEES.filter(j=>choix.j.includes(j.id));
-  const pool=[].concat(...js.map(j=>j.banque.questions));
+  const js=choix.js, pool=choix.pool;
   const n=choix.duree*2;
+  const par={};pool.forEach(q=>{const k=catQuestion(q);(par[k]=par[k]||[]).push(q)});
   const z={ressenti:choix.ressenti?js.slice(-4).map(j=>`Ce qu'on a vu le ${j.titre.toLowerCase()}`):[],
-    questions:tirerQuestions(js.map(j=>j.banque.questions),n)};
+    questions:tirerQuestions(Object.values(par),n)};
   // titre unique : « Révision du JJ/MM »
-  let titre=`Révision du ${jjmm(Date.now())}`, k=2;
-  while(Object.values(REVS).some(r=>r.titre===titre))titre=`Révision du ${jjmm(Date.now())} n°${k++}`;
-  const r={id:nouvelId(),titre,journees:choix.j,cree:Date.now()};
+  let titre=`Quiz du ${jjmm(Date.now())}`, k=2;
+  while(Object.values(REVS).some(r=>r.titre===titre))titre=`Quiz du ${jjmm(Date.now())} n°${k++}`;
+  const r={id:nouvelId(),titre,journees:js.map(j=>j.id),cree:Date.now()};
   const sauver=async propre=>{
     const avant=revisionCourante(REVS);
     if(avant&&avant.ouvert){await envoyerForm(FORM_QUIZ,{[EQ.journee]:'revision',[EQ.statut]:'ferme',[EQ.contenu]:JSON.stringify({id:avant.id})});noterLocalRev(avant.id,{ouvert:false})}
@@ -1361,7 +1391,7 @@ function tirerRevision(choix){
   };
   const apres=m=>revisionEcran(m);
   apercu({tag:'Quiz',titre,z,pool,retour:()=>nouvelleRevision(),
-    info:`${js.map(j=>j.titre).join(', ')} · tirage mélangé.`,
+    info:`${[...js.map(j=>j.titre),...(choix.ex.renfo?['Renforcement']:[]),...(choix.ex.etir?['Étirements']:[])].join(', ')} · ${CATS_QUIZ.filter(([k])=>choix.cats.has(k)).map(([,t])=>t).join(', ')} · tirage mélangé.`,
     actions:[
       {txt:'✏️ Modifier avant d\'enregistrer',cls:'sec',f:zz=>editeur({tag:'Quiz',titre,z:zz,retour:()=>revisionEcran(),reouvrir:()=>revisionEcran(),texteEnregistrer:'Enregistrer la révision',enregistrer:sauver,apres})},
       {txt:'💾 Enregistrer la révision',f:async zz=>{
