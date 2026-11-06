@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#10162b">
+<title>Envoyer sur mon téléphone</title>
+<link rel="icon" href="icone-formateur-192.png">
+<style>
+:root{--bg:#10162b;--card:#1c2442;--card2:#232c52;--line:#2c365c;--txt:#fff;--soft:#c9cfe6;--mute:#8a92b2;--or:#ff7a3d;--ok:#4cc38a;--ko:#ff5d6c;--bl:#4c8dff;--ja:#f5c451}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--txt)}
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:18px;line-height:1.45;overflow-wrap:break-word;min-height:100vh}
+main{max-width:760px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:26px;margin:0;line-height:1.2}
+h2{font-size:20px;margin:0 0 10px}
+p{margin:0 0 12px}
+.tag{color:var(--or);font-weight:800;font-size:13px;letter-spacing:1.5px;text-transform:uppercase}
+.logo{display:flex;align-items:center;gap:14px;margin:0 0 18px}
+.logo img{width:56px;height:56px;border-radius:14px}
+.logo span{display:block;color:var(--soft);font-size:15px}
+.soft{color:var(--soft)}.mute{color:var(--mute);font-size:15px}.small{font-size:15px}
+.card{background:var(--card);border-radius:18px;padding:16px;margin:0 0 14px;border-top:5px solid var(--bl)}
+.card.o{border-top-color:var(--or)}.card.g{border-top-color:var(--ok)}.card.j{border-top-color:var(--ja)}.card.r{border-top-color:var(--ko)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:52px;padding:10px 20px;border:0;border-radius:14px;background:var(--or);color:#10162b;font:inherit;font-weight:800;font-size:18px;cursor:pointer}
+.btn.sec{background:#2a3566;color:#fff}
+.btn.small{min-height:40px;font-size:15px;padding:6px 14px;border-radius:11px}
+.btn:disabled{opacity:.45;cursor:default}
+input[type=text],select{width:100%;padding:13px 14px;border-radius:12px;border:2px solid var(--line);background:#141b33;color:#fff;font:inherit;font-size:17px}
+#code{font-size:24px;font-weight:800;letter-spacing:2px;text-align:center;font-family:ui-monospace,Menlo,Consolas,monospace;margin:0 0 12px}
+input:focus,select:focus{outline:none;border-color:var(--or)}
+.dest{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 12px}
+.dest button{flex:1 1 220px;min-height:64px;border-radius:14px;border:3px solid var(--line);background:#141b33;color:#fff;font:inherit;font-weight:800;font-size:18px;cursor:pointer;padding:10px}
+.dest button.on{border-color:var(--or);background:#2a2230}
+label.l{display:block;font-weight:700;margin:6px 0 6px}
+#zone{display:block;border:3px dashed var(--line);border-radius:20px;padding:34px 16px;text-align:center;cursor:pointer;background:#141b33;margin:0 0 14px}
+#zone.sur,#zone:hover{border-color:var(--or);background:#2a2230}
+#zone b{display:block;font-size:22px;margin:6px 0}
+.f{background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:12px;margin:0 0 10px}
+.f .n{font-weight:800;overflow-wrap:anywhere}
+.f .e{font-size:15px;color:var(--soft);margin:4px 0 0}
+.f .e.ok{color:var(--ok);font-weight:800}.f .e.ko{color:var(--ko);font-weight:700}
+.bar{height:14px;background:#0f1328;border-radius:9px;overflow:hidden;border:1px solid var(--line);margin:8px 0 0}
+.bar>i{display:block;height:100%;width:0;background:var(--or)}
+.f.fini .bar>i{background:var(--ok)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.hide{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <div class="logo"><img src="icone-formateur-192.png" alt=""><div><div class="tag">Espace formateur</div><h1>Envoyer sur mon téléphone</h1><span>Musiques et documents, de cet ordinateur vers ton espace formateur</span></div></div>
+
+  <div class="card j"><b>📱 Avant d'envoyer :</b> sur ton téléphone, ton <b>espace formateur doit être ouvert</b> (déverrouillé, écran allumé), pendant tout l'envoi.</div>
+
+  <section id="ecranCode" class="hide">
+    <div class="card o">
+      <h2>Tape le code de ton téléphone</h2>
+      <p class="soft small">Sur ton téléphone : espace formateur › 📱 Mes appareils › 💻 Envoyer depuis mon PC. Le code a 12 caractères (lettres et chiffres).</p>
+      <input type="text" id="code" autocomplete="off" spellcheck="false" placeholder="XXXX-XXXX-XXXX" maxlength="20" aria-label="Code du téléphone">
+      <p id="codeMsg" class="small" style="color:var(--ko);font-weight:700;min-height:22px"></p>
+      <button class="btn" id="relier">Relier</button>
+    </div>
+  </section>
+
+  <section id="ecranCherche" class="hide">
+    <div class="card j" role="status"><h2>⏳ Je cherche ton téléphone…</h2><p class="soft small" style="margin:0">Garde ton espace formateur ouvert sur ton téléphone, écran allumé.</p></div>
+  </section>
+
+  <section id="ecranMuet" class="hide">
+    <div class="card r"><h2>📱 Ton téléphone ne répond pas</h2><p class="soft" id="muetTxt"></p><button class="btn" id="reessayer">🔄 Réessayer</button></div>
+  </section>
+
+  <section id="ecranEnvoi" class="hide">
+    <div class="card g"><b>✅ Relié à ton téléphone</b> <span class="mute" id="codeVu"></span></div>
+    <div class="card o">
+      <h2>1. Où ranger les fichiers sur ton téléphone ?</h2>
+      <div class="dest" id="dest"></div>
+      <div id="destMu" class="hide">
+        <label class="l" for="selMu">Dans quelle catégorie de musiques ?</label>
+        <select id="selMu"></select>
+        <input type="text" id="nvMu" class="hide" placeholder="Nom de la nouvelle catégorie" style="margin-top:8px" maxlength="60">
+        <p class="mute" style="margin:8px 0 0">Elles arrivent dans « 🎵 Mes musiques », comme si tu les avais ajoutées sur ton téléphone. Pour le Tabata, le format (20/10, 45/15…) est lu dans le nom du fichier.</p>
+      </div>
+      <div id="destDoc" class="hide">
+        <label class="l" for="selDoc">Dans quel dossier ?</label>
+        <select id="selDoc"></select>
+        <input type="text" id="nvDoc" class="hide" placeholder="Nom du nouveau dossier (ex. EPMSP)" style="margin-top:8px" maxlength="60">
+      </div>
+      <p id="destMsg" class="small" style="color:var(--ko);font-weight:700;margin:8px 0 0"></p>
+    </div>
+    <h2 style="margin:18px 0 10px">2. Glisse tes fichiers</h2>
+    <label id="zone" for="choix">
+      <div style="font-size:44px">📥</div>
+      <b>Glisse ici tes musiques ou tes documents</b>
+      <span class="soft">Tu peux en mettre plusieurs d'un coup.</span>
+    </label>
+    <p style="text-align:center;margin:-4px 0 16px"><label class="btn sec" for="choix">📂 Choisir des fichiers</label></p>
+    <input type="file" id="choix" class="hide" multiple>
+    <div id="liste"></div>
+    <p class="mute">🔒 Les fichiers vont directement de cet ordinateur à ton téléphone, chiffrés. Ils ne sont gardés sur aucun serveur et restent seulement sur ton téléphone (personne d'autre ne les voit). Pour un gros fichier, laisse cette page ouverte jusqu'à « Arrivé sur ton téléphone ✓ ».</p>
+    <button class="btn sec small" id="autre">Utiliser un autre code</button>
+  </section>
+  <p id="pasOk" class="card r hide">Ce navigateur ne permet pas d'envoyer les fichiers. Utilise Chrome, Edge ou Firefox, à jour.</p>
+</main>
+<script src="fpc-commun.js?v=202611061500"></script>
+<script src="fpc-page.js?v=202611061500"></script>
+</body>
+</html>

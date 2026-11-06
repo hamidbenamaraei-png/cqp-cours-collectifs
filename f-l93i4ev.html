@@ -162,6 +162,8 @@ body.avec-barre .wrap{padding-bottom:120px}
 <script src="musiques.js?v=202610261915"></script>
 <script src="tabata.js?v=202610301300"></script>
 <script src="cours.js?v=202610301300"></script>
+<script src="fpc-commun.js?v=202611061500"></script>
+<script src="depot-pc.js?v=202611061500"></script>
 <script>
 // ======= Réglages propres au formateur =======
 // Empreinte du code d'accès (le code lui-même n'est pas écrit ici)
@@ -345,6 +347,7 @@ function ecranCode(msg){
 async function demarrer(){
   app.innerHTML=`<p class="muted">Chargement…</p>`;
   try{await chargerEtat()}catch(e){if(e&&e.message==='retire')return;throw e}
+  try{fpcDemarrer()}catch(e){} // 06/11 : « 💻 Envoyer depuis mon PC » écoute l'ordinateur tant que l'espace est ouvert
   accueil();
 }
 // 06/11 : un autre formateur retiré : son appareil revient au code quand il revient sur l'appli (toutes les 3 min au plus)
@@ -452,6 +455,8 @@ function accueil(){
   document.getElementById('afo').onclick=()=>autresFormateurs();
   {const b=document.getElementById('afq');if(b)b.onclick=()=>quizFAdmin()}
   document.getElementById('rpc').onclick=()=>ecranPC();
+  document.getElementById('fpc').onclick=()=>ecranEnvoiPC();
+  document.getElementById('mdoc').onclick=()=>mesDocuments();
   document.getElementById('rz').onclick=()=>{try{localStorage.removeItem('cqp_moi')}catch(e){};document.getElementById('rzok').classList.remove('hide')};
   haut();
 }
@@ -2316,7 +2321,7 @@ function projection(){
 // il voit ses propres quiz et seulement ce qu'Hamid a coché dans « Ce que les autres formateurs peuvent voir ».
 function ecranPermis(nom){
   if(estAdmin())return true;
-  return !!({accueil:1,mesStagiaires:PARTAGE.stag||PARTAGE.rep,bilanStagiaire:PARTAGE.rep,mesExercices:PARTAGE.cours,ecranFiches:PARTAGE.cours,diapos:PARTAGE.cours})[nom];
+  return !!({accueil:1,mesDocuments:1,mesStagiaires:PARTAGE.stag||PARTAGE.rep,bilanStagiaire:PARTAGE.rep,mesExercices:PARTAGE.cours,ecranFiches:PARTAGE.cours,diapos:PARTAGE.cours})[nom];
 }
 async function recharger(suite){
   app.innerHTML=`<p class="muted">Chargement…</p>`;
@@ -2335,7 +2340,10 @@ function jourTxt(iso){const m=String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})$/)
 function htmlMesAppareils(){
   return `<div class="card" style="border-top-color:var(--line)"><div class="tag" style="color:var(--soft)">📱 Mes appareils</div>
     <p class="muted" style="margin:4px 0 0">Ton espace formateur peut aussi être sur ton ordinateur, avec tes notes et tes réglages.</p>
-    <button class="btn sec" id="rpc">💻 Ouvrir mon espace sur mon PC</button></div>`;
+    <button class="btn sec" id="rpc">💻 Ouvrir mon espace sur mon PC</button>
+    <p class="muted" style="margin:14px 0 0">Tes musiques et tes documents de l'ordinateur, envoyés sur ce téléphone (rien que pour toi).</p>
+    <button class="btn sec" id="fpc">💻 Envoyer depuis mon PC</button>
+    <button class="btn sec" id="mdoc">📁 Mes documents</button></div>`;
 }
 
 // ---- accueil d'un autre formateur ----
@@ -2355,7 +2363,7 @@ function accueilFormateur(){
   document.getElementById('mqn').onclick=()=>nouveauQuizF();
   const on=(id,f)=>{const b=document.getElementById(id);if(b)b.onclick=f};
   on('mqo',()=>mesQuizEcran()); on('stg',()=>stagiairesLecture()); on('qh',()=>quizHamidEcran());
-  on('crs',()=>coursLecture()); on('roue',()=>roueSimple()); on('rpc',()=>ecranPC());
+  on('crs',()=>coursLecture()); on('roue',()=>roueSimple()); on('rpc',()=>ecranPC()); on('fpc',()=>ecranEnvoiPC()); on('mdoc',()=>mesDocuments());
   on('out',()=>{ecrire('ok','');ecrire('qui',null);ecranCode()});
   haut();
 }
@@ -2668,7 +2676,7 @@ async function ecranPC(){
    <div class="card j nopli"><h2>⚠️ À savoir</h2>
     <p style="margin:0 0 8px">• Le lien marche <b>une seule fois</b>, pendant <b>7 jours</b>.</p>
     <p style="margin:0 0 8px">• Ton code est demandé sur l'ordinateur : le lien seul n'ouvre pas ton espace.</p>
-    <p style="margin:0">• Il emporte tes notes et tes réglages de cet appareil${adm?' (pas tes musiques : elles restent sur ce téléphone)':''}. Ton espace reste aussi ouvert sur ce téléphone.</p>
+    <p style="margin:0">• Il emporte tes notes et tes réglages de cet appareil${adm?' (pas tes musiques ni tes documents : ils restent sur ce téléphone)':' (pas tes documents : ils restent sur ce téléphone)'}. Ton espace reste aussi ouvert sur ce téléphone.</p>
     ${R.retires?`<p style="margin:8px 0 0;color:var(--ja)">• Tes notes sont très nombreuses : les plus longues ne sont pas dans le lien.</p>`:''}</div>
    <button class="btn sec" id="bk2">← Retour à l'accueil</button>`;
   document.getElementById('bk').onclick=accueil;document.getElementById('bk2').onclick=accueil;
@@ -2715,7 +2723,7 @@ const MEMO_ECRANS={
  monQuiz:{cle:j=>j&&j.id,trouver:id=>JOURNEES.find(x=>x.id===id)},
  mesStagiaires:{}, bilanStagiaire:{cle:x=>x&&x.id,trouver:id=>STAG&&STAG[id]},
  revisionEcran:{}, observationsEcran:{}, mesExercices:{}, coursPrepEcran:{}, roueEcran:{},
- ecranFiches:{cle:c=>c,trouver:c=>c}
+ ecranFiches:{cle:c=>c,trouver:c=>c}, mesDocuments:{}
 };
 // ======= 30/10 : quand on actualise la page, on reste sur le même écran (mémoire de l'onglet seulement) =======
 (function(){
