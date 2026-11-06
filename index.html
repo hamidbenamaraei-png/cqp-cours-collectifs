@@ -215,6 +215,9 @@ function accueil(){
       <p class="muted" style="margin:4px 0 0">Ton espace peut être sur un téléphone et sur un ordinateur.</p>
       <button class="btn sec" id="rpc">💻 Relier mon PC</button>
       <button class="btn sec" id="rtel">📲 Passer sur un nouveau téléphone</button></div>`;
+  // 06/11 : seulement sur les appareils où Hamid est entré dans son espace formateur
+  let hamid=false;try{hamid=localStorage.getItem('cqpf_hamid')==='1'}catch(e){}
+  if(hamid)h+=`<p class="muted"><a href="f-l93i4ev.html" style="color:var(--mute)">← Revenir à mon espace formateur</a></p>`;
   app.innerHTML = h;
   document.getElementById('evo').onclick=evolution;
   document.getElementById('rpc').onclick=()=>ecranRelier('pc');

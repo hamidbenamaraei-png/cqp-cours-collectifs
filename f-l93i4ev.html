@@ -220,7 +220,7 @@ let FORMATEURS = [], FORMATEURS_LUS = false, PARTAGE = Object.assign({},PARTAGE_
 function estAdmin(){return lire('ok','')===CODE_HASH}
 function moiF(){const q=lire('qui',null);return q&&q.id&&q.h&&q.h===lire('ok','')?q:null}
 function peut(k){return estAdmin()||!!PARTAGE[k]}
-function retirerAcces(){ecrire('ok','');ecrire('qui',null);ecranCode("Ton accès à l'espace formateur n'est plus actif. Si c'est une erreur, parles-en à Hamid.")}
+function retirerAcces(){ecrire('ok','');ecrire('qui',null);marqueHamid();ecranCode("Ton accès à l'espace formateur n'est plus actif. Si c'est une erreur, parles-en à Hamid.")}
 async function chargerEtat(){
   let g=null;
   try{g=await etatGeneral()}catch(e){g=null}
@@ -344,7 +344,10 @@ function ecranCode(msg){
   document.getElementById('go').onclick=go;
   document.getElementById('c').onkeydown=e=>{if(e.key==='Enter')go()};
 }
+// 06/11 : repère « Hamid sur cet appareil » pour le lien de retour dans l'espace stagiaires (seulement chez lui)
+function marqueHamid(){try{estAdmin()?localStorage.setItem('cqpf_hamid','1'):localStorage.removeItem('cqpf_hamid')}catch(e){}}
 async function demarrer(){
+  marqueHamid();
   app.innerHTML=`<p class="muted">Chargement…</p>`;
   try{await chargerEtat()}catch(e){if(e&&e.message==='retire')return;throw e}
   try{fpcDemarrer()}catch(e){} // 06/11 : « 💻 Envoyer depuis mon PC » écoute l'ordinateur tant que l'espace est ouvert
@@ -451,7 +454,7 @@ function accueil(){
     catch(err){alert("Ça n'a pas marché. Vérifie ta connexion internet et réessaie.");return accueil()}
     const y=window.scrollY;accueil();window.scrollTo(0,y);
     const ok=document.getElementById('crmok');ok.textContent=nv?"✅ « Je prépare mon cours » apparaîtra dans l'espace stagiaires / apprentis d'ici quelques minutes.":"✅ « Je prépare mon cours » disparaîtra de l'espace stagiaires / apprentis d'ici quelques minutes.";ok.classList.remove('hide')};
-  document.getElementById('out').onclick=()=>{ecrire('ok','');ecrire('qui',null);ecranCode()};
+  document.getElementById('out').onclick=()=>{ecrire('ok','');ecrire('qui',null);marqueHamid();ecranCode()};
   document.getElementById('afo').onclick=()=>autresFormateurs();
   {const b=document.getElementById('afq');if(b)b.onclick=()=>quizFAdmin()}
   document.getElementById('rpc').onclick=()=>ecranPC();
