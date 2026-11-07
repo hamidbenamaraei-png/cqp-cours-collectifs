@@ -329,6 +329,20 @@
     }
     return null;
   }
+  /** 07/11 : glisser sur le côté (gauche = suivant, droite = précédent). basIgnore : bande du bas à ignorer (barre de lecture). */
+  function glisserCote(el, suivant, precedent, basIgnore) {
+    let d = null;
+    el.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) { d = null; return; }
+      const t = e.touches[0], r = el.getBoundingClientRect();
+      d = (basIgnore && t.clientY > r.bottom - basIgnore) ? null : { x: t.clientX, y: t.clientY, t: Date.now() };
+    }, { passive: true });
+    el.addEventListener('touchend', (e) => {
+      if (!d) return; const t = e.changedTouches[0], dx = t.clientX - d.x, dy = t.clientY - d.y; const ok = Date.now() - d.t < 800; d = null;
+      if (!ok || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+      if (dx < 0) suivant(); else precedent();
+    }, { passive: true });
+  }
   /** Regarder la vidéo d'une édition, même sans musiques ni script */
   async function scrWatch(c, auto) {
     const url = await videoURL(c);
@@ -339,14 +353,17 @@
     const prev = i > 0 ? list[i - 1] : null, next = i >= 0 && i < list.length - 1 ? list[i + 1] : null;
     const stop = () => { const v = $('#smwatch'); if (v) v.pause(); };
     render('<div class="top"><button class="back" data-act="back">‹</button><h1>' + esc(c.name) + '</h1></div>' +
-      '<div class="vidbox"><video id="smwatch" src="' + url + '" controls playsinline preload="metadata"' + (auto ? ' autoplay' : '') + '></video></div>' +
-      '<div class="row"><button class="btn sec" data-act="prev"' + (prev ? '' : ' disabled') + '>⏮ Vidéo précédente</button><button class="btn sec" data-act="next"' + (next ? '' : ' disabled') + '>Vidéo suivante ⏭</button></div>' +
-      '<p class="mute small">Touche ⛶ en bas de la vidéo pour la mettre en plein écran.</p>',
+      '<div id="wsw" style="min-height:60vh"><div class="vidbox"><video id="smwatch" src="' + url + '" controls playsinline preload="metadata"' + (auto ? ' autoplay' : '') + '></video></div>' +
+      '<p class="mute small">👈 Glisse sur le côté pour changer de vidéo' + (list.length > 1 ? ' (' + (i + 1) + ' / ' + list.length + ')' : '') + '. Touche ⛶ en bas de la vidéo pour la mettre en plein écran.</p></div>',
       {
         back: () => { stop(); scrCourse(c.id); },
         prev: () => { if (prev) { stop(); scrWatch(prev, true); } },
         next: () => { if (next) { stop(); scrWatch(next, true); } }
       });
+    // 07/11 : glisser à gauche = vidéo suivante, à droite = précédente (la barre de lecture du bas n'est pas touchée)
+    glisserCote($('#wsw'), () => { if (next) { stop(); scrWatch(next, true); } else toast('C\'est la dernière vidéo'); },
+      () => { if (prev) { stop(); scrWatch(prev, true); } else toast('C\'est la première vidéo'); });
+    { const v = $('#smwatch'); if (v) v.addEventListener('touchstart', (e) => { const r = v.getBoundingClientRect(); if (e.touches[0].clientY > r.bottom - 70) e.stopPropagation(); }, { passive: true }); }
   }
   /** Rechoisir la vidéo d'une édition, et la garder dans l'appli */
   async function giveVideo(c, given, sure) {
@@ -413,6 +430,8 @@
         url = URL.createObjectURL(list[i].blob); img.src = url; sc = 1; x = 0; y = 0; apply();
         $('#pvn', el).textContent = (i + 1) + ' / ' + list.length;
       };
+      // 07/11 : glisser sur le côté pour changer de photo (quand on n'a pas zoomé)
+      glisserCote(zone, () => { if (sc <= 1.01 && i < list.length - 1) { i++; show(); } }, () => { if (sc <= 1.01 && i > 0) { i--; show(); } });
       zone.addEventListener('pointerdown', (e) => {
         zone.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); snap();
         const now = Date.now(); if (pts.size === 1 && now - lastTap < 300) { if (sc > 1.05) { sc = 1; x = 0; y = 0; } else { sc = 2.5; } apply(); } lastTap = now;
