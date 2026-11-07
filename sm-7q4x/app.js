@@ -1126,7 +1126,7 @@
         '<button class="btn small" style="margin:8px 0 8px" data-act="lvsee">📄 Voir mon livret</button><div class="row tight"><button class="btn sec small" style="margin:0" data-act="lvadd">🔁 Remplacer</button><button class="btn sec small" style="margin:0" data-act="lvrm">🗑️ Retirer</button></div></div>'
         : '<button class="btn sec" data-act="lvadd">📄 Ajouter mon livret</button>') +
       '<div class="row"><button class="btn sec" data-act="script">📖 Script de l\'édition</button><button class="btn sec" data-act="pdf">🖨️ PDF</button></div>' +
-      ms.map((m, i) => '<div class="card mrc ' + (C.textCount(C.textOf(m)) ? 'g' : 'o') + '"><div class="head"><button class="btn sec small" style="width:auto;flex:0 0 auto;margin:0 8px 0 0;padding:6px 10px" data-act="renm" data-id="' + m.id + '" aria-label="Renommer ce morceau">✏️</button><h2 style="flex:1 1 auto;min-width:0">' + (i + 1) + '. ' + esc(m.name) + '</h2></div>' +
+      ms.map((m, i) => '<div class="card mrc ' + (C.textCount(C.textOf(m)) ? 'g' : 'o') + '"><div class="head"><button class="btn sec small" style="width:auto;flex:0 0 auto;margin:0 8px 0 0;padding:6px 10px" data-act="renm" data-id="' + m.id + '" aria-label="Renommer ce morceau">✏️</button><h2 style="flex:1 1 auto;min-width:0">' + (i + 1) + '. ' + esc(m.name) + '</h2><button class="btn sec small" style="width:auto;flex:0 0 auto;margin:0 0 0 8px;padding:6px 10px" data-act="delm" data-id="' + m.id + '" aria-label="Supprimer ce morceau">🗑️</button></div>' +
         '<p style="margin:0 0 6px">' + scriptState(m, nPh(m.id)) + '</p>' +
         (lv ? lvSet(m) : '') +
         '<p class="mute">' + fmt(m.start) + ' → ' + fmt(m.end) + (m.musicId && musics[m.musicId] ? ' · 🎵 ' + esc(musics[m.musicId].name) + (m.alignMode === 'sure' ? ' ✅' : m.alignMode === 'proposed' ? ' ❓' : '') : ' · pas de musique liée') + '</p>' +
@@ -1172,6 +1172,12 @@
         if (!r) return; await deleteVideo(c.id); c.video.kept = null; if (S.videoFor === c.id) S.videoFor = null; await saveCourse(c); toast('Vidéo retirée ✅'); scrCourse(cid);
       },
       ren: async () => { const n = await askText('Nom de l\'édition', c.name, 'ex. Pump 100'); if (n) { c.name = n; await saveCourse(c); scrCourse(c.id); } },
+      delm: async (b) => {
+        const m = c.morceaux.find((x) => x.id === b.dataset.id); if (!m) return;
+        const r = await ask('Supprimer ce morceau ?', '« ' + esc(m.name) + ' » disparaît de l\'édition, avec son script, ses photos et la musique liée.', [{ label: 'Oui', value: 1, cls: 'red' }, { label: 'Non', value: 0, cls: 'sec' }]);
+        if (!r) return; for (const p of await photosOf(m.id)) await ddel('photos', p.id);
+        c.morceaux = c.morceaux.filter((x) => x.id !== m.id); await saveCourse(c); toast('Morceau supprimé ✅'); const y = window.scrollY; await scrCourse(cid); window.scrollTo(0, y);
+      },
       renm: async (b) => {
         const m = c.morceaux.find((x) => x.id === b.dataset.id); if (!m) return;
         if (!lv) { const n = await askText('Nom du morceau', m.name, 'ex. 04 dos / épaules'); if (n) { m.name = n; m.renamed = true; m.autoName = false; await saveCourse(c); scrCourse(c.id); } return; }
