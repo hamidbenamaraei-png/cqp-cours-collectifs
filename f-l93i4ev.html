@@ -413,16 +413,16 @@ function prepTexte(j){return j.diapos?`📚 ${j.diapos} document${j.diapos>1?'s'
 let MENU_RET=null, PARAM_RET=null;
 // 07/11 : bouton retour du téléphone = « ← Retour » de l'écran ; sur l'accueil, il demande « Quitter l'espace formateur ? »
 (function(){
-  let sortie=false, arme=0;
+  let sortie=false, arme=false;
   // Chrome ignore un retour ajouté sans toucher l'écran : on se « réarme » à chaque toucher
-  const armer=()=>{if(sortie)return;try{while(arme<4){history.pushState({fb:1},'');arme++}}catch(e){}}; // plusieurs protections d'avance
+  const armer=()=>{if(arme||sortie)return;try{history.pushState({fb:1},'');arme=true}catch(e){}};
   try{history.replaceState({fb:0},'')}catch(e){return}
   // pas d'armement au chargement : Chrome l'ignorerait ; on s'arme au premier vrai toucher
   ['touchend','click','keydown'].forEach(t=>document.addEventListener(t,armer,true)); // événements qui comptent comme un vrai toucher pour Chrome
   const clic=sel=>{const b=document.querySelector(sel);if(b&&b.offsetParent!==null){b.click();return true}return false};
   addEventListener('popstate',()=>{
     if(sortie){history.back();return}
-    arme=Math.max(0,arme-1);
+    arme=false;
     const q=document.getElementById('fb-quit');if(q){q.remove();return}
     if(clic('#dp-vx')||clic('#dp-ann'))return;
     for(const id of ['param-o','menu-outils']){const m=document.getElementById(id);if(m&&!m.classList.contains('hide')){m.classList.add('hide');return}}
