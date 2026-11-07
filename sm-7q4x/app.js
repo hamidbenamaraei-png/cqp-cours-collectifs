@@ -102,12 +102,16 @@
     const y = window.scrollY, same = key && key === lastScreen;
     document.documentElement.style.scrollPaddingTop = '';
     document.body.classList.remove('wtyping');
+    if (lastScreen) scrollMem[lastScreen] = y; // 07/11 : on retient où on était sur chaque écran
     app.innerHTML = html; acts = actions || {}; lastScreen = key; S.where = null; // v22 : scrHome / scrPc disent où on est
-    if (same) { window.scrollTo(0, y); requestAnimationFrame(() => window.scrollTo(0, y)); } else window.scrollTo(0, 0);
+    const back = goingBack; goingBack = false;
+    const to = same ? y : back && key && scrollMem[key] != null ? scrollMem[key] : 0; // retour en arrière : même endroit qu'avant
+    window.scrollTo(0, to); if (to) { requestAnimationFrame(() => window.scrollTo(0, to)); setTimeout(() => { if (lastScreen === key && Math.abs(window.scrollY - to) > 40) window.scrollTo(0, to); }, 250); }
   }
+  const scrollMem = {}; let goingBack = false;
   app.addEventListener('click', (e) => {
     const b = e.target.closest('[data-act]'); if (!b || !app.contains(b)) return;
-    const f = acts[b.dataset.act]; if (f) { e.preventDefault(); f(b, e); }
+    const f = acts[b.dataset.act]; if (f) { e.preventDefault(); goingBack = b.dataset.act === 'back'; f(b, e); }
   });
   function toast(msg, ms) {
     document.querySelectorAll('.toast').forEach((x) => x.remove());
