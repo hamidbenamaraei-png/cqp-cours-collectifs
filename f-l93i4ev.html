@@ -413,19 +413,22 @@ function prepTexte(j){return j.diapos?`📚 ${j.diapos} document${j.diapos>1?'s'
 let MENU_RET=null, PARAM_RET=null;
 // 07/11 : bouton retour du téléphone = « ← Retour » de l'écran ; sur l'accueil, il demande « Quitter l'espace formateur ? »
 (function(){
-  let sortie=false;
-  try{history.replaceState({fb:0},'');history.pushState({fb:1},'')}catch(e){return}
+  let sortie=false, arme=false;
+  // Chrome ignore un retour ajouté sans toucher l'écran : on se « réarme » à chaque toucher
+  const armer=()=>{if(arme||sortie)return;try{history.pushState({fb:1},'');arme=true}catch(e){}};
+  try{history.replaceState({fb:0},'')}catch(e){return}
+  armer();document.addEventListener('pointerdown',armer,true);
   const clic=sel=>{const b=document.querySelector(sel);if(b&&b.offsetParent!==null){b.click();return true}return false};
   addEventListener('popstate',()=>{
     if(sortie){history.back();return}
-    try{history.pushState({fb:1},'')}catch(e){}
+    arme=false;armer();
     const q=document.getElementById('fb-quit');if(q){q.remove();return}
     if(clic('#dp-vx')||clic('#dp-ann'))return;
     for(const id of ['param-o','menu-outils']){const m=document.getElementById(id);if(m&&!m.classList.contains('hide')){m.classList.add('hide');return}}
     if(clic('#bk'))return;
     if(APERCU&&clic('#apercu-x'))return;
     const d=document.createElement('div');d.id='fb-quit';d.style.cssText='position:fixed;inset:0;z-index:90;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px';
-    d.innerHTML='<div class="card o" style="max-width:420px;width:100%;margin:0"><h2 style="margin-top:0">Quitter l\'espace formateur ?</h2><button class="btn" id="fbq-oui">Oui, quitter</button><button class="btn sec" id="fbq-non">Non</button></div>';
+    d.innerHTML='<div class="card o" style="max-width:420px;width:100%;margin:0"><h2 style="margin-top:0">Voulez-vous vraiment quitter l\'application ?</h2><button class="btn" id="fbq-oui">Oui</button><button class="btn sec" id="fbq-non">Non</button></div>';
     document.body.appendChild(d);
     d.querySelector('#fbq-non').onclick=()=>d.remove();
     d.onclick=e=>{if(e.target===d)d.remove()};
