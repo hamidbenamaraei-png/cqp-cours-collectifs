@@ -691,7 +691,7 @@
     S.wantAwake = false; keepAwake(false); S.mixBack = null;
     const f = folderOf(fid); if (!f) return scrHome();
     const list = C.sortEditions((await dall('courses')).filter((c) => c.folder === fid));
-    render('<div class="top"><button class="back" data-act="back">‹</button><h1>📁 ' + esc(f.name) + '</h1><button class="back" data-act="ren" aria-label="Renommer le dossier">✏️</button></div>' +
+    render('<div class="top"><button class="back" data-act="back">‹</button><h1>📁 ' + esc(f.name) + '</h1>' + (/pump/i.test(f.name) ? '<button class="back" data-act="pcat" aria-label="Choisir par morceau (échauffement, squats…)">⋯</button>' : '') + '<button class="back" data-act="ren" aria-label="Renommer le dossier">✏️</button></div>' +
       '<button class="btn" data-act="new">➕ Nouvelle édition</button>' +
       (list.length ? list.map((c) => {
         const ms = c.morceaux.filter((m) => !m.lost); const w = ms.filter((m) => C.textCount(C.textOf(m))).length;
@@ -701,6 +701,7 @@
     {
       back: () => scrHome(),
       new: () => scrNew(fid),
+      pcat: () => scrPumpCats(fid),
       open: (b) => scrCourse(b.dataset.id),
       ren: async () => { const n = await askText('Nom du dossier', f.name); if (n) { f.name = n; await saveKV('folders'); scrFolder(fid); } },
       del: async () => {
@@ -708,6 +709,25 @@
         if (!r) return; S.folders = S.folders.filter((x) => x.id !== fid); await saveKV('folders'); scrHome();
       }
     });
+  }
+
+  /* ======================= 07/11 : Pump : un morceau (ex. Pectoraux) dans toutes les éditions ======================= */
+  const PUMP_CATS = ['Échauffement', 'Squats', 'Pectoraux', 'Dos', 'Triceps', 'Biceps', 'Fentes', 'Épaules', 'Abdos', 'Retour au calme'];
+  function scrPumpCats(fid) {
+    const f = folderOf(fid); if (!f) return scrHome();
+    render('<div class="top"><button class="back" data-act="back">‹</button><h1>📁 ' + esc(f.name) + ' · par morceau</h1></div>' +
+      '<p class="mute">Choisis un morceau : tu le vois dans toutes tes éditions.</p>' +
+      PUMP_CATS.map((t, i) => '<button class="seg" data-act="cat" data-k="' + i + '"><span class="n">' + (i + 1) + '</span><span class="t"><b>' + esc(t) + '</b></span></button>').join(''),
+      { back: () => scrFolder(fid), cat: (b) => scrPumpCat(fid, +b.dataset.k) });
+  }
+  async function scrPumpCat(fid, k) {
+    const f = folderOf(fid); if (!f) return scrHome();
+    const list = C.sortEditions((await dall('courses')).filter((c) => c.folder === fid));
+    const L = list.map((c) => ({ c, m: c.morceaux[k] })).filter((x) => x.m && !x.m.lost);
+    render('<div class="top"><button class="back" data-act="back">‹</button><h1>' + (k + 1) + ' · ' + esc(PUMP_CATS[k]) + '</h1></div>' +
+      (L.length ? L.map((x) => '<button class="seg" data-act="w" data-cid="' + x.c.id + '" data-mid="' + x.m.id + '"><span class="t"><b>' + esc(x.c.name) + '</b><span class="mute">' + esc(x.m.name || '') + ' · ' + (C.textCount(C.textOf(x.m)) ? '✍️ écrit' : '✍️ à écrire') + '</span></span></button>').join('')
+        : '<div class="card"><p class="soft">Aucune édition n\'a encore ce morceau.</p></div>'),
+      { back: () => scrPumpCats(fid), w: (b) => scrWrite(b.dataset.cid, b.dataset.mid) });
   }
 
   /* ======================= Nouvelle édition ======================= */
