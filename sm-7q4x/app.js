@@ -1549,6 +1549,12 @@
       photo: async () => { await leave(); photoMenu(c, m, () => scrWrite(cid, mid)); },
       lv: () => { if (S.flushWrite) S.flushWrite(); viewLivret(c, lvPageFor(c, m).page); } // par-dessus l'écran : la vidéo et le script ne bougent pas
     });
+    // 07/11 : glisser à gauche = morceau suivant, à droite = morceau précédent (en plus des boutons ; pas sur la barre de temps ni pendant l'écriture)
+    { const wp = $('#wpane'); if (wp) { let d = null;
+      wp.addEventListener('touchstart', (e) => { const t = e.target; d = (e.touches.length !== 1 || (t && (t.closest('input,textarea,select,.vtime') || t.isContentEditable)) || document.body.classList.contains('wtyping')) ? null : { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now() }; }, { passive: true });
+      wp.addEventListener('touchend', (e) => { if (!d) return; const t = e.changedTouches[0], dx = t.clientX - d.x, dy = t.clientY - d.y, ok = Date.now() - d.t < 800; d = null;
+        if (!ok || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+        const b = app.querySelector('[data-act="' + (dx < 0 ? 'nextm' : 'prevm') + '"]'); if (b && !b.disabled) b.click(); }, { passive: true }); } }
     // les boutons de la partie fixe et la liste ne prennent pas le clavier à la case (le clavier reste ouvert)
     const pn = pane();
     pn.addEventListener('mousedown', (ev) => { if (wmode && ev.target.closest('button, .wl, video')) ev.preventDefault(); });
