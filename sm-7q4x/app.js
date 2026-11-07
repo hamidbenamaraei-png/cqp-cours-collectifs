@@ -329,20 +329,6 @@
     }
     return null;
   }
-  /** 07/11 : glisser sur le côté (gauche = suivant, droite = précédent). basIgnore : bande du bas à ignorer (barre de lecture). */
-  function glisserCote(el, suivant, precedent, basIgnore) {
-    let d = null;
-    el.addEventListener('touchstart', (e) => {
-      if (e.touches.length !== 1) { d = null; return; }
-      const t = e.touches[0], r = el.getBoundingClientRect();
-      d = (basIgnore && t.clientY > r.bottom - basIgnore) ? null : { x: t.clientX, y: t.clientY, t: Date.now() };
-    }, { passive: true });
-    el.addEventListener('touchend', (e) => {
-      if (!d) return; const t = e.changedTouches[0], dx = t.clientX - d.x, dy = t.clientY - d.y; const ok = Date.now() - d.t < 800; d = null;
-      if (!ok || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
-      if (dx < 0) suivant(); else precedent();
-    }, { passive: true });
-  }
   /** Regarder la vidéo d'une édition, même sans musiques ni script */
   async function scrWatch(c, auto) {
     const url = await videoURL(c);
@@ -353,18 +339,14 @@
     const prev = i > 0 ? list[i - 1] : null, next = i >= 0 && i < list.length - 1 ? list[i + 1] : null;
     const stop = () => { const v = $('#smwatch'); if (v) v.pause(); };
     render('<div class="top"><button class="back" data-act="back">‹</button><h1>' + esc(c.name) + '</h1></div>' +
-      '<div id="wsw" style="min-height:60vh"><div class="vidbox"><video id="smwatch" src="' + url + '" controls playsinline preload="metadata"' + (auto ? ' autoplay' : '') + '></video></div>' +
+      '<div class="vidbox"><video id="smwatch" src="' + url + '" controls playsinline preload="metadata"' + (auto ? ' autoplay' : '') + '></video></div>' +
       '<div class="row"><button class="btn sec" data-act="prev"' + (prev ? '' : ' disabled') + '>⏮ Vidéo précédente</button><button class="btn sec" data-act="next"' + (next ? '' : ' disabled') + '>Vidéo suivante ⏭</button></div>' +
-      '<p class="mute small">Touche ⛶ en bas de la vidéo pour la mettre en plein écran.</p></div>',
+      '<p class="mute small">Touche ⛶ en bas de la vidéo pour la mettre en plein écran.</p>',
       {
         back: () => { stop(); scrCourse(c.id); },
         prev: () => { if (prev) { stop(); scrWatch(prev, true); } },
         next: () => { if (next) { stop(); scrWatch(next, true); } }
       });
-    // 07/11 : glisser à gauche = vidéo suivante, à droite = précédente (la barre de lecture du bas n'est pas touchée)
-    glisserCote($('#wsw'), () => { if (next) { stop(); scrWatch(next, true); } else toast('C\'est la dernière vidéo'); },
-      () => { if (prev) { stop(); scrWatch(prev, true); } else toast('C\'est la première vidéo'); });
-    { const v = $('#smwatch'); if (v) v.addEventListener('touchstart', (e) => { const r = v.getBoundingClientRect(); if (e.touches[0].clientY > r.bottom - 70) e.stopPropagation(); }, { passive: true }); }
   }
   /** Rechoisir la vidéo d'une édition, et la garder dans l'appli */
   async function giveVideo(c, given, sure) {
@@ -709,7 +691,7 @@
     S.wantAwake = false; keepAwake(false); S.mixBack = null;
     const f = folderOf(fid); if (!f) return scrHome();
     const list = C.sortEditions((await dall('courses')).filter((c) => c.folder === fid));
-    render('<div class="top"><button class="back" data-act="back">‹</button><h1>📁 ' + esc(f.name) + '</h1>' + (/pump/i.test(f.name) ? '<button class="back" data-act="pcat" aria-label="Choisir par morceau (échauffement, squats…)">⋯</button>' : '') + '<button class="back" data-act="ren" aria-label="Renommer le dossier">✏️</button></div>' +
+    render('<div class="top"><button class="back" data-act="back">‹</button><h1>📁 ' + esc(f.name) + '</h1><button class="back" data-act="ren" aria-label="Renommer le dossier">✏️</button></div>' +
       '<button class="btn" data-act="new">➕ Nouvelle édition</button>' +
       (list.length ? list.map((c) => {
         const ms = c.morceaux.filter((m) => !m.lost); const w = ms.filter((m) => C.textCount(C.textOf(m))).length;
@@ -719,7 +701,6 @@
     {
       back: () => scrHome(),
       new: () => scrNew(fid),
-      pcat: () => scrPumpCats(fid),
       open: (b) => scrCourse(b.dataset.id),
       ren: async () => { const n = await askText('Nom du dossier', f.name); if (n) { f.name = n; await saveKV('folders'); scrFolder(fid); } },
       del: async () => {
@@ -727,25 +708,6 @@
         if (!r) return; S.folders = S.folders.filter((x) => x.id !== fid); await saveKV('folders'); scrHome();
       }
     });
-  }
-
-  /* ======================= 07/11 : Pump : un morceau (ex. Pectoraux) dans toutes les éditions ======================= */
-  const PUMP_CATS = ['Échauffement', 'Squats', 'Pectoraux', 'Dos', 'Triceps', 'Biceps', 'Fentes', 'Épaules', 'Abdos', 'Retour au calme'];
-  function scrPumpCats(fid) {
-    const f = folderOf(fid); if (!f) return scrHome();
-    render('<div class="top"><button class="back" data-act="back">‹</button><h1>📁 ' + esc(f.name) + ' · par morceau</h1></div>' +
-      '<p class="mute">Choisis un morceau : tu le vois dans toutes tes éditions.</p>' +
-      PUMP_CATS.map((t, i) => '<button class="seg" data-act="cat" data-k="' + i + '"><span class="n">' + (i + 1) + '</span><span class="t"><b>' + esc(t) + '</b></span></button>').join(''),
-      { back: () => scrFolder(fid), cat: (b) => scrPumpCat(fid, +b.dataset.k) });
-  }
-  async function scrPumpCat(fid, k) {
-    const f = folderOf(fid); if (!f) return scrHome();
-    const list = C.sortEditions((await dall('courses')).filter((c) => c.folder === fid));
-    const L = list.map((c) => ({ c, m: c.morceaux[k] })).filter((x) => x.m && !x.m.lost);
-    render('<div class="top"><button class="back" data-act="back">‹</button><h1>' + (k + 1) + ' · ' + esc(PUMP_CATS[k]) + '</h1></div>' +
-      (L.length ? L.map((x) => '<button class="seg" data-act="w" data-cid="' + x.c.id + '" data-mid="' + x.m.id + '"><span class="t"><b>' + esc(x.c.name) + '</b><span class="mute">' + esc(x.m.name || '') + ' · ' + (C.textCount(C.textOf(x.m)) ? '✍️ écrit' : '✍️ à écrire') + '</span></span></button>').join('')
-        : '<div class="card"><p class="soft">Aucune édition n\'a encore ce morceau.</p></div>'),
-      { back: () => scrPumpCats(fid), w: (b) => scrWrite(b.dataset.cid, b.dataset.mid) });
   }
 
   /* ======================= Nouvelle édition ======================= */
