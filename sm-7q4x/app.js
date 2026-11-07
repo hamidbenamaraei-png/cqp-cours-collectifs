@@ -2480,7 +2480,7 @@
     const armer = () => { if (arme || sortie) return; try { history.pushState({ smb: 1 }, ''); arme = true; } catch (e) { /* rien */ } };
     try { history.replaceState({ smb: 0 }, ''); } catch (e) { return; }
     armer();
-    document.addEventListener('pointerdown', armer, true);
+    ['touchend', 'click', 'keydown'].forEach((t) => document.addEventListener(t, armer, true)); // événements qui comptent comme un vrai toucher pour Chrome
     window.addEventListener('popstate', () => {
       if (sortie) { history.back(); return; }
       arme = false; armer();

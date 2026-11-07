@@ -417,7 +417,7 @@ let MENU_RET=null, PARAM_RET=null;
   // Chrome ignore un retour ajouté sans toucher l'écran : on se « réarme » à chaque toucher
   const armer=()=>{if(arme||sortie)return;try{history.pushState({fb:1},'');arme=true}catch(e){}};
   try{history.replaceState({fb:0},'')}catch(e){return}
-  armer();document.addEventListener('pointerdown',armer,true);
+  armer();['touchend','click','keydown'].forEach(t=>document.addEventListener(t,armer,true)); // événements qui comptent comme un vrai toucher pour Chrome
   const clic=sel=>{const b=document.querySelector(sel);if(b&&b.offsetParent!==null){b.click();return true}return false};
   addEventListener('popstate',()=>{
     if(sortie){history.back();return}
