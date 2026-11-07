@@ -2473,6 +2473,19 @@
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
     try { navigator.serviceWorker.register('sw.js').catch(() => {}); } catch (e) { /* rien */ }
   }
+  /* 07/11 : bouton retour du téléphone = la flèche ‹ de l'écran ; sur l'accueil, il demande « Quitter ScriptMove ? » */
+  (function () {
+    let sortie = false;
+    try { history.replaceState({ smb: 0 }, ''); history.pushState({ smb: 1 }, ''); } catch (e) { return; }
+    window.addEventListener('popstate', () => {
+      if (sortie) { history.back(); return; }
+      try { history.pushState({ smb: 1 }, ''); } catch (e) { /* rien */ }
+      const sh = document.querySelector('.sheet-bg'); if (sh) { sh.dispatchEvent(new MouseEvent('click', { bubbles: true })); return; }
+      const fe = document.querySelector('.pv [data-v="close"], .lv [data-l="close"]'); if (fe) { fe.click(); return; }
+      const bk = app.querySelector('.top [data-act="back"]'); if (bk) { bk.click(); return; }
+      ask('Quitter ScriptMove ?', '', [{ label: 'Oui, quitter', value: 1 }, { label: 'Non', value: 0, cls: 'sec' }]).then((r) => { if (r) { sortie = true; history.go(-1); } });
+    });
+  })();
   S.api = { scrPc, pcRaw, shareRaw, scrShare, shareNext, sharePending, scrMixes, scrMix, scrPickMorceau, scrMixScript, doBackup, printCourse, scrHome, scrFolder, scrCourse, scrWrite, scrRead, scrPlay, scrCourseScript, setVideo, dget, dput, dall, saveCourse, scriptText, storeVideo, videoURL, photosOf, migrateAll, loadKV, getLivret, viewLivret, lvPageFor };
   scrLock();
 })();
