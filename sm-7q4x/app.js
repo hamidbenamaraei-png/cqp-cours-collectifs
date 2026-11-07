@@ -2475,15 +2475,15 @@
   }
   /* 07/11 : bouton retour du téléphone = la flèche ‹ de l'écran ; sur l'accueil, il demande « Quitter ScriptMove ? » */
   (function () {
-    let sortie = false, arme = false;
+    let sortie = false, arme = 0;
     // Chrome ignore un retour ajouté sans toucher l'écran : on se « réarme » à chaque toucher
-    const armer = () => { if (arme || sortie) return; try { history.pushState({ smb: 1 }, ''); arme = true; } catch (e) { /* rien */ } };
+    const armer = () => { if (sortie) return; try { while (arme < 4) { history.pushState({ smb: 1 }, ''); arme++; } } catch (e) { /* rien */ } }; // plusieurs protections d'avance
     try { history.replaceState({ smb: 0 }, ''); } catch (e) { return; }
     // pas d'armement au chargement : Chrome l'ignorerait ; on s'arme au premier vrai toucher
     ['touchend', 'click', 'keydown'].forEach((t) => document.addEventListener(t, armer, true)); // événements qui comptent comme un vrai toucher pour Chrome
     window.addEventListener('popstate', () => {
       if (sortie) { history.back(); return; }
-      arme = false;
+      arme = Math.max(0, arme - 1);
       const sh = document.querySelector('.sheet-bg'); if (sh) { sh.dispatchEvent(new MouseEvent('click', { bubbles: true })); return; }
       const fe = document.querySelector('.pv [data-v="close"], .lv [data-l="close"]'); if (fe) { fe.click(); return; }
       const bk = app.querySelector('.top [data-act="back"]'); if (bk) { bk.click(); return; }
