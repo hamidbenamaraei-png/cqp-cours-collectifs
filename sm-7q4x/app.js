@@ -354,7 +354,8 @@
     const stop = () => { const v = $('#smwatch'); if (v) v.pause(); };
     render('<div class="top"><button class="back" data-act="back">‹</button><h1>' + esc(c.name) + '</h1></div>' +
       '<div id="wsw" style="min-height:60vh"><div class="vidbox"><video id="smwatch" src="' + url + '" controls playsinline preload="metadata"' + (auto ? ' autoplay' : '') + '></video></div>' +
-      '<p class="mute small">👈 Glisse sur le côté pour changer de vidéo' + (list.length > 1 ? ' (' + (i + 1) + ' / ' + list.length + ')' : '') + '. Touche ⛶ en bas de la vidéo pour la mettre en plein écran.</p></div>',
+      '<div class="row"><button class="btn sec" data-act="prev"' + (prev ? '' : ' disabled') + '>⏮ Vidéo précédente</button><button class="btn sec" data-act="next"' + (next ? '' : ' disabled') + '>Vidéo suivante ⏭</button></div>' +
+      '<p class="mute small">Touche ⛶ en bas de la vidéo pour la mettre en plein écran.</p></div>',
       {
         back: () => { stop(); scrCourse(c.id); },
         prev: () => { if (prev) { stop(); scrWatch(prev, true); } },
@@ -430,8 +431,6 @@
         url = URL.createObjectURL(list[i].blob); img.src = url; sc = 1; x = 0; y = 0; apply();
         $('#pvn', el).textContent = (i + 1) + ' / ' + list.length;
       };
-      // 07/11 : glisser sur le côté pour changer de photo (quand on n'a pas zoomé)
-      glisserCote(zone, () => { if (sc <= 1.01 && i < list.length - 1) { i++; show(); } }, () => { if (sc <= 1.01 && i > 0) { i--; show(); } });
       zone.addEventListener('pointerdown', (e) => {
         zone.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); snap();
         const now = Date.now(); if (pts.size === 1 && now - lastTap < 300) { if (sc > 1.05) { sc = 1; x = 0; y = 0; } else { sc = 2.5; } apply(); } lastTap = now;
