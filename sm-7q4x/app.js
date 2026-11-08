@@ -643,7 +643,8 @@
     const att = (await shareRaw()).length; // v22 : fichiers reçus (partage ou ordinateur) pas encore rangés
     const count = (fid) => courses.filter((c) => c.folder === fid).length;
     const folders = S.folders;
-    render('<div class="logo"><img src="icon-192.png" alt=""><div><b>ScriptMove</b><span>Tes chorés en script</span></div></div>' +
+    const cpH = await cpAccueil(); // 08/11 : sur le PC seulement (copie du téléphone)
+    render('<div class="logo"><img src="icon-192.png" alt=""><div><b>ScriptMove</b><span>Tes chorés en script</span></div></div>' + cpH +
       '<input type="search" id="hq" placeholder="🔎 Chercher (édition, morceau, mouvement)" autocomplete="off">' +
       '<div id="hres"></div>' +
       (att ? '<button class="btn green" data-act="rgr">📥 ' + att + ' fichier' + (att > 1 ? 's' : '') + ' reçu' + (att > 1 ? 's' : '') + ' à ranger</button>' : '') +
@@ -666,7 +667,8 @@
       res: (b) => { const d = b.dataset; if (d.mid) scrWrite(d.cid, d.mid); else scrCourse(d.cid); },
       mixes: () => scrMixes(),
       resmix: (b) => scrMix(b.dataset.id),
-      pc: () => scrPc(), rgr: () => shareNext()
+      pc: () => scrPc(), rgr: () => shareNext(),
+      cpmaj: () => cpDemander(true), cprecv: () => scrRecevoir()
     });
     S.where = 'home';
     const q = $('#hq');
@@ -713,6 +715,7 @@
         if (!r) return; S.folders = S.folders.filter((x) => x.id !== fid); await saveKV('folders'); scrHome();
       }
     });
+    S.where = 'folder:' + fid; // 08/11 : sur le PC, l'écran se met à jour quand une copie arrive
   }
 
   /* ======================= 07/11 : Pump : un morceau (ex. Pectoraux) dans toutes les éditions ======================= */
@@ -1125,7 +1128,8 @@
     render('<div class="top"><button class="back" data-act="back">‹</button><h1>' + esc(c.name) + '</h1><button class="back" data-act="ren" aria-label="Renommer l\'édition">✏️</button></div>' +
       '<p class="mute">📁 ' + esc(fo ? fo.name : '') + ' · ' + fmtDate(c.created) + ' · ' + (c.video ? fmt(c.video.duration) : '') + '</p>' +
       (oldCut(c) ? '<div class="card r"><h3>⚠️ Découpage à refaire</h3><p class="soft small">Cette édition a été découpée avec l\'ancienne méthode : des musiques ont pu être placées n\'importe où. La nouvelle méthode ne place une musique que si elle est sûre. Ta vidéo, tes musiques, le nom et tes scripts sont gardés.</p><button class="btn" data-act="redo">🔁 Refaire le découpage</button></div>' : '') +
-      '<div class="card ' + (kept ? 'g' : 'j') + ' small">' + (kept ? '🎬 <b>Vidéo gardée dans l\'appli</b> (' + fmtSize(kept.size) + ')<button class="btn small" style="margin:8px 0 0" data-act="watch">▶️ Regarder la vidéo</button><button class="btn ghost small" style="margin:8px 0 0" data-act="rmvid">🗑️ Retirer la vidéo (garder scripts et musiques)</button>' : '🎬 <b>La vidéo n\'est pas gardée</b> dans l\'appli.' + (c.video ? ' <span class="mute">(' + esc(c.video.name) + ', ' + fmtSize(c.video.size) + ')</span>' : '') + '<button class="btn sec small" style="margin:8px 0 0" data-act="addvid">🎬 Remettre la vidéo</button>') + '</div>' +
+      (!kept && cpVideoAttendue(c.id) ? '<div class="card j small">⏳ <b>La vidéo arrive de ton téléphone…</b> <span class="mute">(' + fmtSize(cpVideoAttendue(c.id)) + ')</span><br><span class="mute">Elle apparaîtra ici dès qu\'elle sera copiée.</span></div>' :
+      '<div class="card ' + (kept ? 'g' : 'j') + ' small">' + (kept ? '🎬 <b>Vidéo gardée dans l\'appli</b> (' + fmtSize(kept.size) + ')<button class="btn small" style="margin:8px 0 0" data-act="watch">▶️ Regarder la vidéo</button><button class="btn ghost small" style="margin:8px 0 0" data-act="rmvid">🗑️ Retirer la vidéo (garder scripts et musiques)</button>' : '🎬 <b>La vidéo n\'est pas gardée</b> dans l\'appli.' + (c.video ? ' <span class="mute">(' + esc(c.video.name) + ', ' + fmtSize(c.video.size) + ')</span>' : '') + '<button class="btn sec small" style="margin:8px 0 0" data-act="addvid">🎬 Remettre la vidéo</button>') + '</div>') +
       (lv ? '<div class="card g small lvcard">📄 <b>Mon livret</b> · <span id="lvinfo">' + lvPages(lv.pages) + ' · ' + lvSize(lv.size) + '</span>' +
         '<button class="btn small" style="margin:8px 0 8px" data-act="lvsee">📄 Voir mon livret</button><div class="row tight"><button class="btn sec small" style="margin:0" data-act="lvadd">🔁 Remplacer</button><button class="btn sec small" style="margin:0" data-act="lvrm">🗑️ Retirer</button></div></div>'
         : '<button class="btn sec" data-act="lvadd">📄 Ajouter mon livret</button>') +
@@ -1209,6 +1213,7 @@
         await deleteVideo(c.id); await ddel('data', 'af:' + c.id); await ddel('courses', c.id); scrFolder(c.folder);
       }
     });
+    S.where = 'course:' + cid; // 08/11 : sur le PC, l'écran se met à jour quand une copie arrive
   }
   /** Menu ✏️ d'un morceau quand l'édition a un livret : son nom et sa page du livret. Renvoie { name, page, touched } ou null */
   function morceauMenu(c, m) {
@@ -2290,13 +2295,14 @@
     const msg = PCT.msg ? '<p class="small" role="status" style="color:var(--ko);font-weight:700">' + esc(PCT.msg) + '</p>' : '';
     const garde = '<div class="card j small">📱 <b>Pour recevoir, garde ScriptMove ouvert sur ton téléphone</b>, écran allumé, pendant tout l\'envoi.</div>';
     const prive = '<p class="mute">🔒 Tes fichiers vont directement de ton ordinateur à ton téléphone. Ils ne sont gardés sur aucun serveur, et personne d\'autre ne peut les lire. Pas de limite de taille.</p>';
+    const cpT = pcOk() && navigator.onLine !== false && !estPC() ? await cpCarteTel() : ''; // 08/11 : voir tout ScriptMove sur mon PC (QR code)
     let h;
     if (!pcOk()) h = top + '<div class="card"><p class="soft">Ce téléphone ou ce navigateur ne permet pas de relier un ordinateur. Utilise Chrome.</p></div>';
     else if (navigator.onLine === false) h = top + '<div class="card j"><h2>📶 Il faut internet pour relier ton PC</h2><p class="soft">Tout le reste de ScriptMove marche sans internet. Reviens ici quand tu as du réseau ou du Wi-Fi.</p><button class="btn sec" data-act="re">🔄 Réessayer</button></div>';
-    else if (!x) h = top + '<div class="card o"><div style="font-size:40px">💻</div><h2>Envoie tes fichiers depuis ton ordinateur</h2>' +
+    else if (!x) h = top + cpT + '<div class="card o"><div style="font-size:40px">💻</div><h2>Envoie tes fichiers depuis ton ordinateur</h2>' +
       '<p class="soft">Tes vidéos de cours et tes musiques, glissées sur une page de ton ordinateur, arrivent ici, dans ScriptMove. Elles se rangent comme si tu les avais partagées depuis ton téléphone.</p>' + prive + msg +
       '<button class="btn" data-act="creer"' + (PCT.occupe ? ' disabled' : '') + '>' + (PCT.occupe ? 'Un instant…' : '💻 Relier mon ordinateur') + '</button></div>';
-    else h = top + (x.pc ? '<div class="card g"><h2>✅ Ton ordinateur est relié</h2><p class="soft small">' + esc(x.pc) + '</p><p class="small">Sur ton ordinateur, glisse tes vidéos et tes musiques sur la page. Elles arrivent ici, puis ScriptMove te demande où les ranger.</p>' + (x.recus ? '<p class="small">📥 ' + x.recus + ' fichier' + (x.recus > 1 ? 's reçus' : ' reçu') + ' de ton ordinateur</p>' : '') + '</div>'
+    else h = top + cpT + (x.pc ? '<div class="card g"><h2>✅ Ton ordinateur est relié</h2><p class="soft small">' + esc(x.pc) + '</p><p class="small">Sur ton ordinateur, glisse tes vidéos et tes musiques sur la page. Elles arrivent ici, puis ScriptMove te demande où les ranger.</p>' + (x.recus ? '<p class="small">📥 ' + x.recus + ' fichier' + (x.recus > 1 ? 's reçus' : ' reçu') + ' de ton ordinateur</p>' : '') + '</div>'
       : '<div class="card j" role="status"><h2>⏳ J\'attends ton ordinateur…</h2><p class="soft small">Laisse cet écran ouvert pendant que tu tapes le code sur ton ordinateur.</p></div>') +
       '<div class="card"><p class="small"><b>1. Sur ton ordinateur, ouvre le lien</b> : touche « 📤 M\'envoyer le lien » et envoie-le-toi (WhatsApp, e-mail…), puis ouvre-le sur ton ordinateur. La page se relie toute seule.</p>' +
       '<button class="btn" data-act="lien">📤 M\'envoyer le lien</button>' +
@@ -2308,7 +2314,8 @@
       creer: () => pcCreer(),
       re: () => scrPc(),
       lien: () => pcEnvoyerLien(),
-      delier: () => pcDelier()
+      delier: () => pcDelier(),
+      cpscan: () => cpTelScanner(), cpcode: () => cpTelCodeMain(), cpdel: (b) => cpTelDelier(b.dataset.c)
     });
     S.where = 'pc';
   }
@@ -2489,14 +2496,846 @@
     document.addEventListener('visibilitychange', () => { if (!document.hidden) { setTimeout(() => pcTour().catch(() => {}), 500); if (PCT.rx) pcGarderEcran(true); } });
   }
 
+  /* ======================= 📲 Copie de tout ScriptMove, du téléphone vers le PC (08/11) =======================
+     Sur le PC (même adresse que l'appli), un QR code montre un code de 12 caractères ; le téléphone le scanne.
+     - Le relais déjà en place (pc-commun.js : fonctions Supabase pc_canal_creer, pc_etat, pc_relier, pc_envoyer, pc_liste,
+       pc_morceau, pc_effacer, pc_canal_supprimer), utilisé tel quel, ne sert qu'à se trouver : offre / réponse WebRTC et
+       « demande » de mise à jour, en tout petits messages chiffrés (AES-GCM, clé tirée du code). Le PC crée le canal du QR code.
+     - Les données passent en DIRECT du téléphone au PC (canal WebRTC chiffré), avec contrôle du débit : rien sur un serveur.
+     - Le téléphone ne fait que LIRE ses données : rien n'y est jamais effacé ni changé (il ne garde que la liste de ses PC reliés).
+     - Le PC écrit une copie dans SA base ScriptMove (mêmes zones : courses, musics, photos, data, kv, vchunks), avec les mêmes
+       fonctions (dput…) : ce qui est arrivé est utilisable tout de suite. Ce qui est changé sur le PC ne repart pas vers le téléphone.
+     - Ordre : (a) le léger (scripts, dossiers, éditions, mix, réglages) ; (b) vidéos Zumba ; (c) musiques Zumba ; (d) le reste.
+     - Les fois suivantes : seuls les éléments nouveaux ou modifiés (même « signature » calculée des deux côtés, core.js cpSig) ;
+       une vidéo coupée en route reprend au bloc où elle s'était arrêtée.
+     - Au 1er branchement, le téléphone donne au PC un nouveau code secret par le canal direct : le code du QR ne sert plus.
+     Téléphone : kv 'pcCopies' = [{ canal, cle, code, nom, le, derniere, neuf }].
+     PC : kv 'pcSource' = { code, canal, cle, relie, delie, le, derniere, recus: { élément: 1 }, partiel: { cid: { sig, n } }, attendus: { cid: taille }, ancien }. */
+  const CPK_TEL = 'pcCopies', CPK_PC = 'pcSource';
+  const CP_EXCL = new Set(['pcLien', 'sharePending', CPK_TEL, CPK_PC]); // propres à chaque appareil : jamais copiés
+  const CP_LU = 1024 * 1024, CP_FENETRE = 32 * CP_LU, CP_TAMPON = 8 * CP_LU, CP_FRAIS = 3 * 60000;
+  const CPT = { s: null, liste: null, tour: 0, vus: new Set(), wake: null, demarre: false }; // côté téléphone
+  const CPR = { s: null, src: null, lien: null, tour: 0, vus: new Set(), attente: 0, essais: 0, demarre: false }; // côté PC
+  const cpRid = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), (x) => x.toString(16).padStart(2, '0')).join('');
+  const cpErr = (k) => Object.assign(new Error(k), { k });
+  const cpPossible = () => !!(PCX && window.RTCPeerConnection && window.crypto && crypto.subtle);
+  const CP_ERR_TEL = {
+    muet: 'Ton PC ne répond pas. Garde la page ScriptMove ouverte sur ton PC, mets le téléphone et le PC sur le même Wi-Fi, puis réessaie.',
+    direct: 'Impossible de joindre ton PC en direct. Mets le téléphone et le PC sur le même Wi-Fi, garde ScriptMove ouvert des deux côtés, puis réessaie.',
+    coupe: 'La copie vers le PC s\'est arrêtée. Pour la reprendre : sur ton PC, clique sur « 🔄 Mettre à jour depuis mon téléphone ».',
+    place: 'Ton PC n\'a plus assez de place : la copie s\'est arrêtée. Fais de la place sur ton PC, puis clique sur 🔄 sur ton PC.',
+    reseau: 'Pas de connexion internet. Vérifie ta connexion, puis réessaie.',
+    delie: 'Ce PC n\'est plus relié. Sur ton PC, affiche un nouveau QR code et scanne-le.'
+  };
+  const CP_ERR_PC = {
+    muet: 'Ton téléphone ne répond pas. Ouvre ScriptMove sur ton téléphone (déverrouillé, écran allumé), mets le téléphone et le PC sur le même Wi-Fi, puis clique sur Réessayer.',
+    direct: 'Impossible de joindre ton téléphone en direct. Garde ScriptMove ouvert sur ton téléphone, mets le téléphone et le PC sur le même Wi-Fi, puis clique sur Réessayer.',
+    coupe: 'La copie s\'est arrêtée. Garde ScriptMove ouvert sur ton téléphone, mets le téléphone et le PC sur le même Wi-Fi, puis clique sur Réessayer. Ce qui est déjà arrivé est gardé.',
+    place: 'Plus assez de place sur ce PC : la copie s\'est arrêtée. Fais de la place sur ton PC (supprime des fichiers dont tu n\'as plus besoin), puis clique sur Réessayer.',
+    reseau: 'Pas de connexion internet sur ce PC. Vérifie ta connexion, puis clique sur Réessayer.',
+    service: 'Le service ne répond pas pour le moment. Clique sur Réessayer dans quelques minutes.',
+    delie: 'Ton téléphone a délié ce PC. Ce qui est déjà copié reste ici. Pour une nouvelle copie, affiche un nouveau QR code et scanne-le avec ton téléphone.'
+  };
+
+  /** Ordinateur (pas un téléphone ni une tablette) : navigateur « non mobile », pas Android / iPhone / iPad, et une souris ou un pavé tactile */
+  function estPC() {
+    try {
+      const ua = navigator.userAgent || '', d = navigator.userAgentData;
+      if (d && d.mobile === true) return false;
+      if (/Android|iPhone|iPad|iPod|Mobile|Silk|Kindle|Tablet/i.test(ua)) return false;
+      if (/Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1) return false; // iPad qui se dit « Mac »
+      if (window.matchMedia && matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches) return false; // écran tactile seulement
+      return true;
+    } catch (e) { return false; }
+  }
+  function nomOrdi() {
+    const ua = navigator.userAgent || '';
+    const os = /Windows/.test(ua) ? 'Windows' : /Mac OS X|Macintosh/.test(ua) ? 'Mac' : /CrOS/.test(ua) ? 'Chromebook' : /Linux/.test(ua) ? 'Linux' : '';
+    const nav = /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : '';
+    return 'PC' + (os ? ' ' + os : '') + (nav ? ' (' + nav + ')' : '');
+  }
+
+  /* ---------- commun : lire l'appli (sans rien changer), le canal direct ---------- */
+  /** Passe sur chaque enregistrement d'une zone, un par un (lecture seule, jamais tout en mémoire) ; fn(clé, valeur) est immédiat */
+  async function cpParcourir(st, fn) {
+    const d = await db();
+    return new Promise((res, rej) => {
+      const t = d.transaction(st, 'readonly'), q = t.objectStore(st).openCursor();
+      q.onsuccess = () => { const c = q.result; if (!c) return; try { fn(c.key, c.value); } catch (e) { console.warn('copie : enregistrement passé', e); } c.continue(); };
+      t.oncomplete = () => res(); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error || new Error('abandon'));
+    });
+  }
+  const cpNbBlocs = (cid) => tx('vchunks', 'readonly', (s) => s.count(vrange(cid)));
+  /** Tout ce que l'appli contient, en éléments : { k, g (leger | video | musique | photo | livret), sig, n (octets) }. Lecture seule. */
+  async function cpInventaire(cote) {
+    const items = [];
+    const add = (k, g, v, x) => { const e = C.cpEnc(v); items.push(Object.assign({ k, g, sig: C.cpSig(e), n: C.cpTaille(e) }, x || {})); };
+    const courses = (await dall('courses')).filter((c) => c && typeof c.id === 'string');
+    await cpParcourir('kv', (k, v) => { if (typeof k === 'string' && !CP_EXCL.has(k)) add('k:' + k, 'leger', v); });
+    for (const c of courses) add('c:' + c.id, 'leger', c);
+    await cpParcourir('data', (k, v) => {
+      if (typeof k !== 'string') return;
+      if (k.startsWith('lv:')) add('d:' + k, 'livret', v, { cid: k.slice(3) });
+      else add('d:' + k, k.startsWith('af:') ? 'analyse' : 'leger', v);
+    });
+    const pin = cote === 'pc' && !lsGet('sm_pin_tel') ? null : lsGet('sm_pin'); // le code d'accès (sur le PC : seulement s'il vient du téléphone)
+    if (pin) add('l:sm_pin', 'leger', pin);
+    for (const c of courses) {
+      const kp = c.video && c.video.kept; if (!kp) continue;
+      if (cote === 'pc' && (await cpNbBlocs(c.id)) !== kp.chunks) continue; // vidéo incomplète sur le PC : à recopier
+      items.push({ k: 'v:' + c.id, g: 'video', sig: C.cpSig(C.cpEnc(kp)), n: kp.size || 0, cid: c.id, chunks: kp.chunks || 0 });
+    }
+    await cpParcourir('musics', (k, m) => { if (m && typeof m.id === 'string') add('m:' + m.id, 'musique', m, { id: m.id }); });
+    await cpParcourir('photos', (k, p) => { if (p && typeof p.id === 'string') add('p:' + p.id, 'photo', p, { cid: p.cid }); });
+    return { items, courses };
+  }
+  const cpOuvert = (s) => !!(s && !s.ferme && s.dc && s.dc.readyState === 'open');
+  function cpDire(s, o) { try { if (s && s.dc && s.dc.readyState === 'open') s.dc.send(JSON.stringify(o)); } catch (e) { /* rien */ } }
+  /** Un gros message (liste des éléments) part en plusieurs morceaux de texte */
+  function cpDireGros(s, o) {
+    const t = JSON.stringify(o), L = 60000;
+    if (t.length <= L) return cpDire(s, o);
+    const id = cpRid(), tot = Math.ceil(t.length / L);
+    for (let i = 0; i < tot; i++) cpDire(s, { t: 'gros', id, i, tot, p: t.slice(i * L, (i + 1) * L) });
+  }
+  function cpGros(s, o) {
+    if (!o || o.t !== 'gros') return o;
+    const g = s.gros[o.id] = s.gros[o.id] || { p: [], n: 0 };
+    if (g.p[o.i] === undefined) { g.p[o.i] = String(o.p || ''); g.n++; }
+    if (g.n < o.tot) return null;
+    delete s.gros[o.id];
+    try { return JSON.parse(g.p.join('')); } catch (e) { return null; }
+  }
+  const cpReveil = (s) => { for (const f of Array.from(s.attente)) f(); };
+  function cpAttendre(s, ms) { return new Promise((res) => { const f = () => { clearTimeout(t); s.attente.delete(f); res(); }; const t = setTimeout(f, ms); s.attente.add(f); }); }
+  function cpColle(pieces, n) { const u = new Uint8Array(n); let o = 0; for (const p of pieces) { u.set(p, o); o += p.length; } return u; }
+
+  /* ======================= Côté TÉLÉPHONE : il envoie une copie ======================= */
+  async function cpTelListe() {
+    if (CPT.liste) return CPT.liste;
+    let l = null; try { l = await dget('kv', CPK_TEL); } catch (e) { /* rien */ }
+    CPT.liste = Array.isArray(l) ? l.filter((x) => x && /^[0-9a-f]{32}$/.test(String(x.canal || '')) && x.cle) : [];
+    return CPT.liste;
+  }
+  const cpTelSauver = () => dput('kv', CPT.liste || [], CPK_TEL).catch(() => {});
+  /** La carte de « 💻 Relier mon PC » (téléphone) */
+  async function cpCarteTel() {
+    const liste = await cpTelListe();
+    const adr = new URL('./', location.href).href;
+    return '<div class="card o"><h2>🖥️ Voir tout ScriptMove sur mon PC</h2>' +
+      '<p class="soft small" style="margin:0 0 4px">1. Sur ton PC, ouvre ScriptMove à cette adresse (Chrome ou Edge) :</p><p class="small" style="overflow-wrap:anywhere;font-weight:800">' + esc(adr) + '</p>' +
+      '<p class="soft small">2. Un QR code s\'affiche sur le PC : touche le bouton ci-dessous et vise-le. Une copie de tout ton contenu part sur ton PC. Rien n\'est effacé ni changé sur ton téléphone.</p>' +
+      '<button class="btn" data-act="cpscan">📷 Scanner le QR code de mon PC</button>' +
+      '<button class="btn ghost small" data-act="cpcode">⌨️ Taper le code à la main</button>' +
+      (CPT.s ? '<p class="small" role="status" style="color:var(--ok);font-weight:800">📤 Copie vers ' + esc(CPT.s.rec.nom || 'ton PC') + ' en cours…</p>' : '') +
+      (liste.length ? '<p class="small" style="margin:8px 0 6px"><b>Mes PC reliés</b> <span class="mute">(ils se mettent à jour avec 🔄 sur le PC, quand ScriptMove est ouvert ici)</span></p>' +
+        liste.map((x) => '<div class="row" style="align-items:center;margin:0 0 8px"><span class="small" style="flex:3 1 180px">💻 ' + esc(x.nom || 'Mon PC') + '<br><span class="mute">' + (x.derniere ? 'Dernière copie le ' + fmtDate(x.derniere) : 'Copie pas encore finie') + '</span></span>' +
+          '<button class="btn sec small" style="flex:0 0 auto;width:auto;margin:0" data-act="cpdel" data-c="' + esc(x.canal) + '">Délier</button></div>').join('') : '') +
+      '</div>';
+  }
+  async function cpTelCodeMain() {
+    const t = await askText('Tape le code écrit sous le QR code de ton PC', '', 'XXXX-XXXX-XXXX');
+    if (t) cpTelRelier(t);
+  }
+  async function cpTelScanner() {
+    if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { toast('La caméra n\'est pas disponible ici : tape le code à la main.', 4000); return cpTelCodeMain(); }
+    const r = await cpScan();
+    if (r === 'main') return cpTelCodeMain();
+    if (r) cpTelRelier(r);
+  }
+  /** Code scanné ou tapé : on vérifie qu'il existe, on retient ce PC, et la copie part */
+  async function cpTelRelier(code) {
+    const c = PCX.normaliser(code);
+    if (!c) { toast('Ce code n\'est pas complet : il faut les 12 caractères écrits sous le QR code de ton PC.', 5000); return; }
+    if (CPT.s) { toast('Une copie vers ton PC est déjà en cours.', 3000); return; }
+    toast('Un instant…', 2000);
+    let d, r;
+    try { d = await PCX.deriver(c); r = await PCX.rpc('pc_etat', { p_canal: d.canal }); }
+    catch (e) { await ask('Pas de connexion', esc(pcReseau(e)), [{ label: 'OK', value: 1 }]); return; }
+    if (!r || !r.existe) { await ask('Ce QR code ne marche plus', 'Sur ton PC, recharge la page de ScriptMove : un nouveau QR code s\'affiche. Scanne-le.', [{ label: 'OK', value: 1 }]); return; }
+    let nom = 'Mon PC'; if (r.pc) { try { nom = (await PCX.dechiffrerTexte(d.cle, r.pc, 'pc')).slice(0, 60) || nom; } catch (e) { /* rien */ } }
+    const liste = await cpTelListe();
+    let rec = liste.find((x) => x.canal === d.canal);
+    if (!rec) { rec = { canal: d.canal, cle: d.cleB64, code: d.code, nom, le: Date.now(), derniere: 0, neuf: true }; liste.push(rec); await cpTelSauver(); }
+    toast('📤 C\'est parti : la copie vers ton PC commence.', 3500);
+    cpTelEnvoyer(rec);
+    if (pcIci()) scrPc();
+  }
+  async function cpTelDelier(canal) {
+    const liste = await cpTelListe(), rec = liste.find((x) => x.canal === canal); if (!rec) return;
+    const ok = await ask('Délier ce PC ?', 'Ce qui est déjà copié sur le PC y reste. Pour une nouvelle copie, il faudra scanner de nouveau son QR code.', [{ label: 'Délier', value: 1, cls: 'red' }, { label: 'Annuler', value: 0, cls: 'sec' }]);
+    if (!ok) return;
+    if (CPT.s && CPT.s.rec === rec) { CPT.s.arret = 'delie'; cpReveil(CPT.s); }
+    try { await PCX.rpc('pc_canal_supprimer', { p_canal: rec.canal }); } catch (e) { /* le relais efface tout seul les canaux inutilisés */ }
+    CPT.liste = liste.filter((x) => x !== rec); await cpTelSauver();
+    toast('💻 PC délié'); if (pcIci()) scrPc();
+  }
+  async function cpTelEcran(on) {
+    try {
+      if (on && !CPT.wake && 'wakeLock' in navigator) { CPT.wake = await navigator.wakeLock.request('screen'); CPT.wake.addEventListener('release', () => { CPT.wake = null; }); }
+      if (!on && CPT.wake) { const w = CPT.wake; CPT.wake = null; await w.release(); }
+    } catch (e) { /* pas grave */ }
+  }
+  /** Petit bandeau en bas (téléphone) : l'avancement, sans bloquer l'écran */
+  let cpTB = 0, cpTTimer = null;
+  function cpTelBandeau(fin) {
+    let b = document.getElementById('cpbar'); const s = CPT.s;
+    if (!fin && !s) return;
+    if (!fin && b && Date.now() - cpTB < 400) return; cpTB = Date.now();
+    if (!b) {
+      b = document.createElement('div'); b.id = 'cpbar'; b.setAttribute('role', 'status'); document.body.appendChild(b);
+      b.addEventListener('click', (e) => { if (e.target.closest('[data-cpx]')) { b.remove(); document.body.classList.remove('cpon'); } });
+    }
+    b.className = 'mini'; document.body.classList.add('cpon'); clearTimeout(cpTTimer);
+    let h;
+    if (fin && fin.ko) h = '<p style="margin:0 0 6px;font-weight:800;color:var(--ko)">⚠️ ' + esc(fin.ko) + '</p><button class="btn small sec" data-cpx="1" style="margin:0">OK</button>';
+    else if (fin && fin.ok) { h = '<p style="margin:0;font-weight:800;color:var(--ok)">' + esc(fin.ok) + '</p>'; cpTTimer = setTimeout(() => { b.remove(); document.body.classList.remove('cpon'); }, 5000); }
+    else {
+      const pct = s.total ? Math.min(100, Math.round(s.fait / s.total * 100)) : 0;
+      const quoi = s.etape === 'connexion' ? 'je me relie à ton PC…' : s.etape === 'leger' ? 'tes scripts et tes éditions…' : s.nb ? Math.min(s.nbFait, s.nb) + '/' + s.nb + ' fichier' + (s.nb > 1 ? 's' : '') + '… (' + pct + ' %)' : 'presque fini…';
+      h = '<p style="margin:0;font-weight:800">💻 Copie vers le PC : ' + esc(quoi) + '</p><p class="mute" style="margin:2px 0 0;font-size:13px">Reste dans ScriptMove jusqu\'à la fin de la copie.</p>';
+    }
+    b.innerHTML = '<div class="in">' + h + '</div>';
+  }
+  function cpTelStop(s) {
+    if (s.arret) throw cpErr(s.arret);
+    const st = s.msgs.find((o) => o && o.t === 'stop');
+    if (st) throw cpErr(st.raison === 'place' ? 'place' : 'coupe');
+  }
+  async function cpTelMsg(s, types, ms) {
+    const t0 = Date.now();
+    for (;;) {
+      const i = s.msgs.findIndex((o) => o && types.includes(o.t));
+      if (i >= 0) return s.msgs.splice(i, 1)[0];
+      cpTelStop(s);
+      if (!cpOuvert(s) || Date.now() - t0 > ms) throw cpErr('coupe');
+      await cpAttendre(s, 1000);
+    }
+  }
+  /** Le téléphone se relie au PC (il fait l'offre, le PC répond) */
+  async function cpTelConnecter(s) {
+    const rtc = new RTCPeerConnection({ iceServers: PCX.ICE }); s.rtc = rtc;
+    const dc = rtc.createDataChannel('smcopie', { ordered: true }); s.dc = dc;
+    dc.binaryType = 'arraybuffer'; dc.bufferedAmountLowThreshold = CP_LU;
+    dc.onbufferedamountlow = () => cpReveil(s);
+    dc.onmessage = (e) => {
+      if (typeof e.data !== 'string') return;
+      let o = null; try { o = JSON.parse(e.data); } catch (er) { return; }
+      o = cpGros(s, o); if (!o) return;
+      if (o.t === 'ack') s.ack = Math.max(s.ack, +o.n || 0); else s.msgs.push(o);
+      cpReveil(s);
+    };
+    dc.onclose = () => { s.ferme = true; cpReveil(s); };
+    rtc.onconnectionstatechange = () => { if (rtc.connectionState === 'failed' || rtc.connectionState === 'closed') { s.ferme = true; cpReveil(s); } };
+    await rtc.setLocalDescription(await rtc.createOffer());
+    await PCX.adresses(rtc, 5000);
+    const sid = cpRid();
+    let mid;
+    try { mid = await PCX.poster(s.lien, 'tel', { t: 'offre', s: sid, sdp: rtc.localDescription.sdp }); }
+    catch (e) { throw cpErr(e && e.reseau ? 'reseau' : e && e.raison === 'canal' ? 'delie' : 'muet'); }
+    // la réponse du PC (il regarde toutes les 2 à 6 secondes quand ScriptMove y est ouvert)
+    let rep = null; const t0 = Date.now();
+    while (!rep && Date.now() - t0 < 45000) {
+      await sleep(1500); if (s.arret) throw cpErr(s.arret);
+      let r = null; try { r = await PCX.relever(s.lien); } catch (e) { continue; }
+      if (!r.existe) throw cpErr('delie');
+      for (const m of r.msgs) {
+        if (m.de !== 'pc' || s.lus.has(m.id)) continue;
+        s.lus.add(m.id); const o = await PCX.lire(s.lien, m.id); PCX.effacer(s.lien, m.id);
+        if (o && o.t === 'reponse' && o.s === sid && o.sdp) rep = o;
+      }
+    }
+    if (!rep) { PCX.effacer(s.lien, mid); throw cpErr('muet'); }
+    await rtc.setRemoteDescription({ type: 'answer', sdp: rep.sdp });
+    const t1 = Date.now();
+    while (dc.readyState !== 'open' && !s.ferme && Date.now() - t1 < 25000) await cpAttendre(s, 500);
+    if (dc.readyState !== 'open') throw cpErr('direct');
+  }
+  /** Envoie des octets (petit tableau ou gros fichier lu par morceaux de 1 Mo : jamais tout en mémoire), avec contrôle du débit */
+  async function cpFlux(s, src, tot) {
+    const fichier = src instanceof Blob, size = fichier ? src.size : src.length;
+    for (let off = 0; off < size; off += CP_LU) {
+      const part = fichier ? new Uint8Array(await src.slice(off, Math.min(size, off + CP_LU)).arrayBuffer()) : src.subarray(off, Math.min(size, off + CP_LU));
+      for (let q = 0; q < part.length; q += PCX.BLOC) {
+        // on attend que le PC ait écrit ce qu'il a reçu (ni le téléphone ni le PC n'ont trop en mémoire)
+        while (cpOuvert(s) && (s.dc.bufferedAmount > CP_TAMPON || s.envoye - s.ack > CP_FENETRE + tot)) { cpTelStop(s); await cpAttendre(s, 1000); }
+        cpTelStop(s);
+        if (!cpOuvert(s)) throw cpErr('coupe');
+        const piece = part.subarray(q, Math.min(part.length, q + PCX.BLOC));
+        s.dc.send(piece); s.envoye += piece.length;
+      }
+      if (s.etape === 'fichiers') { s.fait += part.length; cpTelBandeau(); }
+    }
+  }
+  /** Un enregistrement : en-tête (texte), puis son texte codé et ses fichiers (binaire) */
+  async function cpTelEnreg(s, h, v) {
+    const e = C.cpEnc(v), meta = new TextEncoder().encode(e.meta);
+    const parts = e.parts.map((x) => ({ b: x.k === 'b' ? 1 : 0, c: x.c || '', n: x.n, ty: x.ty || '' }));
+    const tot = meta.length + e.parts.reduce((a, x) => a + x.n, 0);
+    cpDire(s, Object.assign({ t: 'i', sig: C.cpSig(e), ml: meta.length, parts, tot }, h));
+    try {
+      await cpFlux(s, meta, tot);
+      for (const x of e.parts) await cpFlux(s, x.v, tot);
+    } catch (er) {
+      if (er && er.k) throw er; // connexion coupée, PC plein, délié
+      console.warn('copie vers le PC : élément illisible, passé', h.k, er);
+      cpDire(s, { t: 'annule' }); // fichier abîmé sur le téléphone : le PC l'oublie, on passe au suivant
+    }
+  }
+  async function cpTelElement(s, it, inv) {
+    const p = it.k.slice(0, 2), id = it.k.slice(2);
+    if (p === 'v:') return cpTelVideo(s, it, inv);
+    let v;
+    if (p === 'c:') v = await dget('courses', id); else if (p === 'k:') v = await dget('kv', id); else if (p === 'd:') v = await dget('data', id);
+    else if (p === 'm:') v = await dget('musics', id); else if (p === 'p:') v = await dget('photos', id); else if (p === 'l:') v = lsGet(id);
+    if (v === undefined || v === null) return; // effacé entre-temps : sera vu à la prochaine mise à jour
+    await cpTelEnreg(s, { k: it.k, g: it.g }, v);
+  }
+  /** Une vidéo gardée : ses blocs de 8 Mo un par un (reprise au bloc où elle s'était arrêtée), puis « vidéo finie » */
+  async function cpTelVideo(s, it, inv) {
+    const c = await dget('courses', it.cid), kp = c && c.video && c.video.kept; if (!kp) return;
+    const vsig = C.cpSig(C.cpEnc(kp));
+    const keys = await tx('vchunks', 'readonly', (st) => st.getAllKeys(vrange(c.id)));
+    if (!keys || keys.length !== kp.chunks) return; // vidéo incomplète sur le téléphone : pas copiée
+    const pa = inv.partiel && inv.partiel[c.id];
+    const debut = pa && pa.sig === vsig && pa.n > 0 && pa.n < keys.length ? Math.floor(pa.n) : 0;
+    for (let i = debut; i < keys.length; i++) {
+      const b = await dget('vchunks', keys[i]);
+      if (!(b instanceof Blob)) return;
+      await cpTelEnreg(s, { k: it.k, g: 'video', key: keys[i], i, nb: keys.length, debut, vsig }, b);
+    }
+    cpDire(s, { t: 'vfin', cid: c.id, kept: kp, vsig });
+  }
+  /** Le code du QR ne sert qu'une fois : le téléphone donne au PC un nouveau code secret, par le canal direct */
+  async function cpTelTourner(s) {
+    let nv;
+    try { nv = await PCX.deriver(PCX.nouveauCode()); await PCX.rpc('pc_canal_creer', { p_canal: nv.canal }); } catch (e) { return; } // on garde l'ancien : ça marche quand même
+    cpDire(s, { t: 'cle', code: nv.code });
+    try { await cpTelMsg(s, ['cle-ok'], 20000); }
+    catch (e) { PCX.rpc('pc_canal_supprimer', { p_canal: nv.canal }).catch(() => {}); if (!cpOuvert(s) || (e && e.k !== 'coupe')) throw e; return; }
+    const vieux = s.rec.canal;
+    Object.assign(s.rec, { code: nv.code, canal: nv.canal, cle: nv.cleB64, neuf: false });
+    await cpTelSauver();
+    PCX.rpc('pc_canal_supprimer', { p_canal: vieux }).catch(() => {});
+  }
+  /** La copie (en arrière-plan : on peut continuer à se servir de ScriptMove) */
+  async function cpTelEnvoyer(rec) {
+    if (CPT.s || !cpPossible()) return;
+    const s = CPT.s = { rec, lien: null, rtc: null, dc: null, ferme: false, arret: '', msgs: [], attente: new Set(), lus: new Set(), gros: {}, envoye: 0, ack: 0, fait: 0, total: 0, nb: 0, nbFait: 0, etape: 'connexion' };
+    cpTelBandeau(); cpTelEcran(true);
+    let fin = null;
+    try {
+      s.lien = { canal: rec.canal, cle: await PCX.importer(rec.cle) };
+      await cpTelConnecter(s);
+      const inv = await cpTelMsg(s, ['inventaire'], 90000); // ce que le PC a déjà
+      if (rec.neuf) await cpTelTourner(s);
+      s.etape = 'leger'; cpTelBandeau();
+      const { items, courses } = await cpInventaire('tel');
+      const ordre = C.cpOrdre(items, inv.sigs || {}, C.cpZumba(S.folders, courses));
+      const legers = ordre.filter((it) => it.g === 'leger'), lourds = ordre.filter((it) => it.g !== 'leger');
+      for (const it of lourds) { // vidéo déjà en partie sur le PC : seulement ce qui manque
+        const pa = it.g === 'video' && inv.partiel && inv.partiel[it.cid];
+        if (pa && pa.sig === it.sig && pa.n > 0 && pa.n < it.chunks) it.n = Math.round(it.n * (1 - pa.n / it.chunks));
+      }
+      s.nb = lourds.filter((it) => it.g !== 'analyse').length; s.total = lourds.reduce((a, it) => a + (it.n || 0), 0);
+      cpDireGros(s, { t: 'plan', cles: items.map((it) => it.k), nb: s.nb, octets: s.total, nl: legers.length });
+      for (const it of legers) await cpTelElement(s, it, inv);
+      cpDire(s, { t: 'leger-fin' });
+      s.etape = 'fichiers'; cpTelBandeau();
+      for (const it of lourds) { await cpTelElement(s, it, inv); if (it.g !== 'analyse') s.nbFait++; cpTelBandeau(); }
+      cpDire(s, { t: 'tout' });
+      await cpTelMsg(s, ['merci'], 180000);
+      rec.derniere = Date.now(); await cpTelSauver();
+      fin = { ok: '✅ Copie vers le PC terminée' + (s.nb ? ' (' + s.nb + ' fichier' + (s.nb > 1 ? 's' : '') + ')' : '') + '.' };
+    } catch (e) {
+      console.warn('copie vers le PC', e);
+      fin = { ko: CP_ERR_TEL[(e && e.k) || 'coupe'] || CP_ERR_TEL.coupe };
+    } finally {
+      try { if (s.dc) s.dc.close(); } catch (e) { /* rien */ }
+      try { if (s.rtc) s.rtc.close(); } catch (e) { /* rien */ }
+      if (CPT.s === s) CPT.s = null;
+      cpTelEcran(false); cpTelBandeau(fin);
+      if (pcIci()) scrPc();
+    }
+  }
+  /** Tant que ScriptMove est ouvert : un PC relié qui demande « 🔄 Mettre à jour » est servi tout seul */
+  async function cpTelTour() {
+    if (CPT.tour || CPT.s || document.hidden || !cpPossible() || navigator.onLine === false) return;
+    const liste = await cpTelListe(); if (!liste.length) return;
+    CPT.tour = 1;
+    try {
+      for (const rec of liste.slice()) {
+        if (CPT.s) return;
+        let l, r; try { l = { canal: rec.canal, cle: await PCX.importer(rec.cle) }; r = await PCX.relever(l); } catch (e) { continue; }
+        if (!r.existe) { CPT.liste = (CPT.liste || []).filter((x) => x !== rec); await cpTelSauver(); if (pcIci()) scrPc(); continue; }
+        let demande = false;
+        for (const m of r.msgs) {
+          if (m.de === 'tel') { if (Date.now() - m.le > 5 * 60000) PCX.effacer(l, m.id); continue; } // nos offres jamais lues
+          if (CPT.vus.has(m.id)) continue; CPT.vus.add(m.id);
+          const o = await PCX.lire(l, m.id); PCX.effacer(l, m.id);
+          if (o && o.t === 'demande' && Date.now() - m.le < CP_FRAIS) demande = true;
+        }
+        if (demande) { cpTelEnvoyer(rec); return; }
+      }
+    } finally { CPT.tour = 0; }
+  }
+  function cpTelDemarrer() {
+    if (CPT.demarre || !cpPossible()) return; CPT.demarre = true;
+    const boucle = async () => { try { await cpTelTour(); } catch (e) { /* rien */ } setTimeout(boucle, 4000); };
+    setTimeout(boucle, 2500);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) { setTimeout(() => cpTelTour().catch(() => {}), 700); if (CPT.s) cpTelEcran(true); } });
+  }
+
+  /* ---------- 📷 lire le QR code (caméra arrière) : BarcodeDetector du téléphone, sinon lib/jsQR.js (dans l'appli, sans internet) ---------- */
+  let cpJsqr = null;
+  function cpChargerJsqr() {
+    if (window.jsQR) return Promise.resolve(window.jsQR);
+    if (!cpJsqr) cpJsqr = new Promise((res, rej) => {
+      const sc = document.createElement('script'); sc.src = 'lib/jsQR.js?v=42';
+      sc.onload = () => (window.jsQR ? res(window.jsQR) : rej(new Error('jsQR'))); sc.onerror = () => { cpJsqr = null; rej(new Error('jsQR')); };
+      document.head.appendChild(sc);
+    });
+    return cpJsqr;
+  }
+  /** Renvoie le code lu, 'main' (taper le code) ou null (fermé) */
+  function cpScan() {
+    return new Promise((res) => {
+      const el = document.createElement('div'); el.className = 'scan';
+      el.innerHTML = '<div class="cam"><video playsinline muted autoplay></video><div class="vis"></div></div>' +
+        '<div class="sb"><p style="margin:0 0 6px;font-weight:800">📷 Vise le QR code affiché sur ton PC</p><p class="small soft" id="scm" style="margin:0 0 10px">Tiens le téléphone à 20–40 cm de l\'écran.</p>' +
+        '<div class="row"><button class="btn sec small" data-s="main">⌨️ Taper le code</button><button class="btn sec small" data-s="close">✖ Fermer</button></div></div>';
+      document.body.appendChild(el);
+      const video = el.querySelector('video'), msg = (t) => { const m = el.querySelector('#scm'); if (m) m.textContent = t; };
+      let flux = null, fini = false, det = null, cv = null, ctx = null;
+      const stop = (v) => { if (fini) return; fini = true; if (flux) flux.getTracks().forEach((t) => t.stop()); el.remove(); res(v); };
+      el.addEventListener('click', (e) => { const b = e.target.closest('[data-s]'); if (b) stop(b.dataset.s === 'main' ? 'main' : null); });
+      (async () => {
+        try { flux = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false }); }
+        catch (e) { msg('La caméra n\'est pas autorisée. Touche « ⌨️ Taper le code » et tape le code écrit sous le QR code.'); return; }
+        if (fini) { flux.getTracks().forEach((t) => t.stop()); return; }
+        video.srcObject = flux; try { await video.play(); } catch (e) { /* lecture auto */ }
+        try { if ('BarcodeDetector' in window && (await window.BarcodeDetector.getSupportedFormats()).includes('qr_code')) det = new window.BarcodeDetector({ formats: ['qr_code'] }); } catch (e) { det = null; }
+        if (!det) {
+          try { await cpChargerJsqr(); cv = document.createElement('canvas'); ctx = cv.getContext('2d', { willReadFrequently: true }); }
+          catch (e) { msg('Je ne peux pas lire le QR code ici. Touche « ⌨️ Taper le code ».'); return; }
+        }
+        const tour = async () => {
+          if (fini) return;
+          let txt = '';
+          try {
+            if (video.readyState >= 2 && video.videoWidth) {
+              if (det) { const r = await det.detect(video); if (r && r[0]) txt = String(r[0].rawValue || ''); }
+              else {
+                const sc = Math.min(1, 720 / Math.max(video.videoWidth, video.videoHeight));
+                cv.width = Math.round(video.videoWidth * sc); cv.height = Math.round(video.videoHeight * sc);
+                ctx.drawImage(video, 0, 0, cv.width, cv.height);
+                const im = ctx.getImageData(0, 0, cv.width, cv.height), r = window.jsQR(im.data, im.width, im.height, { inversionAttempts: 'dontInvert' });
+                if (r && r.data) txt = String(r.data);
+              }
+            }
+          } catch (e) { /* image suivante */ }
+          if (fini) return;
+          const c = PCX.normaliser(txt);
+          if (c) { try { if (navigator.vibrate) navigator.vibrate(60); } catch (e) { /* rien */ } stop(c); return; }
+          if (txt) msg('Ce QR code n\'est pas celui de ScriptMove sur ton PC.');
+          setTimeout(tour, 200);
+        };
+        tour();
+      })();
+    });
+  }
+
+  /* ======================= Côté PC : il reçoit la copie ======================= */
+  async function cpSrc() {
+    if (CPR.src) return CPR.src;
+    let x = null; try { x = await dget('kv', CPK_PC); } catch (e) { /* rien */ }
+    if (!x || !/^[0-9a-f]{32}$/.test(String(x.canal || '')) || !x.cle || !x.code) return null;
+    x.recus = x.recus || {}; x.partiel = x.partiel || {}; x.attendus = x.attendus || {};
+    CPR.src = x; return x;
+  }
+  let cpSv = null;
+  function cpSauverSrc(tout) {
+    clearTimeout(cpSv); cpSv = null;
+    const f = () => (CPR.src ? dput('kv', CPR.src, CPK_PC).catch(() => {}) : Promise.resolve());
+    if (tout) return f();
+    cpSv = setTimeout(f, 1500); return Promise.resolve();
+  }
+  /** Sur le PC : taille de la vidéo d'une édition qui doit encore arriver du téléphone (0 sinon) */
+  function cpVideoAttendue(cid) { return CPR.src && CPR.src.attendus ? +CPR.src.attendus[cid] || 0 : 0; }
+  async function cpLienPc() {
+    const src = await cpSrc(); if (!src) return null;
+    if (!CPR.lien || CPR.lien.canal !== src.canal) CPR.lien = { canal: src.canal, cle: await PCX.importer(src.cle) };
+    return CPR.lien;
+  }
+  /** Nouveau code (QR) : le PC crée son canal sur le relais ; l'ancien canal de ce PC est effacé */
+  async function cpNouveauCode() {
+    const old = await cpSrc();
+    const d = await PCX.deriver(PCX.nouveauCode());
+    await PCX.rpc('pc_canal_creer', { p_canal: d.canal });
+    try { await PCX.rpc('pc_relier', { p_canal: d.canal, p_pc: await PCX.chiffrerTexte(d.cle, nomOrdi(), 'pc') }); } catch (e) { /* le nom n'est qu'un plus */ }
+    for (const c of [old && old.canal, old && old.ancien && old.ancien.canal]) if (c) PCX.rpc('pc_canal_supprimer', { p_canal: c }).catch(() => {});
+    CPR.src = { code: d.code, canal: d.canal, cle: d.cleB64, relie: false, delie: false, le: Date.now(), derniere: 0, recus: (old && old.recus) || {}, partiel: (old && old.partiel) || {}, attendus: (old && old.attendus) || {} };
+    CPR.lien = null;
+    await cpSauverSrc(true);
+    return CPR.src;
+  }
+  /** Accueil du PC : la mention « copie » et 🔄, ou la carte pour recevoir */
+  async function cpAccueil() {
+    if (!estPC() || !cpPossible()) return '';
+    const src = await cpSrc();
+    if (src && src.relie && !src.delie) return '<div class="card small" style="padding:10px 14px"><p class="mute" style="margin:0">💻 Copie de ton téléphone — mise à jour avec 🔄' + (src.derniere ? ' · dernière copie le ' + fmtDate(src.derniere) : '') + '</p>' +
+      '<button class="btn sec small" style="margin:8px 0 0" data-act="cpmaj"' + (CPR.s ? ' disabled' : '') + '>🔄 Mettre à jour depuis mon téléphone</button></div>';
+    return '<button class="btn" data-act="cprecv">📲 Recevoir mes chorégraphies depuis mon téléphone</button>';
+  }
+  /** Écran du PC : le grand QR code (ou 🔄 si le PC est déjà relié) */
+  async function scrRecevoir(nouveau) {
+    const premier = !lsGet('sm_pin');
+    const titre = '<h1>📲 Recevoir mes chorégraphies depuis mon téléphone</h1>';
+    const top = premier ? '<div class="logo"><img src="icon-192.png" alt=""><div><b>ScriptMove</b><span>Tes chorés en script</span></div></div>' + titre
+      : '<div class="top"><button class="back" data-act="back">‹</button>' + titre + '</div>';
+    const acts = { back: () => scrHome(), re: () => scrRecevoir(nouveau), maj: () => cpDemander(true), neuf: () => scrRecevoir(true) };
+    if (!cpPossible()) { render(top + '<div class="card r"><p style="margin:0">Ce navigateur ne permet pas de recevoir la copie. Utilise Chrome ou Edge, à jour.</p></div>', acts); return; }
+    render(top + '<div class="card"><p class="soft" style="margin:0">Un instant…</p></div>', acts); S.where = 'recevoir';
+    let src = await cpSrc(), err = '';
+    try {
+      if (nouveau || !src || src.delie) src = await cpNouveauCode();
+      else if (!src.relie) { const r = await PCX.rpc('pc_etat', { p_canal: src.canal }); if (!r || !r.existe) src = await cpNouveauCode(); }
+    } catch (e) { err = e && e.reseau ? CP_ERR_PC.reseau : CP_ERR_PC.service; }
+    if (S.where !== 'recevoir') return; // on est allé ailleurs entre-temps
+    let h = top;
+    if (err) h += '<div class="card r"><p>⚠️ ' + esc(err) + '</p><button class="btn" data-act="re">🔄 Réessayer</button></div>';
+    else if (!src.relie) {
+      const qr = window.qrSvg ? window.qrSvg(PCX.joli(src.code)) : null;
+      h += '<div class="card o" style="text-align:center"><p style="margin:0 0 6px"><b>Scanne ce QR code avec ton téléphone</b></p>' + (qr ? '<div class="qrbox">' + qr + '</div>' : '') +
+        '<p class="mute" style="margin:0">Code (si le QR code ne marche pas) :</p><p class="qrcode">' + esc(PCX.joli(src.code)) + '</p>' +
+        '<p class="small" role="status" style="color:var(--ja);font-weight:800;margin:0">⏳ J\'attends ton téléphone…</p></div>' +
+        '<div class="card small"><p style="margin:0 0 6px"><b>Sur ton téléphone :</b></p><p style="margin:0">1. Ouvre ScriptMove › 💻 Relier mon PC.<br>2. Touche « 📷 Scanner le QR code de mon PC ».<br>3. Vise ce QR code.</p></div>';
+    } else {
+      h += '<div class="card g"><h2>✅ Ce PC est relié à ton téléphone</h2><p class="soft small">' + (src.derniere ? 'Dernière copie le ' + fmtDate(src.derniere) + '.' : 'La copie n\'est pas encore finie.') + '</p>' +
+        '<button class="btn" data-act="maj"' + (CPR.s ? ' disabled' : '') + '>🔄 Mettre à jour depuis mon téléphone</button></div>' +
+        '<button class="btn ghost small" data-act="neuf">Afficher un nouveau QR code (pour relier de nouveau)</button>';
+    }
+    h += '<div class="card j small">📱 Pendant la copie, garde <b>ScriptMove ouvert sur ton téléphone</b> (déverrouillé, écran allumé). Le téléphone et le PC doivent avoir internet ; le mieux : le même Wi-Fi.</div>' +
+      '<p class="mute">🔒 Une copie de tout ton contenu (scripts, éditions, vidéos, musiques, livrets…) va directement de ton téléphone à ce PC. Elle n\'est gardée sur aucun serveur. Rien n\'est effacé ni changé sur ton téléphone.' +
+      (premier ? ' Ensuite, ScriptMove s\'ouvre ici, avec le même code que sur ton téléphone.' : '') + '</p>';
+    render(h, acts); S.where = 'recevoir';
+    cpPcDemarrer();
+  }
+  /** Sur le PC, quand une copie arrive : l'écran ouvert (accueil, dossier, édition) se met à jour */
+  let cpRT = null;
+  function cpRafraichir(vite) {
+    if (cpRT) return;
+    cpRT = setTimeout(() => {
+      cpRT = null;
+      if (document.querySelector('.sheet-bg, .pv, .lv, .scan, .play')) return;
+      const a = document.activeElement; if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return;
+      const q = $('#hq'); if (q && q.value) return;
+      const w = S.where || '';
+      if (w === 'home') scrHome(); else if (w.startsWith('folder:')) scrFolder(w.slice(7)); else if (w.startsWith('course:')) scrCourse(w.slice(7));
+    }, vite ? 100 : 1500);
+  }
+  /** Barre d'avancement du PC (en bas, sur tous les écrans) */
+  let cpPB = 0, cpPTimer = null;
+  function cpPcBarre(x) {
+    const s = CPR.s; let b = document.getElementById('cpbar');
+    if (!x && !s) return;
+    if (!x && b && Date.now() - cpPB < 300) return; cpPB = Date.now();
+    if (!b) {
+      b = document.createElement('div'); b.id = 'cpbar'; b.setAttribute('role', 'status'); document.body.appendChild(b);
+      b.addEventListener('click', (e) => {
+        const t = e.target.closest('[data-cpb]'); if (!t) return;
+        b.remove(); document.body.classList.remove('cpon');
+        if (t.dataset.cpb === 're') cpDemander(true); else if (t.dataset.cpb === 'qr') scrRecevoir(true);
+      });
+    }
+    b.className = 'grand'; document.body.classList.add('cpon'); clearTimeout(cpPTimer);
+    const garde = '<p class="mute" style="margin:6px 0 0">📱 Garde ScriptMove ouvert sur ton téléphone jusqu\'à la fin. Ce qui est déjà arrivé est utilisable tout de suite.</p>';
+    let h;
+    if (x && x.ko) {
+      const relie = !!(CPR.src && CPR.src.relie && !CPR.src.delie);
+      const t = relie || x.neuf ? x.ko : x.ko.replace('clique sur Réessayer', 'scanne de nouveau le QR code');
+      h = '<p style="margin:0 0 8px;font-weight:800;color:var(--ko)">⚠️ ' + esc(t) + '</p><div class="row">' +
+        (x.neuf ? '<button class="btn small" style="margin:0" data-cpb="qr">📲 Nouveau QR code</button>' : relie ? '<button class="btn small" style="margin:0" data-cpb="re">🔄 Réessayer</button>' : '') +
+        '<button class="btn small sec" style="margin:0" data-cpb="ok">OK</button></div>';
+    } else if (x && x.ok) {
+      h = '<p style="margin:0;font-weight:800;color:var(--ok)">✅ Copie terminée : tout ton contenu est sur ce PC.</p><p class="mute" style="margin:4px 0 0">Tu peux utiliser ton téléphone pour autre chose, ou l\'éteindre.' +
+        (lsGet('sm_pin_tel') ? ' Pour rouvrir ScriptMove sur ce PC : le même code que sur ton téléphone.' : '') + '</p>';
+      cpPTimer = setTimeout(() => { b.remove(); document.body.classList.remove('cpon'); }, 12000);
+    } else {
+      const et = (x && x.etat) || (s && s.etape) || 'connexion';
+      if (et === 'cherche' || et === 'reprise') h = '<p style="margin:0;font-weight:800">⏳ ' + (et === 'reprise' ? 'La connexion a été coupée : je reprends la copie…' : 'Je cherche ton téléphone…') + '</p><p class="mute" style="margin:4px 0 0">Ouvre ScriptMove sur ton téléphone (déverrouillé, écran allumé).</p>';
+      else if (et !== 'fichiers' || !s) h = '<p style="margin:0;font-weight:800">📲 ' + (et === 'leger' ? 'Copie depuis ton téléphone : tes scripts, dossiers et éditions…' : 'Ton téléphone est trouvé : je prépare la copie…') + '</p>' + garde;
+      else {
+        const pct = s.octets ? Math.min(100, Math.round(s.recu / s.octets * 100)) : 100;
+        h = '<p style="margin:0 0 6px;font-weight:800">📲 Copie depuis ton téléphone : ' + Math.min(s.nbFait, s.nb) + '/' + s.nb + ' fichier' + (s.nb > 1 ? 's' : '') + ' · ' + pct + ' %</p>' +
+          '<div class="bar"><i style="width:' + pct + '%;transition:none"></i></div><p class="mute" style="margin:4px 0 0">' + fmtSize(Math.min(s.recu, s.octets)) + ' sur ' + fmtSize(s.octets) + '</p>' +
+          (s.peuPlace ? '<p class="small" style="margin:4px 0 0;color:var(--ja)">' + esc(s.peuPlace) + '</p>' : '') + garde;
+      }
+    }
+    b.innerHTML = '<div class="in">' + h + '</div>';
+  }
+  /** 🔄 Mettre à jour : le PC dépose une « demande » ; le téléphone (ScriptMove ouvert) la voit et envoie ce qui a changé */
+  async function cpDemander(manuel) {
+    if (CPR.s) return;
+    const src = await cpSrc(); if (!src || !src.relie || src.delie) return scrRecevoir(!!(src && src.delie));
+    if (manuel) CPR.essais = 0;
+    cpPcDemarrer(); cpPcBarre({ etat: 'cherche' });
+    const poster = async () => PCX.poster(await cpLienPc(), 'pc', { t: 'demande', le: Date.now() });
+    try { await poster(); }
+    catch (e) {
+      if (!(e && e.raison === 'canal')) return cpPcBarre({ ko: e && e.reseau ? CP_ERR_PC.reseau : CP_ERR_PC.service });
+      const avant = src.canal; await cpPcTour(); // canal disparu : l'ancien code, ou « délié »
+      if (!CPR.src || CPR.src.delie || CPR.src.canal === avant) return;
+      try { await poster(); } catch (e2) { return cpPcBarre({ ko: e2 && e2.reseau ? CP_ERR_PC.reseau : CP_ERR_PC.service }); }
+    }
+    const t = CPR.attente = Date.now();
+    setTimeout(() => { if (CPR.attente === t && !CPR.s) { CPR.attente = 0; cpPcBarre({ ko: CP_ERR_PC.muet }); } }, 60000);
+  }
+  /** Le PC écoute le relais (toutes les 2 à 6 secondes) : une offre du téléphone → il répond */
+  async function cpPcTour() {
+    if (CPR.tour || CPR.s || !cpPossible() || navigator.onLine === false) return;
+    const src = await cpSrc(); if (!src || src.delie) return;
+    CPR.tour = 1;
+    try {
+      const l = await cpLienPc(); let r;
+      try { r = await PCX.relever(l); } catch (e) { return; }
+      if (!r.existe) {
+        const a = src.ancien;
+        if (a && a.canal) { // le nouveau code n'a pas été gardé par le téléphone : on reprend l'ancien
+          let ok = false; try { const e = await PCX.rpc('pc_etat', { p_canal: a.canal }); ok = !!(e && e.existe); } catch (e) { return; }
+          delete src.ancien; if (ok) { Object.assign(src, { code: a.code, canal: a.canal, cle: a.cle }); CPR.lien = null; }
+          await cpSauverSrc(true); if (ok) return;
+        }
+        if (src.relie) { src.delie = true; await cpSauverSrc(true); CPR.attente = 0; cpPcBarre({ ko: CP_ERR_PC.delie, neuf: true }); cpRafraichir(true); }
+        else if (S.where === 'recevoir') scrRecevoir(true);
+        return;
+      }
+      for (const m of r.msgs) {
+        if (m.de !== 'tel') { if (Date.now() - m.le > CP_FRAIS) PCX.effacer(l, m.id); continue; } // nos demandes jamais lues
+        if (CPR.vus.has(m.id)) continue; CPR.vus.add(m.id);
+        const o = await PCX.lire(l, m.id); PCX.effacer(l, m.id);
+        if (o && o.t === 'offre' && o.sdp && o.s && Date.now() - m.le < CP_FRAIS) {
+          cpPcRepondre(l, o).catch((e) => { console.warn('copie (PC)', e); cpPcFin(CPR.s, 'muet'); });
+          return;
+        }
+      }
+    } finally { CPR.tour = 0; }
+  }
+  function cpPcDemarrer() {
+    if (CPR.demarre || !cpPossible()) return; CPR.demarre = true;
+    const boucle = async () => { try { await cpPcTour(); } catch (e) { /* rien */ } setTimeout(boucle, S.where === 'recevoir' || CPR.attente ? 2000 : 6000); };
+    setTimeout(boucle, 500);
+  }
+  function cpDemarrer() {
+    if (!cpPossible()) return;
+    if (estPC()) cpSrc().then((x) => { if (x) cpPcDemarrer(); }).catch(() => {});
+    else cpTelDemarrer();
+  }
+  async function cpPcRepondre(l, o) {
+    if (CPR.s) return;
+    const rtc = new RTCPeerConnection({ iceServers: PCX.ICE });
+    const s = CPR.s = { rtc, dc: null, ouvert: false, fin: false, arret: false, gros: {}, cur: null, q: Promise.resolve(), ecrit: 0, plan: null, nb: 0, octets: 0, recu: 0, nbFait: 0, etape: 'connexion' };
+    CPR.attente = 0; cpPcBarre({ etat: 'connexion' });
+    rtc.ondatachannel = (e) => { if (CPR.s === s) cpPcCanal(s, e.channel); };
+    rtc.onconnectionstatechange = () => { if (CPR.s === s && (rtc.connectionState === 'failed' || rtc.connectionState === 'closed')) cpPcFin(s, s.ouvert ? 'coupe' : 'direct'); };
+    await rtc.setRemoteDescription({ type: 'offer', sdp: o.sdp });
+    await rtc.setLocalDescription(await rtc.createAnswer());
+    await PCX.adresses(rtc, 5000);
+    if (CPR.s !== s) return;
+    await PCX.poster(l, 'pc', { t: 'reponse', s: o.s, sdp: rtc.localDescription.sdp });
+    setTimeout(() => { if (CPR.s === s && !s.ouvert) cpPcFin(s, 'direct'); }, 40000);
+  }
+  /** File d'écriture du PC : une chose après l'autre ; une erreur ne bloque pas la suite (sauf « plus de place ») */
+  function cpFile(s, fn) { s.q = s.q.then(() => (s.arret ? null : fn())).catch((e) => cpPcErreur(s, e)); }
+  function cpPcErreur(s, e) {
+    console.warn('copie (PC)', e);
+    if (isQuota(e)) { cpDire(s, { t: 'stop', raison: 'place' }); cpPcFin(s, 'place'); }
+  }
+  function cpPcCanal(s, dc) {
+    s.dc = dc; dc.binaryType = 'arraybuffer';
+    const go = async () => {
+      if (s.ouvert || CPR.s !== s) return; s.ouvert = true;
+      const src = await cpSrc(); src.relie = true; src.delie = false; await cpSauverSrc(true);
+      if (S.where === 'recevoir') scrRecevoir();
+      cpPcBarre({ etat: 'connexion' });
+      let inv = { items: [] }; try { inv = await cpInventaire('pc'); } catch (e) { console.warn('inventaire (PC)', e); }
+      const sigs = {}; for (const it of inv.items) sigs[it.k] = it.sig;
+      cpDireGros(s, { t: 'inventaire', sigs, partiel: src.partiel || {} });
+    };
+    dc.onopen = () => { go().catch((e) => console.warn(e)); };
+    if (dc.readyState === 'open') go().catch((e) => console.warn(e));
+    dc.onclose = () => { if (CPR.s === s) cpPcFin(s, 'coupe'); };
+    dc.onmessage = (e) => {
+      if (CPR.s !== s) return;
+      if (typeof e.data !== 'string') return cpPcDonnees(s, e.data);
+      let o = null; try { o = JSON.parse(e.data); } catch (er) { return; }
+      o = cpGros(s, o); if (!o) return;
+      if (o.t === 'i') cpPcDebut(s, o);
+      else if (o.t === 'annule') cpPcAnnule(s);
+      else if (o.t === 'cle') cpFile(s, () => cpPcCle(s, o));
+      else if (o.t === 'plan') { s.plan = o; s.nb = Math.max(0, +o.nb || 0); s.octets = Math.max(0, +o.octets || 0); cpFile(s, () => cpPcPlan(s)); }
+      else if (o.t === 'leger-fin') { s.etape = 'fichiers'; cpFile(s, () => cpPcLegerFin(s)); }
+      else if (o.t === 'vfin') cpFile(s, () => cpPcVideoFin(s, o));
+      else if (o.t === 'tout') cpFile(s, () => cpPcTout(s));
+    };
+  }
+  async function cpPcCle(s, o) {
+    const c = PCX.normaliser(o.code); if (!c) return;
+    const d = await PCX.deriver(c), src = await cpSrc();
+    src.ancien = { code: src.code, canal: src.canal, cle: src.cle };
+    Object.assign(src, { code: d.code, canal: d.canal, cle: d.cleB64 }); CPR.lien = null;
+    await cpSauverSrc(true);
+    cpDire(s, { t: 'cle-ok' });
+  }
+  async function cpPcPlan(s) {
+    if (s.etape !== 'fichiers') s.etape = 'leger';
+    try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* rien */ }
+    try {
+      const e = navigator.storage && navigator.storage.estimate ? await navigator.storage.estimate() : null;
+      if (e && e.quota && e.quota - (e.usage || 0) < s.octets + 100e6) s.peuPlace = 'Il n\'y a peut-être pas assez de place sur ce PC pour tout copier (il faut ' + fmtSize(s.octets) + ', il reste ' + fmtSize(Math.max(0, e.quota - (e.usage || 0))) + '). Je copie d\'abord le plus important.';
+    } catch (e) { /* rien */ }
+    cpPcBarre();
+  }
+  /** Début d'un enregistrement : on range les octets qui suivent (texte, puis chaque fichier) */
+  function cpPcDebut(s, h) {
+    if (s.cur) cpPcAnnule(s);
+    const parts = Array.isArray(h.parts) ? h.parts : [];
+    s.cur = { h, parts, sec: -1, got: 0, pieces: [], pn: 0, blobs: [], meta: '', vals: [], recu: 0 };
+    cpPcSuite(s, s.cur);
+  }
+  function cpPcDonnees(s, buf) {
+    const r = s.cur;
+    if (!r) { cpFile(s, () => { s.ecrit += buf.byteLength; cpDire(s, { t: 'ack', n: s.ecrit }); }); return; } // ne devrait pas arriver
+    let u = new Uint8Array(buf);
+    while (u.length && s.cur === r) {
+      const need = (r.sec < 0 ? +r.h.ml || 0 : +r.parts[r.sec].n || 0) - r.got;
+      if (need <= 0) break; // (sécurité)
+      const take = u.subarray(0, Math.min(need, u.length)); u = u.subarray(take.length);
+      r.pieces.push(take); r.pn += take.length; r.got += take.length; r.recu += take.length;
+      if (r.sec >= 0 && r.parts[r.sec].b && r.pn >= 4 * CP_LU) { r.blobs.push(new Blob(r.pieces)); r.pieces = []; r.pn = 0; } // gros fichier : hors de la mémoire vive
+      cpPcSuite(s, r);
+    }
+    if (s.etape === 'fichiers') { s.recu += buf.byteLength; cpPcBarre(); }
+  }
+  /** Section finie (texte ou fichier) → la suivante ; tout fini → écrit dans l'appli */
+  function cpPcSuite(s, r) {
+    for (;;) {
+      if (s.cur !== r) return;
+      const n = r.sec < 0 ? +r.h.ml || 0 : +r.parts[r.sec].n || 0;
+      if (r.got < n) return;
+      if (r.sec < 0) r.meta = new TextDecoder().decode(cpColle(r.pieces, r.pn));
+      else if (r.parts[r.sec].b) r.vals[r.sec] = new Blob(r.blobs.concat(r.pieces), { type: r.parts[r.sec].ty || '' });
+      else r.vals[r.sec] = cpColle(r.pieces, r.pn);
+      r.pieces = []; r.pn = 0; r.blobs = []; r.got = 0; r.sec++;
+      if (r.sec >= r.parts.length) {
+        s.cur = null; const h = r.h, meta = r.meta, vals = r.vals, tot = r.recu;
+        cpFile(s, () => cpPcEcrire(s, h, meta, vals));
+        cpFile(s, () => { s.ecrit += tot; cpDire(s, { t: 'ack', n: s.ecrit }); });
+        return;
+      }
+    }
+  }
+  function cpPcAnnule(s) {
+    const r = s.cur; if (!r) return; s.cur = null; const tot = r.recu;
+    cpFile(s, () => { s.ecrit += tot; cpDire(s, { t: 'ack', n: s.ecrit }); });
+  }
+  /** Écrit un enregistrement reçu dans la base du PC (mêmes zones et mêmes clés que sur le téléphone) */
+  async function cpPcEcrire(s, h, meta, vals) {
+    const v = C.cpDec(meta, h.parts || [], vals), k = String(h.k || ''), p = k.slice(0, 2), id = k.slice(2), src = await cpSrc();
+    if (!id) return;
+    if (p === 'c:') {
+      if (!v || typeof v !== 'object' || v.id !== id) return;
+      const vk = v.video && v.video.kept;
+      if (vk) { // la vidéo n'est marquée « gardée » que quand elle est arrivée en entier
+        const here = await dget('courses', id), hk = here && here.video && here.video.kept;
+        const pareil = !!hk && C.cpSig(C.cpEnc(hk)) === C.cpSig(C.cpEnc(vk)) && (await cpNbBlocs(id)) === hk.chunks;
+        if (!pareil) { v.video.kept = null; src.attendus[id] = vk.size || 1; } else delete src.attendus[id];
+      } else { await deleteVideo(id); delete src.attendus[id]; delete src.partiel[id]; } // plus de vidéo sur le téléphone
+      await dput('courses', v);
+    } else if (p === 'k:') { if (CP_EXCL.has(id)) return; await dput('kv', v, id); }
+    else if (p === 'd:') { await dput('data', v, id); if (id.startsWith('lv:') && LV.cid === id.slice(3)) lvForget(); }
+    else if (p === 'l:') { if (id === 'sm_pin' && v && v.salt && v.hash && (!lsGet('sm_pin') || lsGet('sm_pin_tel'))) { lsSet('sm_pin', v); lsSet('sm_pin_tel', true); } }
+    else if (p === 'm:') { if (!v || v.id !== id) return; await dput('musics', v); }
+    else if (p === 'p:') { if (!v || v.id !== id) return; await dput('photos', v); }
+    else if (p === 'v:') { // un bloc de vidéo
+      const key = String(h.key || ''); if (!(v instanceof Blob) || !key.startsWith(id + ':')) return;
+      if (+h.i === 0) await deleteVideo(id); // nouvelle copie de cette vidéo : les anciens blocs partent
+      await dput('vchunks', v, key);
+      src.partiel[id] = { sig: h.vsig, n: (+h.i || 0) + 1 }; cpSauverSrc();
+      return; // « reçue » seulement à la fin (vfin)
+    } else return;
+    src.recus[k] = 1; cpSauverSrc();
+    if (h.g !== 'leger' && h.g !== 'analyse') { s.nbFait++; cpRafraichir(); cpPcBarre(); }
+  }
+  async function cpPcVideoFin(s, o) {
+    const id = String(o.cid || ''), kp = o.kept, src = await cpSrc();
+    if (id && kp && typeof kp === 'object') {
+      const n = await cpNbBlocs(id), c = await dget('courses', id);
+      if (n === kp.chunks && c && c.video) {
+        if (S.kept[id]) { URL.revokeObjectURL(S.kept[id]); delete S.kept[id]; }
+        c.video.kept = kp; await dput('courses', c);
+        delete src.attendus[id]; delete src.partiel[id]; src.recus['v:' + id] = 1;
+      }
+      cpSauverSrc();
+    }
+    s.nbFait++; cpRafraichir(); cpPcBarre();
+  }
+  async function cpPcLegerFin(s) {
+    await cpSauverSrc(true);
+    cpPcBarre({ etat: 'fichiers' });
+    if (!S.demarre) { try { await start(); } catch (e) { console.warn('ouverture', e); } } // 1re copie : ScriptMove s'ouvre sur le PC
+    else { try { await loadKV(); } catch (e) { /* rien */ } cpRafraichir(true); }
+  }
+  /** Ce qui a disparu du téléphone (et qui venait de lui) disparaît aussi de la copie du PC */
+  async function cpEffacerAbsents(src, cles) {
+    const garde = new Set(cles);
+    for (const k of Object.keys(src.recus || {})) {
+      if (garde.has(k)) continue;
+      const p = k.slice(0, 2), id = k.slice(2);
+      try {
+        if (p === 'c:') await ddel('courses', id);
+        else if (p === 'k:') { if (!CP_EXCL.has(id)) await ddel('kv', id); }
+        else if (p === 'd:') { await ddel('data', id); if (id.startsWith('lv:') && LV.cid === id.slice(3)) lvForget(); }
+        else if (p === 'm:') await ddel('musics', id);
+        else if (p === 'p:') await ddel('photos', id);
+        else if (p === 'v:') { await deleteVideo(id); const c = await dget('courses', id); if (c && c.video && c.video.kept) { c.video.kept = null; await dput('courses', c); } }
+        else if (p === 'l:') continue; // le code d'accès n'est jamais effacé
+      } catch (e) { continue; }
+      delete src.recus[k];
+    }
+  }
+  async function cpPcTout(s) {
+    const src = await cpSrc(), cles = s.plan && Array.isArray(s.plan.cles) ? s.plan.cles : null;
+    if (cles) await cpEffacerAbsents(src, cles);
+    src.derniere = Date.now(); await cpSauverSrc(true);
+    try { await loadKV(); } catch (e) { /* rien */ }
+    cpDire(s, { t: 'merci' });
+    cpPcFin(s, 'fini');
+  }
+  function cpPcFin(s, raison) {
+    if (!s || s.fin) return; s.fin = true;
+    if (raison === 'place') s.arret = true; // sinon, ce qui est déjà arrivé finit d'être écrit
+    if (CPR.s === s) CPR.s = null;
+    s.cur = null;
+    const fermer = () => { try { if (s.dc) s.dc.close(); } catch (e) { /* rien */ } try { s.rtc.close(); } catch (e) { /* rien */ } };
+    if (raison === 'fini' || raison === 'place') setTimeout(fermer, 2000); else fermer(); // le dernier message (« merci » / « plus de place ») part d'abord
+    s.q.then(() => cpSauverSrc(true));
+    if (raison === 'fini') { CPR.essais = 0; cpPcBarre({ ok: true }); }
+    else if ((raison === 'coupe' || raison === 'direct') && s.ouvert && CPR.essais < 2) { CPR.essais++; cpPcBarre({ etat: 'reprise' }); setTimeout(() => cpDemander(false), 5000); }
+    else cpPcBarre({ ko: CP_ERR_PC[raison] || CP_ERR_PC.coupe });
+    cpRafraichir(true);
+  }
+
   /* ======================= Démarrage ======================= */
   async function start() {
+    S.demarre = true; // 08/11 : la 1re copie sur le PC ouvre l'appli une seule fois
     await loadKV();
     try { await migrateAll(); } catch (e) { console.error('migration', e); }
     try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch (e) { /* rien */ }
     // v19 : un fichier reçu par « Partager › ScriptMove » attend d'être rangé
     if (/[?&]share=err/.test(location.search)) { shareCleanURL(); toast('Le fichier partagé n\'a pas pu être reçu. Réessaie.', 5000); }
     pcDemarrer();
+    cpDemarrer(); // 08/11 : copie téléphone → PC (le PC écoute, le téléphone répond à « 🔄 Mettre à jour »)
     if (await shareNext()) return;
     scrHome();
   }
@@ -2515,11 +3354,12 @@
       if (sortie) { history.back(); return; }
       arme = false;
       const sh = document.querySelector('.sheet-bg'); if (sh) { sh.dispatchEvent(new MouseEvent('click', { bubbles: true })); return; }
-      const fe = document.querySelector('.pv [data-v="close"], .lv [data-l="close"]'); if (fe) { fe.click(); return; }
+      const fe = document.querySelector('.scan [data-s="close"], .pv [data-v="close"], .lv [data-l="close"]'); if (fe) { fe.click(); return; }
       const bk = app.querySelector('.top [data-act="back"]'); if (bk) { bk.click(); return; }
       ask('Voulez-vous vraiment quitter l\'application ?', '', [{ label: 'Oui', value: 1 }, { label: 'Non', value: 0, cls: 'sec' }]).then((r) => { if (r) { sortie = true; history.back(); } });
     });
   })();
   S.api = { scrPc, pcRaw, shareRaw, scrShare, shareNext, sharePending, scrMixes, scrMix, scrPickMorceau, scrMixScript, doBackup, printCourse, scrHome, scrFolder, scrCourse, scrWrite, scrRead, scrPlay, scrCourseScript, setVideo, dget, dput, dall, saveCourse, scriptText, storeVideo, videoURL, photosOf, migrateAll, loadKV, getLivret, viewLivret, lvPageFor };
-  scrLock();
+  // 08/11 : sur un ordinateur qui n'a encore rien reçu, on propose de recevoir la copie du téléphone (rien d'autre n'est montré)
+  if (estPC() && !lsGet('sm_pin')) scrRecevoir(); else scrLock();
 })();

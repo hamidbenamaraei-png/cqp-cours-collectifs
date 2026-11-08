@@ -475,6 +475,44 @@ section('Livret : page par défaut, « régler les suivants », sauvegarde');
   const bi = await C.lvUnpack(JSON.parse(JSON.stringify(await C.lvPack(imgs, toData))), fromData);
   ok(bi.kind === 'img' && bi.pages === 2 && bi.files[1].type === 'image/png' && (await bi.files[1].text()) === 'def', 'livret en images : pages gardées dans l\'ordre');
   ok((await C.lvUnpack(null, fromData)) === null && (await C.lvUnpack({ cid: 'x', files: [] }, fromData)) === null, 'sauvegarde sans livret : rien');
+
+  /* ---------- 📲 Copie du téléphone vers le PC (08/11) ---------- */
+  section('Copie vers le PC : codage des enregistrements, signatures, ordre d\'envoi');
+  {
+    const f32 = new Float32Array([1.5, -2.25, 3e-5, 7]);
+    const val = { id: 'x1', name: 'Zumba 12', d: new Date(5000), feat: { e: f32, n: 4 }, files: [new Blob(['abc'], { type: 'image/png' }), new Blob(['zz'])], list: [1, 'a', null], vide: undefined };
+    const e = C.cpEnc(val);
+    ok(e.parts.length === 3 && e.parts[0].k === 't' && e.parts[0].c === 'Float32Array' && e.parts[1].k === 'b' && e.parts[1].ty === 'image/png', 'codage : tableau de nombres et fichiers mis à part');
+    // ce qui arrive sur le PC : les octets des tableaux (copie), les fichiers en Blob
+    const hdr = e.parts.map((p) => ({ b: p.k === 'b' ? 1 : 0, c: p.c || '', n: p.n, ty: p.ty || '' }));
+    const vals = e.parts.map((p) => (p.k === 'b' ? p.v : new Uint8Array(p.v)));
+    const d = C.cpDec(e.meta, hdr, vals);
+    ok(d.feat.e instanceof Float32Array && d.feat.e.length === 4 && d.feat.e[1] === -2.25 && d.d instanceof Date && d.d.getTime() === 5000 && d.list[2] === null && !('vide' in d), 'décodage : tout revient pareil');
+    ok((await d.files[0].text()) === 'abc' && d.files[0].type === 'image/png' && d.files[1].size === 2, 'décodage : les fichiers reviennent');
+    ok(C.cpSig(C.cpEnc(d)) === C.cpSig(e), 'même signature sur le PC après la copie');
+    const v2 = Object.assign({}, val, { feat: { e: new Float32Array([1.5, -2.25, 3e-5, 8]), n: 4 } });
+    ok(C.cpSig(C.cpEnc(v2)) !== C.cpSig(e), 'un nombre changé dans un tableau : signature différente');
+    ok(C.cpSig(C.cpEnc({ a: 1, t: 'x' })) !== C.cpSig(C.cpEnc({ a: 1, t: 'y' })), 'un texte changé : signature différente');
+    const sub = new Float32Array([9, 8, 7, 6]).subarray(1, 3);
+    const ds = C.cpDec(C.cpEnc(sub).meta, [{ b: 0, c: 'Float32Array' }], [new Uint8Array(C.cpEnc(sub).parts[0].v)]);
+    ok(ds.length === 2 && ds[0] === 8 && ds[1] === 7, 'un morceau de tableau est copié tel quel');
+    const vb = new Blob([new Uint8Array(10)], { type: 'video/mp4' });
+    ok(C.cpDec(C.cpEnc(vb).meta, [{ b: 1 }], [vb]) === vb, 'un bloc de vidéo (Blob) passe tel quel');
+    // ordre d'envoi
+    const folders = [{ id: 'f1', name: 'Pump' }, { id: 'f2', name: 'ZUMBA Kids' }, { id: 'f3', name: 'Zùmba' }];
+    const courses = [{ id: 'cP', folder: 'f1', morceaux: [{ musicId: 'mP' }] }, { id: 'cZ', folder: 'f2', morceaux: [{ musicId: 'mZ' }], musicIds: ['mZ2'] }, { id: 'cZ3', folder: 'f3', morceaux: [] }];
+    const z = C.cpZumba(folders, courses);
+    ok(z.cours.has('cZ') && z.cours.has('cZ3') && !z.cours.has('cP') && z.musiques.has('mZ') && z.musiques.has('mZ2') && !z.musiques.has('mP'), 'dossier Zumba trouvé par son nom (majuscules, accents)');
+    const items = [
+      { k: 'p:1', g: 'photo', sig: 'a' }, { k: 'm:mP', g: 'musique', id: 'mP', sig: 'a' }, { k: 'v:cP', g: 'video', cid: 'cP', sig: 'a' },
+      { k: 'd:lv:cZ', g: 'livret', sig: 'a' }, { k: 'm:mZ', g: 'musique', id: 'mZ', sig: 'a' }, { k: 'v:cZ', g: 'video', cid: 'cZ', sig: 'a' },
+      { k: 'c:cP', g: 'leger', sig: 'a' }, { k: 'k:folders', g: 'leger', sig: 'a' }, { k: 'v:cZ3', g: 'video', cid: 'cZ3', sig: 'a' }
+    ];
+    const o = C.cpOrdre(items, {}, z).map((x) => x.k);
+    ok(o.join(',') === 'c:cP,k:folders,v:cZ,v:cZ3,m:mZ,v:cP,m:mP,d:lv:cZ,p:1', 'ordre : léger, vidéos Zumba, musiques Zumba, puis le reste');
+    const o2 = C.cpOrdre(items, { 'v:cZ': 'a', 'c:cP': 'a', 'm:mP': 'vieux' }, z).map((x) => x.k);
+    ok(!o2.includes('v:cZ') && !o2.includes('c:cP') && o2.includes('m:mP') && o2.length === 7, 'seulement ce qui est nouveau ou modifié');
+  }
   console.log(`\n${passes} réussis, ${fails} échoués`);
   process.exit(fails ? 1 : 0);
 })();

@@ -1147,7 +1147,98 @@
     return out;
   }
 
+  /* ---- 📲 Copie du téléphone vers le PC (08/11) : un enregistrement de l'appli → { meta (texte), parts (fichiers / tableaux) } ----
+     Les fichiers (Blob) et les tableaux de nombres (Float32Array…) passent à part, en binaire ; le reste en JSON.
+     Le même calcul sur le téléphone et sur le PC donne la même « signature » si l'enregistrement est identique. */
+  const CP_TA = ['Int8Array', 'Uint8Array', 'Uint8ClampedArray', 'Int16Array', 'Uint16Array', 'Int32Array', 'Uint32Array', 'Float32Array', 'Float64Array', 'BigInt64Array', 'BigUint64Array', 'DataView', 'ArrayBuffer'];
+  const isBlob = (x) => typeof Blob !== 'undefined' && x instanceof Blob;
+  function cpEnc(v) {
+    const parts = [];
+    const walk = (x) => {
+      if (x === null || typeof x !== 'object') return typeof x === 'bigint' || typeof x === 'function' || typeof x === 'symbol' ? null : x;
+      if (isBlob(x)) { parts.push({ k: 'b', v: x, n: x.size, ty: x.type || '' }); return { __smb: parts.length - 1 }; }
+      if (x instanceof ArrayBuffer) { const u = new Uint8Array(x); parts.push({ k: 't', c: 'ArrayBuffer', v: u, n: u.length }); return { __smt: parts.length - 1 }; }
+      if (ArrayBuffer.isView(x)) {
+        const u = new Uint8Array(x.buffer, x.byteOffset, x.byteLength), c = x.constructor && CP_TA.includes(x.constructor.name) ? x.constructor.name : 'Uint8Array';
+        parts.push({ k: 't', c, v: u, n: u.length }); return { __smt: parts.length - 1 };
+      }
+      if (x instanceof Date) return { __smd: x.getTime() };
+      if (Array.isArray(x)) return x.map(walk);
+      const o = {}; for (const k of Object.keys(x)) o[k] = walk(x[k]); return o;
+    };
+    const meta = JSON.stringify(walk(v));
+    return { meta: meta === undefined ? 'null' : meta, parts };
+  }
+  /** Inverse de cpEnc. parts = [{ b: 1|0, c }] (en-tête), vals[i] = Blob (b) ou Uint8Array (tableau) */
+  function cpDec(meta, parts, vals) {
+    const tab = (i) => {
+      const u = vals[i], c = (parts[i] && parts[i].c) || 'Uint8Array';
+      const buf = u.byteOffset === 0 && u.byteLength === u.buffer.byteLength ? u.buffer : u.slice().buffer;
+      if (c === 'ArrayBuffer') return buf;
+      if (c === 'DataView') return new DataView(buf);
+      const K = CP_TA.includes(c) ? (typeof globalThis !== 'undefined' ? globalThis : self)[c] : null;
+      return K ? new K(buf) : new Uint8Array(buf);
+    };
+    const back = (x) => {
+      if (x === null || typeof x !== 'object') return x;
+      if (Array.isArray(x)) return x.map(back);
+      const ks = Object.keys(x);
+      if (ks.length === 1) {
+        if (ks[0] === '__smb' && typeof x.__smb === 'number') return vals[x.__smb];
+        if (ks[0] === '__smt' && typeof x.__smt === 'number') return tab(x.__smt);
+        if (ks[0] === '__smd' && typeof x.__smd === 'number') return new Date(x.__smd);
+      }
+      const o = {}; for (const k of ks) o[k] = back(x[k]); return o;
+    };
+    return back(JSON.parse(meta));
+  }
+  /** Petite empreinte (53 bits) de textes et d'octets */
+  function cpHash(list) {
+    let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+    for (const c of list) {
+      if (typeof c === 'string') for (let i = 0; i < c.length; i++) { const ch = c.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
+      else for (let i = 0; i < c.length; i++) { const ch = c[i] + 0x10000; h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+  }
+  /** Signature d'un enregistrement codé : le texte, la taille et le type des fichiers, le contenu des tableaux de nombres */
+  function cpSig(e) {
+    const l = [e.meta];
+    for (const p of e.parts) { l.push('|' + p.k + ':' + p.n + ':' + (p.ty || p.c || '')); if (p.k === 't') l.push(p.v); }
+    return cpHash(l);
+  }
+  const cpTaille = (e) => e.meta.length + e.parts.reduce((a, p) => a + (p.n || 0), 0);
+  /** Dossiers « Zumba » (par le nom, sans accents ni majuscules) → { cours: Set(id d'éditions), musiques: Set(id de musiques) } */
+  function cpZumba(folders, courses) {
+    const fz = new Set((folders || []).filter((f) => f && norm(f.name).includes('zumba')).map((f) => f.id));
+    const cours = new Set(), musiques = new Set();
+    for (const c of courses || []) {
+      if (!c || !fz.has(c.folder)) continue;
+      cours.add(c.id);
+      for (const id of c.musicIds || []) if (id) musiques.add(id);
+      for (const m of c.morceaux || []) if (m && m.musicId) musiques.add(m.musicId);
+    }
+    return { cours, musiques };
+  }
+  /** Ce qu'il faut envoyer, dans l'ordre voulu par Hamid : (a) le léger, (b) vidéos Zumba, (c) musiques Zumba,
+      (d) le reste (autres vidéos, autres musiques, livrets, photos, analyses du son). Seulement ce qui manque ou a changé sur le PC (sigs du PC). */
+  function cpOrdre(items, sigsPc, zumba) {
+    const z = zumba || { cours: new Set(), musiques: new Set() }, pc = sigsPc || {};
+    const rang = (it) => {
+      if (it.g === 'leger') return 0;
+      if (it.g === 'video') return z.cours.has(it.cid) ? 1 : 3;
+      if (it.g === 'musique') return z.musiques.has(it.id) ? 2 : 4;
+      if (it.g === 'livret') return 5;
+      if (it.g === 'analyse') return 7; // le son analysé des vidéos (pour le découpage) : utile seulement pour retravailler, en dernier
+      return 6; // photos
+    };
+    return (items || []).filter((it) => it && pc[it.k] !== it.sig).map((it, i) => ({ it, r: rang(it), i })).sort((a, b) => a.r - b.r || a.i - b.i).map((x) => x.it);
+  }
+
   return {
+    cpEnc, cpDec, cpHash, cpSig, cpTaille, cpZumba, cpOrdre,
     smooth, quantile, MOVES, STYLES, QUICK, RENAMES, TEMPO_BEATS, OLD_TEMPOS, normTempo, COURSE_VERSION, migrateMoveLists,
     morceauNumber, numLabel, getFavs, setFavs, moveButtons, fft, AudioFeatureStream, audioFeaturesFromPCM, prepareVideo, alignMusic, silenceCuts,
     prepareVideo2, findMusic, placeMusics, verifyChunks, sliceFeat, cutSongs, trackNumber, proposeMusics,
