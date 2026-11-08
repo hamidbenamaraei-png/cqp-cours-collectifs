@@ -648,6 +648,266 @@
     });
   }
 
+  /* ======================= 08/11 : ⬇️ copies dans le téléphone (dossier Téléchargements) =======================
+     Ce sont des COPIES : l'appli ne fait que lire ses données, rien n'est retiré ni changé. Pas de .zip : un fichier à la fois.
+     🎵 Extraire en MP3 : le son du passage du morceau est lu dans la vidéo gardée (seulement ce passage, jamais toute la vidéo),
+     puis encodé en MP3 128 kbit/s dans un Web Worker (mp3-worker.js + lib/lame.min.js, sans Internet). Le MP3 n'est pas rangé dans l'appli. */
+  /** Met un fichier dans le téléphone (il arrive dans Téléchargements) */
+  function saveToPhone(blob, name) {
+    const u = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = u; a.download = name; a.rel = 'noopener'; a.style.display = 'none';
+    document.body.appendChild(a); a.click();
+    setTimeout(() => a.remove(), 1000);
+    setTimeout(() => URL.revokeObjectURL(u), 10 * 60 * 1000); // le temps que le téléphone copie le fichier, même une grosse vidéo
+  }
+  /** La vidéo gardée d'une édition en un seul fichier (lecture seule : rien n'est changé), ou null si elle n'est plus complète */
+  async function keptVideoBlob(c) {
+    const k = c.video && c.video.kept; if (!k) return null;
+    const blobs = await tx('vchunks', 'readonly', (s) => s.getAll(vrange(c.id)));
+    if (!blobs || blobs.length !== k.chunks) return null;
+    return new Blob(blobs, { type: k.type || 'video/mp4' });
+  }
+  /** Bandeau d'avancement en haut de l'écran (txt = null : l'enlever) */
+  function dlBar(txt, f) {
+    let b = document.getElementById('dlbar');
+    if (txt == null) { if (b) b.remove(); return; }
+    if (!b) { b = document.createElement('div'); b.id = 'dlbar'; b.setAttribute('role', 'status'); b.innerHTML = '<div class="in"><b id="dlbt"></b><div class="bar"><i id="dlbi"></i></div></div>'; document.body.appendChild(b); }
+    $('#dlbt', b).textContent = txt; $('#dlbi', b).style.width = Math.round(Math.max(0, Math.min(1, f || 0)) * 100) + '%';
+  }
+  let dlBusy = false;
+  async function dlRun(fn) {
+    if (dlBusy) { toast('Attends la fin de la copie en cours.', 3000); return; }
+    dlBusy = true; keepAwake(true);
+    try { await fn(); } finally { dlBusy = false; dlBar(null); if (!S.wantAwake) keepAwake(false); }
+  }
+  const dlLabel = (ms, m) => (ms.indexOf(m) + 1) + '. ' + m.name;
+  const dlFolderName = (c) => { const f = folderOf(c.folder); return f ? f.name : ''; };
+  /** Les fichiers d'une édition à copier : [{ name, size, get() → Blob | null }] (vidéo gardée, musiques des morceaux, livret, photos) */
+  async function dlEditionItems(c, musics) {
+    const ms = c.morceaux.filter((m) => !m.lost), vk = c.video && c.video.kept ? c.video.kept : null;
+    const lvRec = c.livret ? await getLivret(c.id) : null, lvFiles = lvRec && Array.isArray(lvRec.files) ? lvRec.files : null;
+    const ph = await photosOfCourse(c.id), phById = new Map(ph.map((p) => [p.id, p]));
+    const mus = {};
+    for (const m of ms) { const mu = m.musicId && musics[m.musicId]; if (mu && mu.blob) mus[m.musicId] = { type: mu.type || mu.blob.type, fname: mu.blob.name || '', blob: mu.blob }; }
+    const plan = C.dlPlan({ folder: dlFolderName(c), edition: c.name, morceaux: ms, video: vk ? { type: vk.type, name: c.video.name } : null, musics: mus,
+      livret: lvFiles ? { kind: lvRec.kind, files: lvFiles.map((f) => ({ type: f && f.type })) } : null,
+      photos: ph.filter((p) => p.blob).map((p) => ({ id: p.id, mid: p.mid, type: p.blob.type, created: p.created })) });
+    return plan.map((x) => {
+      if (x.kind === 'video') return { name: x.name, size: vk.size || 0, get: () => keptVideoBlob(c) };
+      if (x.kind === 'music') { const b = mus[x.id].blob; return { name: x.name, size: b.size || 0, get: async () => b }; }
+      if (x.kind === 'livret') { const b = lvFiles[x.i]; return b ? { name: x.name, size: b.size || 0, get: async () => b } : null; }
+      const p = phById.get(x.id); return { name: x.name, size: p.blob.size || 0, get: async () => p.blob };
+    }).filter(Boolean);
+  }
+  /** Copie plusieurs fichiers dans le téléphone, un par un (petite pause entre deux), avec le bandeau « 3/12 fichiers… » */
+  async function dlMany(items, title) {
+    if (!items.length) { await ask(title, 'Il n\'y a rien à récupérer pour l\'instant (pas de vidéo gardée, de musique, de livret ni de photo).', [{ label: 'OK', value: 1 }]); return; }
+    const tot = items.reduce((a, x) => a + (x.size || 0), 0), n = items.length;
+    const r = await ask(title, 'Je mets <b>' + n + ' fichier' + (n > 1 ? 's' : '') + '</b> (' + fmtSize(tot) + ') dans ton téléphone, dans le dossier <b>Téléchargements</b>. Ce sont des copies : rien n\'est retiré de l\'appli.' +
+      '<br><br>📱 Si ton téléphone demande « Autoriser plusieurs téléchargements ? », touche <b>Autoriser</b>.<br><span class="mute">Garde l\'écran allumé et l\'appli ouverte jusqu\'à la fin.</span>',
+      [{ label: '⬇️ C\'est parti', value: 1 }, { label: 'Annuler', value: 0, cls: 'sec' }]);
+    if (!r) return;
+    await dlRun(async () => {
+      let ok = 0, miss = 0;
+      for (let i = 0; i < n; i++) {
+        dlBar((i + 1) + '/' + n + ' fichiers…', i / n);
+        let b = null; try { b = await items[i].get(); } catch (e) { console.warn('copie', e); b = null; }
+        if (b) { saveToPhone(b, items[i].name); ok++; } else miss++;
+        dlBar((i + 1) + '/' + n + ' fichiers…', (i + 1) / n);
+        if (i < n - 1) await sleep(1200);
+      }
+      dlBar(null);
+      if (miss) await ask('C\'est fini', ok + ' fichier' + (ok > 1 ? 's' : '') + ' dans Téléchargements. ' + miss + ' vidéo' + (miss > 1 ? 's ne sont' : ' n\'est') + ' plus complète' + (miss > 1 ? 's' : '') + ' dans l\'appli : ' + (miss > 1 ? 'remets-les' : 'remets-la') + ' avec « 🎬 Remettre la vidéo » sur la page de l\'édition, puis réessaie.', [{ label: 'OK', value: 1 }]);
+      else toast('⬇️ ' + ok + ' fichier' + (ok > 1 ? 's' : '') + ' dans Téléchargements ✅', 4000);
+    });
+  }
+  async function musicsById() { const o = {}; for (const m of await dall('musics')) o[m.id] = m; return o; }
+  /** ⬇️ Tout récupérer de cette édition */
+  async function dlEdition(c) { await dlMany(await dlEditionItems(c, await musicsById()), '⬇️ Tout récupérer de cette édition'); }
+  /** ⬇️ Tout récupérer (accueil) : chaque dossier, chaque édition */
+  async function dlAll() {
+    toast('Je prépare la liste…', 1500);
+    const all = await dall('courses'), musics = await musicsById(), known = new Set(S.folders.map((f) => f.id)), items = [];
+    for (const f of S.folders) for (const c of C.sortEditions(all.filter((x) => x.folder === f.id))) items.push(...await dlEditionItems(c, musics));
+    for (const c of C.sortEditions(all.filter((x) => !known.has(x.folder)))) items.push(...await dlEditionItems(c, musics));
+    await dlMany(items, '⬇️ Tout récupérer');
+  }
+  /** ⬇️ Mettre la vidéo dans mon téléphone */
+  function dlVideo(c) {
+    return dlRun(async () => {
+      const b = await keptVideoBlob(c);
+      if (!b) { await ask('Vidéo pas complète', 'Remets la vidéo avec « 🎬 Remettre la vidéo », puis réessaie.', [{ label: 'OK', value: 1 }]); return; }
+      saveToPhone(b, C.dlName([dlFolderName(c), c.name, 'Vidéo'], C.fileExt(c.video.kept.type, c.video.name, 'mp4')));
+      toast('⬇️ Vidéo envoyée dans Téléchargements ✅', 4000);
+    });
+  }
+  /** ⬇️ Dans mon téléphone : la musique liée au morceau, telle quelle (même format) */
+  async function dlMusic(c, m) {
+    const ms = c.morceaux.filter((x) => !x.lost), mu = m.musicId ? await dget('musics', m.musicId) : null;
+    if (!mu || !mu.blob) { await ask('Musique introuvable', 'Relie à nouveau la musique avec « 🎵 Musique », puis réessaie.', [{ label: 'OK', value: 1 }]); return; }
+    saveToPhone(mu.blob, C.dlName([dlFolderName(c), c.name, dlLabel(ms, m)], C.fileExt(mu.type || mu.blob.type, mu.blob.name, 'mp3')));
+    toast('⬇️ Musique dans Téléchargements ✅', 4000);
+  }
+  /** 🎵 Extraire en MP3 : le son du passage du morceau dans la vidéo → fichier .mp3 dans Téléchargements (pas rangé dans l'appli) */
+  function dlMp3(c, m) {
+    return dlRun(async () => {
+      const ms = c.morceaux.filter((x) => !x.lost);
+      dlBar('Conversion en MP3… 0 %', 0);
+      let r; try { r = await passageMp3(c, m.start, m.end, (f) => dlBar('Conversion en MP3… ' + Math.floor(f * 100) + ' %', f)); } catch (e) { console.warn('mp3', e); r = { err: 'son' }; }
+      dlBar(null);
+      if (r.err === 'vid') { await ask('Vidéo pas complète', 'Remets la vidéo avec « 🎬 Remettre la vidéo », puis réessaie.', [{ label: 'OK', value: 1 }]); return; }
+      if (r.err === 'lame') { await ask('Conversion pas prête', 'Ouvre l\'appli une fois avec internet, puis réessaie.', [{ label: 'OK', value: 1 }]); return; }
+      if (r.err) { await ask('Son illisible', 'Je n\'arrive pas à lire le son de cette vidéo.', [{ label: 'OK', value: 1 }]); return; }
+      saveToPhone(r.blob, C.dlName([dlFolderName(c), c.name, dlLabel(ms, m)], 'mp3'));
+      toast('🎵 MP3 dans Téléchargements ✅', 4000);
+    });
+  }
+  const loadJs = (src) => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = () => res(); s.onerror = () => rej(new Error(src)); document.head.appendChild(s); });
+  /** Encodeur MP3 : dans un Web Worker si possible, sinon directement dans la page. onAck(n) = n échantillons encodés. null si impossible. */
+  async function mp3Encoder(onAck) {
+    let port = null;
+    try {
+      const w = new Worker('mp3-worker.js?v=1');
+      try {
+        await new Promise((res, rej) => {
+          const to = setTimeout(() => rej(new Error('lent')), 10000);
+          w.onmessage = (e) => { clearTimeout(to); if (e.data && e.data.t === 'ready') res(); else rej(new Error('lame')); };
+          w.onerror = (e) => { clearTimeout(to); if (e && e.preventDefault) e.preventDefault(); rej(new Error('worker')); };
+        });
+      } catch (e) { w.terminate(); throw e; }
+      port = { post: (msg, tf) => w.postMessage(msg, tf || []), set: (fn) => { w.onmessage = (e) => fn(e.data); w.onerror = (e) => { if (e && e.preventDefault) e.preventDefault(); fn({ t: 'err', msg: 'worker' }); }; }, close: () => w.terminate() };
+    } catch (e) {
+      console.warn('mp3 : sans Web Worker', e);
+      try {
+        if (!window.lamejs) await loadJs('lib/lame.min.js?v=1');
+        if (!window.SMMp3) await loadJs('mp3-worker.js?v=1');
+        let fn = null; const h = window.SMMp3.make(window.lamejs, (msg) => setTimeout(() => { if (fn) fn(msg); }, 0));
+        port = { post: (msg) => setTimeout(() => h(msg), 0), set: (f) => { fn = f; }, close: () => { fn = null; } };
+      } catch (e2) { console.warn('mp3', e2); return null; }
+    }
+    let pending = 0, failed = null, fin = null;
+    port.set((d) => {
+      if (!d) return;
+      if (d.t === 'ack') { pending--; if (onAck) onAck(d.n); }
+      else if (d.t === 'done') { if (fin) fin.res(d.blob); }
+      else if (d.t === 'err') { failed = failed || new Error(d.msg || 'mp3'); if (fin) fin.rej(failed); }
+    });
+    return {
+      init: (ch, rate) => port.post({ t: 'init', ch, rate, kbps: 128 }),
+      pcm: (l, r) => { pending++; port.post({ t: 'pcm', l, r }, r ? [l.buffer, r.buffer] : [l.buffer]); },
+      busy: () => pending,
+      failed: () => failed,
+      end: () => new Promise((res, rej) => { if (failed) { rej(failed); return; } fin = { res, rej }; port.post({ t: 'end' }); }),
+      close: () => port.close()
+    };
+  }
+  /** Reçoit le son (1 ou 2 voies) et l'envoie à l'encodeur par blocs */
+  function pcmSink(enc) {
+    const BLOCK = 16384; let rate = 0, nch = 0, L = null, R = null, n = 0;
+    const flush = () => { if (!n) return; enc.pcm(L.slice(0, n), R ? R.slice(0, n) : null); n = 0; };
+    return {
+      rate: () => rate, flush,
+      push(chs, sr) {
+        if (!rate) { rate = sr; nch = chs.length > 1 ? 2 : 1; enc.init(nch, rate); L = new Float32Array(BLOCK); R = nch === 2 ? new Float32Array(BLOCK) : null; }
+        const a = chs[0], b = chs[1] || chs[0]; let k = 0;
+        while (k < a.length) {
+          const q = Math.min(BLOCK - n, a.length - k);
+          L.set(a.subarray(k, k + q), n); if (R) R.set(b.subarray(k, k + q), n);
+          n += q; k += q; if (n === BLOCK) flush();
+        }
+      }
+    };
+  }
+  /** Le son d'un AudioData, en voies séparées (au plus 2) */
+  function pcmOf(ad, n, ch) {
+    try { const out = []; for (let c = 0; c < ch; c++) { const x = new Float32Array(n); ad.copyTo(x, { planeIndex: c, format: 'f32-planar' }); out.push(x); } return out; } catch (e) { /* format pas converti : ci-dessous */ }
+    const tot = ad.numberOfChannels, res = []; for (let c = 0; c < ch; c++) res.push(new Float32Array(n));
+    const f = ad.format;
+    if (f === 'f32' || f === 's16') {
+      const t = f === 'f32' ? new Float32Array(n * tot) : new Int16Array(n * tot), k = f === 'f32' ? 1 : 1 / 32768;
+      ad.copyTo(t, { planeIndex: 0 }); for (let i = 0; i < n; i++) for (let c = 0; c < ch; c++) res[c][i] = t[i * tot + c] * k;
+    } else if (f === 'f32-planar' || f === 's16-planar') {
+      for (let c = 0; c < ch; c++) { const t = f === 'f32-planar' ? new Float32Array(n) : new Int16Array(n), k = f === 'f32-planar' ? 1 : 1 / 32768; ad.copyTo(t, { planeIndex: c }); for (let i = 0; i < n; i++) res[c][i] = t[i] * k; }
+    } else throw new Error('format ' + f);
+    return res;
+  }
+  const encWait = async (enc, more) => { while (enc.busy() > 4 || (more && more())) { await sleep(5); if (enc.failed()) throw enc.failed(); } if (enc.failed()) throw enc.failed(); };
+  /** Lecture du passage avec WebCodecs (AudioDecoder) : seulement les échantillons du passage. Renvoie true si du son a été lu. */
+  async function passageWC(read, tr, rg, t0, t1, sink, enc) {
+    if (!(window.AudioDecoder && window.EncodedAudioChunk && tr.codec && /^(mp4a|opus|flac|mp3)/.test(tr.codec))) return false;
+    const cfg = { codec: tr.codec, sampleRate: tr.sampleRate, numberOfChannels: tr.channels }; if (tr.description) cfg.description = tr.description;
+    let sup = null; try { sup = await AudioDecoder.isConfigSupported(cfg); } catch (e) { return false; }
+    if (!sup || !sup.supported) return false;
+    let err = null, got = 0;
+    const dec = new AudioDecoder({
+      output: (ad) => {
+        try {
+          if (err) return;
+          const n = ad.numberOfFrames, sr = ad.sampleRate, ch = Math.min(2, ad.numberOfChannels), ts = ad.timestamp / 1e6;
+          const a = Math.max(0, Math.ceil((t0 - ts) * sr)), b = Math.min(n, Math.floor((t1 - ts) * sr));
+          if (b > a) { sink.push(pcmOf(ad, n, ch).map((x) => x.subarray(a, b)), sr); got += b - a; }
+        } catch (e) { err = e; } finally { ad.close(); }
+      },
+      error: (e) => { err = err || e; }
+    });
+    try {
+      dec.configure(cfg);
+      await MP4.forEachSample(read, tr, async (bytes, i, t) => {
+        if (err) throw err;
+        dec.decode(new EncodedAudioChunk({ type: 'key', timestamp: Math.round(t * 1e6), data: bytes }));
+        await encWait(enc, () => { if (err) throw err; return dec.decodeQueueSize > 20; });
+      }, { from: rg.from, to: rg.to });
+      await dec.flush();
+    } finally { try { dec.close(); } catch (e) { /* déjà fermé */ } }
+    if (err) throw err;
+    return got > 0;
+  }
+  /** Plan B (sans WebCodecs) : les échantillons du passage seulement (AAC → ADTS, ou MP3), lus avec decodeAudioData */
+  async function passageDecode(read, tr, rg, t0, t1, sink, enc) {
+    const aac = !!(tr.codec && /^mp4a\.40\./.test(tr.codec) && tr.description), mp3 = tr.codec === 'mp3';
+    const AC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if (!(aac || mp3) || !AC) return false;
+    const parts = []; let size = 0, firstT = null, fail = false;
+    await MP4.forEachSample(read, tr, async (bytes, i, t) => {
+      if (fail) return; if (firstT == null) firstT = t;
+      if (aac) { const h = MP4.adtsHeader(tr.description, bytes.length); if (!h) { fail = true; return; } parts.push(h); size += 7; }
+      parts.push(bytes.slice()); size += bytes.length; if (size > 80e6) fail = true;
+    }, { from: rg.from, to: rg.to, cancelled: () => fail });
+    if (fail || !parts.length) return false;
+    const buf = await new AC(2, 1, tr.sampleRate || 44100).decodeAudioData(await new Blob(parts).arrayBuffer());
+    parts.length = 0;
+    const sr = buf.sampleRate, ch = Math.min(2, buf.numberOfChannels);
+    const a = Math.max(0, Math.round((t0 - firstT) * sr)), b = Math.min(buf.length, Math.round((t1 - firstT) * sr));
+    if (b <= a) return false;
+    const d = []; for (let c = 0; c < ch; c++) d.push(buf.getChannelData(c));
+    for (let k = a; k < b; k += 65536) { sink.push(d.map((x) => x.subarray(k, Math.min(b, k + 65536))), sr); await encWait(enc); }
+    return true;
+  }
+  /** Fabrique le MP3 du passage [t0, t1] de la vidéo gardée. Renvoie { blob } ou { err: 'vid' | 'lame' | 'son' } */
+  async function passageMp3(c, t0, t1, prog) {
+    const file = await keptVideoBlob(c); if (!file) return { err: 'vid' };
+    const read = (o, l) => file.slice(o, o + l).arrayBuffer();
+    let tr = null; try { tr = await MP4.audioTrack(read, file.size); } catch (e) { console.warn('mp3 : piste son', e); return { err: 'son' }; }
+    if (!tr || !tr.count) return { err: 'son' };
+    if (tr.duration > 0) t1 = Math.min(t1, tr.duration);
+    t0 = Math.max(0, t0); if (!(t1 > t0)) return { err: 'son' };
+    const total = t1 - t0, rg = MP4.sampleRange(tr, t0, t1);
+    let sink = null, frames = 0;
+    const enc = await mp3Encoder((n) => { frames += n; const r = sink && sink.rate(); if (r) prog(Math.min(0.99, frames / r / total)); });
+    if (!enc) return { err: 'lame' };
+    sink = pcmSink(enc);
+    try {
+      let ok = false;
+      try { ok = await passageWC(read, tr, rg, t0, t1, sink, enc); } catch (e) { console.warn('mp3 : WebCodecs', e); if (sink.rate()) throw e; ok = false; }
+      if (!ok && !sink.rate()) ok = await passageDecode(read, tr, rg, t0, t1, sink, enc);
+      if (!ok || !sink.rate()) return { err: 'son' };
+      sink.flush();
+      const blob = await enc.end(); prog(1);
+      return { blob };
+    } catch (e) { console.warn('mp3', e); return { err: 'son' }; }
+    finally { enc.close(); }
+  }
+
   /* ======================= Accueil : la bibliothèque ======================= */
   async function scrHome() {
     S.wantAwake = false; keepAwake(false); S.mixBack = null;
@@ -669,7 +929,8 @@
       '<p class="mute">💾 Place utilisée : ' + fmtSize(info.usage) + (info.vids ? ' (dont vidéos ' + fmtSize(info.vids) + ')' : '') + (info.quota ? ' · libre pour l\'appli : ' + fmtSize(Math.max(0, info.quota - info.usage)) : '') + '</p>' +
       '<div class="row"><button class="btn sec" data-act="moves">📚 Mes mouvements</button><button class="btn sec" data-act="set">⚙️ Réglages</button></div>' +
       '<div class="row"><button class="btn sec" data-act="save">💾 Sauvegarder</button><button class="btn sec" data-act="restore">📂 Restaurer</button></div>' +
-      '<button class="btn sec" data-act="pc">💻 Relier mon PC</button></div>',
+      '<button class="btn sec" data-act="pc">💻 Relier mon PC</button>' +
+      '<button class="btn sec" data-act="dlall">⬇️ Tout récupérer</button></div>',
     {
       fold: (b) => scrFolder(b.dataset.id),
       newf: async () => {
@@ -680,7 +941,7 @@
       res: (b) => { const d = b.dataset; if (d.mid) scrWrite(d.cid, d.mid); else scrCourse(d.cid); },
       mixes: () => scrMixes(),
       resmix: (b) => scrMix(b.dataset.id),
-      pc: () => scrPc(), rgr: () => shareNext(),
+      pc: () => scrPc(), rgr: () => shareNext(), dlall: () => dlAll(),
       cpmaj: () => cpDemander(true), cprecv: () => scrRecevoir()
     });
     S.where = 'home';
@@ -1140,9 +1401,10 @@
       '<div class="lvq hide" data-id="' + m.id + '"><span>Régler les suivants à la suite ?</span><button data-act="lvfill" data-id="' + m.id + '">Oui</button><button data-act="lvno" data-id="' + m.id + '">Non</button></div>'; };
     render('<div class="top"><button class="back" data-act="back">‹</button><h1>' + esc(c.name) + '</h1><button class="back" data-act="ren" aria-label="Renommer l\'édition">✏️</button></div>' +
       '<p class="mute">📁 ' + esc(fo ? fo.name : '') + ' · ' + fmtDate(c.created) + ' · ' + (c.video ? fmt(c.video.duration) : '') + '</p>' +
+      '<button class="btn" data-act="dlall">⬇️ Tout récupérer de cette édition</button>' +
       (oldCut(c) ? '<div class="card r"><h3>⚠️ Découpage à refaire</h3><p class="soft small">Cette édition a été découpée avec l\'ancienne méthode : des musiques ont pu être placées n\'importe où. La nouvelle méthode ne place une musique que si elle est sûre. Ta vidéo, tes musiques, le nom et tes scripts sont gardés.</p><button class="btn" data-act="redo">🔁 Refaire le découpage</button></div>' : '') +
       (!kept && cpVideoAttendue(c.id) ? '<div class="card j small">⏳ <b>La vidéo arrive de ton téléphone…</b> <span class="mute">(' + fmtSize(cpVideoAttendue(c.id)) + ')</span><br><span class="mute">Elle apparaîtra ici dès qu\'elle sera copiée.</span></div>' :
-      '<div class="card ' + (kept ? 'g' : 'j') + ' small">' + (kept ? '🎬 <b>Vidéo gardée dans l\'appli</b> (' + fmtSize(kept.size) + ')<button class="btn small" style="margin:8px 0 0" data-act="watch">▶️ Regarder la vidéo</button><button class="btn ghost small" style="margin:8px 0 0" data-act="rmvid">🗑️ Retirer la vidéo (garder scripts et musiques)</button>' : '🎬 <b>La vidéo n\'est pas gardée</b> dans l\'appli.' + (c.video ? ' <span class="mute">(' + esc(c.video.name) + ', ' + fmtSize(c.video.size) + ')</span>' : '') + '<button class="btn sec small" style="margin:8px 0 0" data-act="addvid">🎬 Remettre la vidéo</button>') + '</div>') +
+      '<div class="card ' + (kept ? 'g' : 'j') + ' small">' + (kept ? '🎬 <b>Vidéo gardée dans l\'appli</b> (' + fmtSize(kept.size) + ')<button class="btn small" style="margin:8px 0 0" data-act="watch">▶️ Regarder la vidéo</button><button class="btn sec small" style="margin:8px 0 0" data-act="dlvid">⬇️ Mettre la vidéo dans mon téléphone</button><button class="btn ghost small" style="margin:8px 0 0" data-act="rmvid">🗑️ Retirer la vidéo (garder scripts et musiques)</button>' : '🎬 <b>La vidéo n\'est pas gardée</b> dans l\'appli.' + (c.video ? ' <span class="mute">(' + esc(c.video.name) + ', ' + fmtSize(c.video.size) + ')</span>' : '') + '<button class="btn sec small" style="margin:8px 0 0" data-act="addvid">🎬 Remettre la vidéo</button>') + '</div>') +
       (lv ? '<div class="card g small lvcard">📄 <b>Mon livret</b> · <span id="lvinfo">' + lvPages(lv.pages) + ' · ' + lvSize(lv.size) + '</span>' +
         '<button class="btn small" style="margin:8px 0 8px" data-act="lvsee">📄 Voir mon livret</button><div class="row tight"><button class="btn sec small" style="margin:0" data-act="lvadd">🔁 Remplacer</button><button class="btn sec small" style="margin:0" data-act="lvrm">🗑️ Retirer</button></div></div>'
         : '<button class="btn sec" data-act="lvadd">📄 Ajouter mon livret</button>') +
@@ -1155,7 +1417,10 @@
         '<div class="row tight">' + (C.textCount(C.textOf(m)) || m.musicId ? '<button class="btn sec small" data-act="play" data-id="' + m.id + '">🎮 Jouer</button>' : '') + (C.textCount(C.textOf(m)) ? '<button class="btn sec small" data-act="read" data-id="' + m.id + '">📖 Lire</button>' : '') +
         '<button class="btn sec small" data-act="photo" data-id="' + m.id + '">📷 ' + (nPh(m.id) ? 'Photos' : 'Photo') + '</button>' +
         '<button class="btn sec small" data-act="link" data-id="' + m.id + '">🎵 ' + (m.musicId ? 'Musique' : 'Lier une musique') + '</button>' +
-        (lv ? '<button class="btn sec small" data-act="lv" data-id="' + m.id + '">📄 Livret</button>' : '') + '</div></div>').join('') +
+        (lv ? '<button class="btn sec small" data-act="lv" data-id="' + m.id + '">📄 Livret</button>' : '') + '</div>' +
+        ((kept && isFinite(m.start) && isFinite(m.end) && m.end > m.start) || (m.musicId && musics[m.musicId]) ? '<div class="row tight">' +
+          (kept && isFinite(m.start) && isFinite(m.end) && m.end > m.start ? '<button class="btn sec small" data-act="mp3" data-id="' + m.id + '">🎵 Extraire en MP3</button>' : '') +
+          (m.musicId && musics[m.musicId] ? '<button class="btn sec small" data-act="dlmus" data-id="' + m.id + '">⬇️ Dans mon téléphone</button>' : '') + '</div>' : '') + '</div>').join('') +
       '<div class="row"><button class="btn sec" data-act="cut">✂️ Modifier le découpage</button><button class="btn sec" data-act="mvf">📁 Changer de dossier</button></div>' +
       '<button class="btn ghost small" data-act="del">🗑️ Supprimer cette édition</button>',
     {
@@ -1188,6 +1453,10 @@
       redo: () => redoCut(c),
       addvid: async () => { await giveVideo(c); scrCourse(cid); },
       watch: () => scrWatch(c),
+      dlall: () => dlEdition(c), // 08/11 : copies dans le téléphone (rien n'est retiré de l'appli)
+      dlvid: () => dlVideo(c),
+      mp3: (b) => { const m = c.morceaux.find((x) => x.id === b.dataset.id); if (m) dlMp3(c, m); },
+      dlmus: (b) => { const m = c.morceaux.find((x) => x.id === b.dataset.id); if (m) dlRun(() => dlMusic(c, m)); },
       rmvid: async () => {
         const r = await ask('Retirer la vidéo ?', 'La vidéo est retirée de l\'appli pour libérer ' + fmtSize(kept.size) + '. <b>Tes scripts, tes musiques et tes photos sont gardés.</b> Pour la revoir, tu devras la rechoisir.', [{ label: '🗑️ Oui, retirer la vidéo', value: 1, cls: 'red' }, { label: 'Non, la garder', value: 0, cls: 'sec' }]);
         if (!r) return; await deleteVideo(c.id); c.video.kept = null; if (S.videoFor === c.id) S.videoFor = null; await saveCourse(c); toast('Vidéo retirée ✅'); scrCourse(cid);

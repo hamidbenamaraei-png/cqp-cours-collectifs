@@ -122,10 +122,11 @@
     const times = new Float64Array(tr.count); let t = 0, si = 0;
     for (const [n, dl] of tr.deltas) for (let j = 0; j < n && si < tr.count; j++) { times[si++] = t / tr.timescale; t += dl; }
     let i = opt.from || 0;
-    while (i < tr.count) {
+    const first = i, last = opt.to != null ? Math.min(tr.count, opt.to) : tr.count; // 08/11 : opt.to = s'arrêter avant cet échantillon
+    while (i < last) {
       if (opt.cancelled && opt.cancelled()) return false;
       const a = tr.offsets[i]; let j = i + 1, end = a + tr.sizes[i];
-      while (j < tr.count) {
+      while (j < last) {
         const o = tr.offsets[j];
         if (o < end || o - end > gapMax || o + tr.sizes[j] - a > maxRead) break;
         end = o + tr.sizes[j]; j++;
@@ -135,11 +136,35 @@
         const s = tr.offsets[k] - a;
         await cb(buf.subarray(s, s + tr.sizes[k]), k, times[k]);
       }
-      if (opt.progress) opt.progress(j / tr.count);
+      if (opt.progress) opt.progress((j - first) / Math.max(1, last - first));
       i = j;
     }
     return true;
   }
 
-  return { audioTrack, forEachSample, findMoov };
+  /** 08/11 : échantillons à lire pour le passage [t0, t1] (secondes) : { from, to } (to exclu), avec une petite marge avant/après */
+  function sampleRange(tr, t0, t1) {
+    let t = 0, si = 0, from = -1, to = tr.count;
+    for (const [n, dl] of tr.deltas) {
+      for (let j = 0; j < n && si < tr.count; j++, si++) {
+        const s = t / tr.timescale; t += dl;
+        if (s <= t0) from = si;
+        if (s >= t1) { to = si; break; }
+      }
+      if (to < tr.count) break;
+    }
+    if (from < 0) from = 0;
+    return { from: Math.max(0, from - 2), to: Math.min(tr.count, to + 2) };
+  }
+  /** 08/11 : en-tête ADTS (7 octets) pour un échantillon AAC (pour le lire avec decodeAudioData). null si impossible. */
+  function adtsHeader(asc, len) {
+    if (!asc || asc.length < 2) return null;
+    const aot = asc[0] >> 3, fi = ((asc[0] & 7) << 1) | (asc[1] >> 7), cc = (asc[1] >> 3) & 15;
+    if (aot < 1 || aot > 4 || fi > 12 || cc < 1 || cc > 7) return null;
+    const L = len + 7;
+    if (L > 8191) return null;
+    return new Uint8Array([0xff, 0xf1, ((aot - 1) << 6) | (fi << 2) | (cc >> 2), ((cc & 3) << 6) | (L >> 11), (L >> 3) & 0xff, ((L & 7) << 5) | 0x1f, 0xfc]);
+  }
+
+  return { audioTrack, forEachSample, findMoov, sampleRange, adtsHeader };
 });

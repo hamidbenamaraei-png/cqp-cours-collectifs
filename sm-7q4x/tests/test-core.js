@@ -513,6 +513,49 @@ section('Livret : page par défaut, « régler les suivants », sauvegarde');
     const o2 = C.cpOrdre(items, { 'v:cZ': 'a', 'c:cP': 'a', 'm:mP': 'vieux' }, z).map((x) => x.k);
     ok(!o2.includes('v:cZ') && !o2.includes('c:cP') && o2.includes('m:mP') && o2.length === 7, 'seulement ce qui est nouveau ou modifié');
   }
+  section('⬇️ Copies dans le téléphone : noms de fichiers (08/11)');
+  {
+    ok(C.dlName(['Zumba', 'Rakataka', '1. Rakataka'], 'mp3') === 'Zumba - Rakataka - 1. Rakataka.mp3', 'nom « Dossier - Édition - N. Morceau.ext »');
+    ok(C.dlName(['Pump', 'Pump 100 / bis', '3. Squats: "lourd"?'], 'MP4') === 'Pump - Pump 100 bis - 3. Squats lourd.mp4', 'caractères interdits retirés, extension en minuscules');
+    ok(C.dlName(['', 'Édition', '...'], 'pdf') === 'Édition.pdf' && C.dlName([], '') === 'ScriptMove', 'morceaux vides sautés');
+    ok(C.safeName('a\u0000b\tc  d.') === 'a b c d' && C.safeName('x'.repeat(200)).length === 80, 'invisibles, points de fin et longueur');
+    ok(C.fileExt('audio/mpeg', 'Mon son.M4A') === 'm4a' && C.fileExt('audio/mpeg', '') === 'mp3' && C.fileExt('video/quicktime') === 'mov' && C.fileExt('', '', 'mp4') === 'mp4' && C.fileExt('audio/x-wav; codecs=1', 'sans extension') === 'wav', 'extension : nom d\'origine, sinon type');
+    const ms = [{ id: 'a', name: 'Rakataka', musicId: 'u1' }, { id: 'b', name: 'Salsa', musicId: 'u1' }, { id: 'c', name: 'Cumbia', musicId: 'u2' }, { id: 'd', name: 'Fin' }];
+    const plan = C.dlPlan({ folder: 'Zumba', edition: 'Zumba 12', morceaux: ms, video: { type: 'video/mp4', name: 'cours.MOV' },
+      musics: { u1: { type: 'audio/mpeg', fname: 'raka.mp3' }, u2: { type: 'audio/mp4', fname: '' } },
+      livret: { kind: 'img', files: [{ type: 'image/jpeg' }, { type: 'image/png' }] },
+      photos: [{ id: 'p2', mid: 'c', type: 'image/jpeg', created: 2 }, { id: 'p1', mid: 'c', type: 'image/jpeg', created: 1 }, { id: 'p3', mid: 'a', type: 'image/jpeg', created: 3 }, { id: 'p4', mid: 'zz', type: 'image/jpeg', created: 4 }] });
+    const names = plan.map((x) => x.name);
+    ok(names[0] === 'Zumba - Zumba 12 - Vidéo.mov', 'vidéo en premier, avec son extension d\'origine');
+    ok(names[1] === 'Zumba - Zumba 12 - 1. Rakataka.mp3' && names[2] === 'Zumba - Zumba 12 - 3. Cumbia.m4a' && plan.filter((x) => x.kind === 'music').length === 2, 'musiques : une musique liée à 2 morceaux copiée une seule fois');
+    ok(names[3] === 'Zumba - Zumba 12 - Livret page 1.jpg' && names[4] === 'Zumba - Zumba 12 - Livret page 2.png', 'livret en images : une page par fichier');
+    ok(names[5] === 'Zumba - Zumba 12 - 3. Cumbia - photo 1.jpg' && plan[5].id === 'p1' && names[6] === 'Zumba - Zumba 12 - 3. Cumbia - photo 2.jpg' && names[7] === 'Zumba - Zumba 12 - 1. Rakataka - photo.jpg' && names[8] === 'Zumba - Zumba 12 - Photo 1.jpg', 'photos dans l\'ordre, numérotées par morceau');
+    ok(new Set(names).size === names.length, 'aucun nom en double');
+    const p2 = C.dlPlan({ folder: 'Pump', edition: 'Pump 1', morceaux: [], video: null, musics: {}, livret: { kind: 'pdf', files: [{ type: 'application/pdf' }] }, photos: [] });
+    ok(p2.length === 1 && p2[0].name === 'Pump - Pump 1 - Livret.pdf', 'livret PDF : un seul fichier');
+    ok(C.dlPlan({ folder: 'X', edition: 'Y', morceaux: [{ id: 'a', name: 'A' }] }).length === 0, 'rien à copier : liste vide');
+  }
+  section('🎵 Extraire en MP3 : seulement le passage du morceau (08/11)');
+  {
+    const M = require('../mp4.js');
+    // 1000 échantillons AAC de 1024 à 48 kHz (≈ 21,3 s)
+    const tr = { count: 1000, timescale: 48000, deltas: [[1000, 1024]] };
+    const r = M.sampleRange(tr, 5, 10), dt = 1024 / 48000;
+    ok(r.from === Math.floor(5 / dt) - 2 && r.to === Math.ceil(10 / dt) + 2, 'début et fin trouvés (avec 2 échantillons de marge)');
+    ok(r.to - r.from < 250, 'on ne lit pas toute la vidéo : ' + (r.to - r.from) + ' échantillons sur 1000');
+    const r0 = M.sampleRange(tr, 0, 1e9);
+    ok(r0.from === 0 && r0.to === 1000, 'passage = toute la vidéo : bornes gardées');
+    const r2 = M.sampleRange({ count: 6, timescale: 1000, deltas: [[2, 500], [4, 1000]] }, 1.2, 2.5);
+    ok(r2.from === 0 && r2.to === 6, 'durées d\'échantillons variables');
+    const h = M.adtsHeader(new Uint8Array([0x12, 0x10]), 300); // AAC LC, 44,1 kHz, stéréo
+    ok(h && h.length === 7 && h[0] === 0xff && h[1] === 0xf1 && (h[2] >> 6) === 1 && ((h[2] >> 2) & 15) === 4 && (((h[2] & 1) << 2) | (h[3] >> 6)) === 2 && (((h[3] & 3) << 11) | (h[4] << 3) | (h[5] >> 5)) === 307, 'en-tête ADTS (AAC LC 44,1 kHz stéréo)');
+    ok(M.adtsHeader(new Uint8Array([0x2b, 0x92]), 300) === null && M.adtsHeader(null, 10) === null, 'HE-AAC ou rien : pas d\'en-tête');
+    // forEachSample s'arrête à « to »
+    const tr2 = { count: 10, timescale: 1000, deltas: [[10, 100]], offsets: Float64Array.from({ length: 10 }, (_, i) => i * 4), sizes: new Uint32Array(10).fill(4) };
+    const seen = []; let reads = 0;
+    await M.forEachSample(async (o, l) => { reads += l; return new ArrayBuffer(l); }, tr2, async (b, i) => { seen.push(i); }, { from: 3, to: 6 });
+    ok(seen.join(',') === '3,4,5' && reads === 12, 'lecture limitée au passage (3 échantillons lus, rien d\'autre)');
+  }
   console.log(`\n${passes} réussis, ${fails} échoués`);
   process.exit(fails ? 1 : 0);
 })();

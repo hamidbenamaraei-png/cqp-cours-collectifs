@@ -1237,7 +1237,65 @@
     return (items || []).filter((it) => it && pc[it.k] !== it.sig).map((it, i) => ({ it, r: rang(it), i })).sort((a, b) => a.r - b.r || a.i - b.i).map((x) => x.it);
   }
 
+  /* ======================= 08/11 : ⬇️ copies dans le téléphone (Téléchargements) =======================
+     Seulement des noms de fichiers : rien n'est retiré ni changé dans l'appli. */
+  /** Morceau de nom de fichier sûr (Android / Windows) : sans / \ : * ? " < > | ni caractères invisibles */
+  function safeName(s, max) {
+    let t = String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
+    t = t.replace(/^[.\s]+|[.\s]+$/g, '');
+    const m = max || 80; if (t.length > m) t = t.slice(0, m).replace(/[.\s]+$/, '');
+    return t;
+  }
+  /** « Dossier - Édition - N. Morceau.ext » (les morceaux vides sont sautés) */
+  function dlName(parts, ext) {
+    const p = (parts || []).map((x) => safeName(x)).filter(Boolean);
+    const e = safeName(ext || '').replace(/[^a-z0-9]/gi, '').toLowerCase().slice(0, 5);
+    return (p.length ? p.join(' - ') : 'ScriptMove') + (e ? '.' + e : '');
+  }
+  const EXT_OF_TYPE = { 'audio/mpeg': 'mp3', 'audio/mp3': 'mp3', 'audio/mp4': 'm4a', 'audio/x-m4a': 'm4a', 'audio/m4a': 'm4a', 'audio/aac': 'aac', 'audio/x-aac': 'aac',
+    'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/wave': 'wav', 'audio/ogg': 'ogg', 'audio/opus': 'opus', 'audio/flac': 'flac', 'audio/x-flac': 'flac', 'audio/webm': 'webm', 'audio/amr': 'amr', 'audio/3gpp': '3gp',
+    'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm', 'video/x-matroska': 'mkv', 'video/3gpp': '3gp', 'video/x-msvideo': 'avi',
+    'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/heic': 'heic', 'application/pdf': 'pdf' };
+  /** Extension d'un fichier : celle de son nom d'origine, sinon d'après son type, sinon def */
+  function fileExt(type, name, def) {
+    const m = /\.([a-z0-9]{1,5})$/i.exec(String(name || '').trim());
+    if (m) return m[1].toLowerCase();
+    const t = String(type || '').toLowerCase().split(';')[0].trim();
+    return EXT_OF_TYPE[t] || def || '';
+  }
+  /** Liste des fichiers à copier pour une édition (dans l'ordre : vidéo, musiques, livret, photos), avec leurs noms.
+      o = { folder, edition, morceaux (sans les perdus, dans l'ordre affiché), video: {type, name} | null,
+            musics: { id: {type, fname} }, livret: {kind, files: [{type}]} | null, photos: [{id, mid, type, created}] }
+      Renvoie [{ kind: 'video' | 'music' | 'livret' | 'photo', name, id?, i? }]. Une musique liée à 2 morceaux n'est copiée qu'une fois. */
+  function dlPlan(o) {
+    const out = [], base = [o.folder, o.edition], ms = o.morceaux || [], mus = o.musics || {};
+    const label = (m, i) => (i + 1) + '. ' + (safeName(m.name) || 'Morceau');
+    if (o.video) out.push({ kind: 'video', name: dlName(base.concat('Vidéo'), fileExt(o.video.type, o.video.name, 'mp4')) });
+    const seen = new Set();
+    ms.forEach((m, i) => {
+      const mu = m.musicId && mus[m.musicId]; if (!mu || seen.has(m.musicId)) return; seen.add(m.musicId);
+      out.push({ kind: 'music', id: m.musicId, name: dlName(base.concat(label(m, i)), fileExt(mu.type, mu.fname, 'mp3')) });
+    });
+    const lv = o.livret;
+    if (lv && lv.files && lv.files.length) {
+      if (lv.kind === 'pdf' || lv.files.length === 1) out.push({ kind: 'livret', i: 0, name: dlName(base.concat('Livret'), fileExt(lv.files[0].type, '', lv.kind === 'pdf' ? 'pdf' : 'jpg')) });
+      else lv.files.forEach((f, i) => out.push({ kind: 'livret', i, name: dlName(base.concat('Livret page ' + (i + 1)), fileExt(f.type, '', 'jpg')) }));
+    }
+    const ph = (o.photos || []).slice().sort((a, b) => (a.created || 0) - (b.created || 0));
+    const idx = new Map(ms.map((m, i) => [m.id, i]));
+    const key = (p) => (idx.has(p.mid) ? 'm:' + p.mid : '?'); // photos d'un morceau qui n'est plus là : « Photo 1 », « Photo 2 »…
+    const per = {}; for (const p of ph) per[key(p)] = (per[key(p)] || 0) + 1;
+    const k = {};
+    for (const p of ph) {
+      const kk = key(p), i = idx.get(p.mid); k[kk] = (k[kk] || 0) + 1;
+      const who = i == null ? 'Photo' : label(ms[i], i) + ' - photo';
+      out.push({ kind: 'photo', id: p.id, name: dlName(base.concat(who + (per[kk] > 1 || i == null ? ' ' + k[kk] : '')), fileExt(p.type, '', 'jpg')) });
+    }
+    return out;
+  }
+
   return {
+    safeName, dlName, fileExt, dlPlan,
     cpEnc, cpDec, cpHash, cpSig, cpTaille, cpZumba, cpOrdre,
     smooth, quantile, MOVES, STYLES, QUICK, RENAMES, TEMPO_BEATS, OLD_TEMPOS, normTempo, COURSE_VERSION, migrateMoveLists,
     morceauNumber, numLabel, getFavs, setFavs, moveButtons, fft, AudioFeatureStream, audioFeaturesFromPCM, prepareVideo, alignMusic, silenceCuts,
