@@ -549,7 +549,7 @@ section('Livret : page par défaut, « régler les suivants », sauvegarde');
     ok(r2.from === 0 && r2.to === 6, 'durées d\'échantillons variables');
     const h = M.adtsHeader(new Uint8Array([0x12, 0x10]), 300); // AAC LC, 44,1 kHz, stéréo
     ok(h && h.length === 7 && h[0] === 0xff && h[1] === 0xf1 && (h[2] >> 6) === 1 && ((h[2] >> 2) & 15) === 4 && (((h[2] & 1) << 2) | (h[3] >> 6)) === 2 && (((h[3] & 3) << 11) | (h[4] << 3) | (h[5] >> 5)) === 307, 'en-tête ADTS (AAC LC 44,1 kHz stéréo)');
-    ok(M.adtsHeader(new Uint8Array([0x2b, 0x92]), 300) === null && M.adtsHeader(null, 10) === null, 'HE-AAC ou rien : pas d\'en-tête');
+    const he = M.adtsHeader(new Uint8Array([0x2b, 0x92]), 300); ok(he && (he[2] >> 6) === 1 && ((he[2] >> 2) & 15) === 7 && M.adtsHeader(null, 10) === null, 'HE-AAC : en-tête AAC de base (v55) ; rien : pas d\'en-tête');
     // forEachSample s'arrête à « to »
     const tr2 = { count: 10, timescale: 1000, deltas: [[10, 100]], offsets: Float64Array.from({ length: 10 }, (_, i) => i * 4), sizes: new Uint32Array(10).fill(4) };
     const seen = []; let reads = 0;

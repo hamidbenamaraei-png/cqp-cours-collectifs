@@ -860,35 +860,85 @@
     return res;
   }
   const encWait = async (enc, more) => { while (enc.busy() > 4 || (more && more())) { await sleep(5); if (enc.failed()) throw enc.failed(); } if (enc.failed()) throw enc.failed(); };
+  /** 08/11 (v55) : les réglages WebCodecs à essayer pour une piste, du plus fidèle au plus simple (seulement ceux que le téléphone accepte).
+      AAC-HE / SBR : on essaie la config d'origine, puis l'AAC de base « mp4a.40.2 », puis l'AAC en ADTS (sans description). */
+  async function wcConfigs(tr) {
+    if (!(window.AudioDecoder && window.EncodedAudioChunk && tr && tr.codec && /^(mp4a|opus|flac|mp3)/.test(tr.codec))) return [];
+    const ch = tr.channels, sr = tr.sampleRate, list = [], seen = new Set();
+    const add = (codec, rate, desc, adts) => {
+      const key = codec + '|' + rate + '|' + (desc ? Array.from(desc).join(',') : '') + '|' + (adts ? 1 : 0);
+      if (seen.has(key)) return; seen.add(key);
+      const cfg = { codec, sampleRate: rate, numberOfChannels: ch }; if (desc) cfg.description = desc;
+      list.push({ cfg, adts: !!adts });
+    };
+    if (/^mp4a/.test(tr.codec)) {
+      const core = (tr.asc && tr.asc.coreRate) || sr;
+      if (tr.description) { add(tr.codec, sr, tr.description); add('mp4a.40.2', sr, tr.description); }
+      const lc = MP4.lcAsc(tr.description); if (lc) add('mp4a.40.2', core, lc);
+      if (tr.description && MP4.adtsHeader(tr.description, 16)) add('mp4a.40.2', core, null, true);
+    } else add(tr.codec, sr, tr.description);
+    const ok = [];
+    for (const x of list) {
+      let sup = null; try { sup = await AudioDecoder.isConfigSupported(x.cfg); } catch (e) { sup = null; }
+      if (sup && sup.supported) ok.push(x); // pas accepté : on passe au réglage suivant
+    }
+    return ok;
+  }
+  /** 08/11 (v55) : décode les échantillons [o.from, o.to) d'une piste avec WebCodecs. o.onData(AudioData) pour chaque bout de son.
+      Un échantillon défectueux casse le décodeur : on en relance un neuf et on continue après (au plus 40 fois).
+      Renvoie le nombre de bouts de son reçus, ou -1 si on a arrêté (o.cancelled). */
+  async function wcRun(read, tr, x, o) {
+    let dec = null, broke = false, restarts = 0, got = 0, fatal = null;
+    const make = () => {
+      broke = false;
+      dec = new AudioDecoder({
+        output: (ad) => { try { if (!fatal) { o.onData(ad); got++; } } catch (e) { fatal = e; } finally { ad.close(); } },
+        error: () => { broke = true; }
+      });
+      dec.configure(x.cfg);
+    };
+    const alive = () => !broke && dec.state !== 'closed';
+    make();
+    try {
+      const ok = await MP4.forEachSample(read, tr, async (bytes, i, t) => {
+        if (fatal) throw fatal;
+        if (!alive()) { if (++restarts > 40) throw new Error('trop d\'échantillons abîmés'); try { dec.close(); } catch (e) { /* déjà fermé */ } make(); }
+        let data = bytes;
+        if (x.adts) { const h = MP4.adtsHeader(tr.description, bytes.length); if (!h) return; data = new Uint8Array(h.length + bytes.length); data.set(h); data.set(bytes, h.length); }
+        try { dec.decode(new EncodedAudioChunk({ type: 'key', timestamp: Math.round(t * 1e6), data })); } catch (e) { broke = true; return; } // échantillon sauté
+        if (o.wait) await o.wait(() => alive() && dec.decodeQueueSize > 20);
+        else if (dec.decodeQueueSize > 40) { while (alive() && dec.decodeQueueSize > 10) await sleep(2); }
+      }, { from: o.from, to: o.to, progress: o.progress, cancelled: o.cancelled });
+      if (!ok) return -1;
+      if (alive()) { try { await dec.flush(); } catch (e) { /* fin abîmée : tant pis */ } }
+    } finally { try { dec.close(); } catch (e) { /* déjà fermé */ } }
+    if (fatal) throw fatal;
+    return got;
+  }
   /** Lecture du passage avec WebCodecs (AudioDecoder) : seulement les échantillons du passage. Renvoie true si du son a été lu. */
   async function passageWC(read, tr, rg, t0, t1, sink, enc) {
-    if (!(window.AudioDecoder && window.EncodedAudioChunk && tr.codec && /^(mp4a|opus|flac|mp3)/.test(tr.codec))) return false;
-    const cfg = { codec: tr.codec, sampleRate: tr.sampleRate, numberOfChannels: tr.channels }; if (tr.description) cfg.description = tr.description;
-    let sup = null; try { sup = await AudioDecoder.isConfigSupported(cfg); } catch (e) { return false; }
-    if (!sup || !sup.supported) return false;
-    let err = null, got = 0;
-    const dec = new AudioDecoder({
-      output: (ad) => {
-        try {
-          if (err) return;
+    for (const x of await wcConfigs(tr)) {
+      let got = 0, bad = false;
+      try {
+        await wcRun(read, tr, x, { from: rg.from, to: rg.to, wait: (more) => encWait(enc, more), onData: (ad) => {
           const n = ad.numberOfFrames, sr = ad.sampleRate, ch = Math.min(2, ad.numberOfChannels), ts = ad.timestamp / 1e6;
           const a = Math.max(0, Math.ceil((t0 - ts) * sr)), b = Math.min(n, Math.floor((t1 - ts) * sr));
-          if (b > a) { sink.push(pcmOf(ad, n, ch).map((x) => x.subarray(a, b)), sr); got += b - a; }
-        } catch (e) { err = e; } finally { ad.close(); }
-      },
-      error: (e) => { err = err || e; }
-    });
-    try {
-      dec.configure(cfg);
-      await MP4.forEachSample(read, tr, async (bytes, i, t) => {
-        if (err) throw err;
-        dec.decode(new EncodedAudioChunk({ type: 'key', timestamp: Math.round(t * 1e6), data: bytes }));
-        await encWait(enc, () => { if (err) throw err; return dec.decodeQueueSize > 20; });
-      }, { from: rg.from, to: rg.to });
-      await dec.flush();
-    } finally { try { dec.close(); } catch (e) { /* déjà fermé */ } }
-    if (err) throw err;
-    return got > 0;
+          if (b > a) { sink.push(pcmOf(ad, n, ch).map((v) => v.subarray(a, b)), sr); got += b - a; }
+        } });
+      } catch (e) { console.warn('mp3 : WebCodecs', x.cfg.codec, e); bad = true; }
+      if (got > 0 && !bad) return true;
+      if (sink.rate()) return false; // du son déjà envoyé : ce plan est fichu, on passe au suivant (avec un encodeur neuf)
+    }
+    return false;
+  }
+  /** Envoie à l'encodeur le passage [t0, t1] d'un son décodé (AudioBuffer qui commence au temps « from ») */
+  async function pushBuffer(buf, from, t0, t1, sink, enc) {
+    const sr = buf.sampleRate, ch = Math.min(2, buf.numberOfChannels);
+    const a = Math.max(0, Math.round((t0 - from) * sr)), b = Math.min(buf.length, Math.round((t1 - from) * sr));
+    if (b <= a) return false;
+    const d = []; for (let c = 0; c < ch; c++) d.push(buf.getChannelData(c));
+    for (let k = a; k < b; k += 65536) { sink.push(d.map((x) => x.subarray(k, Math.min(b, k + 65536))), sr); await encWait(enc); }
+    return true;
   }
   /** Plan B (sans WebCodecs) : les échantillons du passage seulement (AAC → ADTS, ou MP3), lus avec decodeAudioData */
   async function passageDecode(read, tr, rg, t0, t1, sink, enc) {
@@ -904,36 +954,131 @@
     if (fail || !parts.length) return false;
     const buf = await new AC(2, 1, tr.sampleRate || 44100).decodeAudioData(await new Blob(parts).arrayBuffer());
     parts.length = 0;
-    const sr = buf.sampleRate, ch = Math.min(2, buf.numberOfChannels);
-    const a = Math.max(0, Math.round((t0 - firstT) * sr)), b = Math.min(buf.length, Math.round((t1 - firstT) * sr));
-    if (b <= a) return false;
-    const d = []; for (let c = 0; c < ch; c++) d.push(buf.getChannelData(c));
-    for (let k = a; k < b; k += 65536) { sink.push(d.map((x) => x.subarray(k, Math.min(b, k + 65536))), sr); await encWait(enc); }
-    return true;
+    return pushBuffer(buf, firstT, t0, t1, sink, enc);
   }
-  /** Fabrique le MP3 du passage [t0, t1] de la vidéo gardée. Renvoie { blob } ou { err: 'vid' | 'lame' | 'son' } */
+  /** 08/11 (v55) Plan C, 1re façon : le navigateur décode lui-même tout le son du fichier (si ce n'est pas trop gros pour le téléphone),
+      puis on ne garde que le passage [t0, t1] */
+  async function passageWhole(file, dur, t0, t1, sink, enc) {
+    const AC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if (!AC || file.size > 300e6) return false;
+    if (dur > 0 ? dur * 44100 * 2 * 4 > 250e6 : file.size > 60e6) return false; // le son décodé prendrait trop de mémoire
+    const buf = await new AC(2, 1, 44100).decodeAudioData(await file.arrayBuffer());
+    return pushBuffer(buf, 0, t0, t1, sink, enc);
+  }
+  /** 08/11 (v55) Plan C, 2e façon : la vidéo est jouée en cachette, à la vitesse normale, MUETTE pour toi (son envoyé dans un volume à 0),
+      et on recueille son son du temps t0 au temps t1. onPcm(voies, fréquence) ; o = { progress(f), cancelled(), start(durée) }.
+      Renvoie true si du son a été recueilli, false sinon, null si on a arrêté. */
+  async function listenVideo(file, t0, t1, onPcm, o) {
+    o = o || {};
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return false;
+    const url = URL.createObjectURL(file);
+    const v = document.createElement('video');
+    v.playsInline = true; v.setAttribute('playsinline', ''); v.preload = 'auto'; v.muted = false; v.volume = 1;
+    v.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none;z-index:-1';
+    let ctx = null, proc = null, src = null, mute = null, timer = null, stopped = false, got = 0, peak = 0;
+    try {
+      document.body.appendChild(v);
+      v.src = url;
+      await new Promise((res, rej) => {
+        const to = setTimeout(() => rej(new Error('vidéo lente')), 30000);
+        v.addEventListener('loadedmetadata', () => { clearTimeout(to); res(); }, { once: true });
+        v.addEventListener('error', () => { clearTimeout(to); rej(new Error('vidéo illisible')); }, { once: true });
+      });
+      const dur = isFinite(v.duration) && v.duration > 0 ? v.duration : 0;
+      if (dur) t1 = Math.min(t1, dur);
+      t0 = Math.max(0, t0);
+      if (!isFinite(t1) || !(t1 > t0)) return false;
+      if (o.start) o.start(t1 - t0);
+      ctx = new AC();
+      src = ctx.createMediaElementSource(v);
+      proc = ctx.createScriptProcessor(4096, 2, 1);
+      mute = ctx.createGain(); mute.gain.value = 0;
+      src.connect(proc); proc.connect(mute); mute.connect(ctx.destination);
+      const need = Math.round((t1 - t0) * ctx.sampleRate);
+      let waiting = false, started = false, lastGot = 0, lastMove = Date.now();
+      v.addEventListener('waiting', () => { waiting = true; });
+      v.addEventListener('playing', () => { waiting = false; });
+      const finished = new Promise((res) => {
+        let done = false; const end = () => { if (!done) { done = true; res(); } };
+        proc.onaudioprocess = (e) => {
+          if (done || !started) return;
+          if (v.paused || v.seeking || waiting || v.currentTime < t0 - 0.05) return;
+          const ib = e.inputBuffer, n = Math.min(ib.length, need - got);
+          if (n > 0) {
+            const chs = []; for (let k = 0; k < Math.min(2, ib.numberOfChannels); k++) chs.push(ib.getChannelData(k).slice(0, n));
+            for (let i = 0; i < n; i += 16) { const q = Math.abs(chs[0][i]); if (q > peak) peak = q; }
+            try { onPcm(chs, ctx.sampleRate); } catch (err) { console.warn('écoute', err); stopped = true; end(); return; }
+            got += n;
+          }
+          if (o.progress) o.progress(Math.min(1, got / need));
+          if (got >= need || v.currentTime >= t1) end();
+        };
+        v.addEventListener('ended', end);
+        timer = setInterval(() => {
+          if (done) return;
+          if (o.cancelled && o.cancelled()) { stopped = 'cancel'; end(); return; }
+          if (got !== lastGot || document.visibilityState !== 'visible') { lastGot = got; lastMove = Date.now(); }
+          else if (Date.now() - lastMove > 25000) { stopped = true; end(); return; } // plus rien ne vient : on arrête
+          if (started && v.paused && !v.ended && document.visibilityState === 'visible') v.play().catch(() => {});
+        }, 700);
+      });
+      v.playbackRate = 1; v.defaultPlaybackRate = 1;
+      if (t0 > 0) {
+        await new Promise((res) => { const to = setTimeout(res, 8000); v.addEventListener('seeked', () => { clearTimeout(to); res(); }, { once: true }); v.currentTime = t0; });
+      }
+      if (ctx.state === 'suspended') { try { await ctx.resume(); } catch (e) { /* on essaie quand même */ } }
+      await v.play();
+      started = true;
+      await finished;
+      if (stopped === 'cancel') return null;
+      return !stopped && got > 0 && peak > 1e-5;
+    } catch (e) { console.warn('écoute de la vidéo', e); return false; }
+    finally {
+      clearInterval(timer);
+      if (proc) proc.onaudioprocess = null;
+      try { v.pause(); } catch (e) { /* rien */ }
+      try { if (src) src.disconnect(); if (proc) proc.disconnect(); if (mute) mute.disconnect(); } catch (e) { /* rien */ }
+      if (ctx) ctx.close().catch(() => {});
+      v.removeAttribute('src'); try { v.load(); } catch (e) { /* rien */ }
+      v.remove(); URL.revokeObjectURL(url);
+    }
+  }
+  /** Fabrique le MP3 du passage [t0, t1] de la vidéo gardée. Renvoie { blob } ou { err: 'vid' | 'lame' | 'son' }
+      v55 : plans essayés l'un après l'autre (chacun avec un encodeur neuf) : WebCodecs, decodeAudioData du passage,
+      puis plan C : décodage du fichier entier par le navigateur, ou écoute de la vidéo en cachette. */
   async function passageMp3(c, t0, t1, prog) {
     const file = await keptVideoBlob(c); if (!file) return { err: 'vid' };
     const read = (o, l) => file.slice(o, o + l).arrayBuffer();
-    let tr = null; try { tr = await MP4.audioTrack(read, file.size); } catch (e) { console.warn('mp3 : piste son', e); return { err: 'son' }; }
-    if (!tr || !tr.count) return { err: 'son' };
-    if (tr.duration > 0) t1 = Math.min(t1, tr.duration);
-    t0 = Math.max(0, t0); if (!(t1 > t0)) return { err: 'son' };
-    const total = t1 - t0, rg = MP4.sampleRange(tr, t0, t1);
-    let sink = null, frames = 0;
-    const enc = await mp3Encoder((n) => { frames += n; const r = sink && sink.rate(); if (r) prog(Math.min(0.99, frames / r / total)); });
-    if (!enc) return { err: 'lame' };
-    sink = pcmSink(enc);
-    try {
-      let ok = false;
-      try { ok = await passageWC(read, tr, rg, t0, t1, sink, enc); } catch (e) { console.warn('mp3 : WebCodecs', e); if (sink.rate()) throw e; ok = false; }
-      if (!ok && !sink.rate()) ok = await passageDecode(read, tr, rg, t0, t1, sink, enc);
-      if (!ok || !sink.rate()) return { err: 'son' };
-      sink.flush();
-      const blob = await enc.end(); prog(1);
-      return { blob };
-    } catch (e) { console.warn('mp3', e); return { err: 'son' }; }
-    finally { enc.close(); }
+    let tr = null; try { tr = await MP4.audioTrack(read, file.size); } catch (e) { console.warn('mp3 : piste son', e); tr = null; }
+    t0 = Math.max(0, t0);
+    const vdur = (c.video && +c.video.duration) || 0;
+    if (vdur > 0) t1 = Math.min(t1, vdur);
+    if (!(t1 > t0)) return { err: 'son' };
+    const total = t1 - t0, plans = [];
+    if (tr && tr.count) {
+      const a1 = tr.duration > 0 ? Math.min(t1, tr.duration) : t1;
+      if (a1 > t0) {
+        const rg = MP4.sampleRange(tr, t0, a1);
+        plans.push((sink, enc) => passageWC(read, tr, rg, t0, a1, sink, enc));
+        plans.push((sink, enc) => passageDecode(read, tr, rg, t0, a1, sink, enc));
+      }
+    }
+    plans.push((sink, enc) => passageWhole(file, vdur, t0, t1, sink, enc));
+    plans.push((sink) => listenVideo(file, t0, t1, (chs, sr) => sink.push(chs, sr)));
+    for (const plan of plans) {
+      let sink = null, frames = 0;
+      const enc = await mp3Encoder((n) => { frames += n; const r = sink && sink.rate(); if (r) prog(Math.min(0.99, frames / r / total)); });
+      if (!enc) return { err: 'lame' };
+      sink = pcmSink(enc);
+      try {
+        const ok = await plan(sink, enc);
+        if (ok && sink.rate()) { sink.flush(); const blob = await enc.end(); prog(1); return { blob }; }
+      } catch (e) { console.warn('mp3 : plan suivant', e); }
+      finally { enc.close(); }
+      prog(0);
+    }
+    return { err: 'son' };
   }
 
   /* ======================= Accueil : la bibliothèque ======================= */
@@ -1099,58 +1244,59 @@
   }
 
   /* ======================= Son : lecture et alignement ======================= */
-  /** Lit le son d'une vidéo, renvoie les caractéristiques (énergie par bande, 50 par seconde) */
-  async function readVideoAudio(file, progress, cancelled) {
+  /** Lit le son d'une vidéo, renvoie les caractéristiques (énergie par bande, 50 par seconde)
+      v55 : plusieurs réglages WebCodecs, puis decodeAudioData (fichier pas trop gros), puis plan C : la vidéo est écoutée en cachette.
+      say(texte) : message à afficher (facultatif) */
+  async function readVideoAudio(file, progress, cancelled, say) {
     const read = (o, l) => file.slice(o, o + l).arrayBuffer();
     let tr = null;
     try { tr = await MP4.audioTrack(read, file.size); } catch (e) { tr = null; }
-    if (tr && window.AudioDecoder && tr.codec && /^(mp4a|opus|flac|mp3)/.test(tr.codec)) {
-      try {
-        const cfg = { codec: tr.codec, sampleRate: tr.sampleRate, numberOfChannels: tr.channels };
-        if (tr.description) cfg.description = tr.description;
-        const sup = await AudioDecoder.isConfigSupported(cfg);
-        if (sup.supported) {
-          let fs = null, err = null; let tmp = new Float32Array(4096), mono = new Float32Array(4096);
-          const dec = new AudioDecoder({
-            output: (ad) => {
-              try {
-                const n = ad.numberOfFrames, ch = ad.numberOfChannels;
-                if (!fs) fs = new C.AudioFeatureStream(ad.sampleRate);
-                if (tmp.length < n * ch) { tmp = new Float32Array(n * ch); }
-                if (mono.length < n) mono = new Float32Array(n);
-                mono.fill(0, 0, n);
-                let planar = true;
-                try { for (let c = 0; c < ch; c++) { ad.copyTo(tmp.subarray(0, n), { planeIndex: c, format: 'f32-planar' }); for (let i = 0; i < n; i++) mono[i] += tmp[i] / ch; } } catch (e) { planar = false; }
-                if (!planar) {
-                  if (ad.format === 'f32') { ad.copyTo(tmp.subarray(0, n * ch), { planeIndex: 0 }); for (let i = 0; i < n; i++) { let s = 0; for (let c = 0; c < ch; c++) s += tmp[i * ch + c]; mono[i] = s / ch; } }
-                  else if (ad.format === 's16') { const t16 = new Int16Array(n * ch); ad.copyTo(t16, { planeIndex: 0 }); for (let i = 0; i < n; i++) { let s = 0; for (let c = 0; c < ch; c++) s += t16[i * ch + c]; mono[i] = s / ch / 32768; } }
-                }
-                fs.push(mono.subarray(0, n));
-              } catch (e) { err = e; }
-              ad.close();
-            },
-            error: (e) => { err = e; }
-          });
-          dec.configure(cfg);
-          const ok = await MP4.forEachSample(read, tr, async (bytes, i, t) => {
-            if (err) throw err;
-            dec.decode(new EncodedAudioChunk({ type: 'key', timestamp: Math.round(t * 1e6), data: bytes }));
-            if (dec.decodeQueueSize > 40) { while (dec.decodeQueueSize > 10) await sleep(2); }
-          }, { progress, cancelled });
-          if (!ok) { try { dec.close(); } catch (e) { /* rien */ } return null; }
-          await dec.flush(); dec.close();
-          if (err) throw err;
+    if (tr && tr.count) {
+      for (const x of await wcConfigs(tr)) {
+        try {
+          let fs = null; let tmp = new Float32Array(4096), mono = new Float32Array(4096);
+          const got = await wcRun(read, tr, x, { progress, cancelled, onData: (ad) => {
+            const n = ad.numberOfFrames, ch = ad.numberOfChannels;
+            if (!fs) fs = new C.AudioFeatureStream(ad.sampleRate);
+            if (tmp.length < n * ch) { tmp = new Float32Array(n * ch); }
+            if (mono.length < n) mono = new Float32Array(n);
+            mono.fill(0, 0, n);
+            let planar = true;
+            try { for (let c = 0; c < ch; c++) { ad.copyTo(tmp.subarray(0, n), { planeIndex: c, format: 'f32-planar' }); for (let i = 0; i < n; i++) mono[i] += tmp[i] / ch; } } catch (e) { planar = false; }
+            if (!planar) {
+              mono.fill(0, 0, n);
+              if (ad.format === 'f32') { ad.copyTo(tmp.subarray(0, n * ch), { planeIndex: 0 }); for (let i = 0; i < n; i++) { let s = 0; for (let c = 0; c < ch; c++) s += tmp[i * ch + c]; mono[i] = s / ch; } }
+              else if (ad.format === 's16') { const t16 = new Int16Array(n * ch); ad.copyTo(t16, { planeIndex: 0 }); for (let i = 0; i < n; i++) { let s = 0; for (let c = 0; c < ch; c++) s += t16[i * ch + c]; mono[i] = s / ch / 32768; } }
+              else throw new Error('format ' + ad.format);
+            }
+            fs.push(mono.subarray(0, n));
+          } });
+          if (got < 0) return null;
           if (fs) return fs.finish();
-        }
-      } catch (e) { console.warn('WebCodecs audio', e); }
+        } catch (e) { console.warn('WebCodecs audio', x.cfg.codec, e); }
+        if (cancelled && cancelled()) return null;
+      }
     }
     // plan B : petits fichiers seulement
     if (file.size < 400e6) {
-      progress && progress(0.3);
-      const buf = await decodeSmall(await file.arrayBuffer());
-      progress && progress(1);
-      return C.audioFeaturesFromPCM(buf.data, buf.rate);
+      try {
+        progress && progress(0.3);
+        const buf = await decodeSmall(await file.arrayBuffer());
+        progress && progress(1);
+        return C.audioFeaturesFromPCM(buf.data, buf.rate);
+      } catch (e) { console.warn('son : decodeAudioData', e); }
     }
+    if (cancelled && cancelled()) return null;
+    // plan C : la vidéo est jouée en cachette (muette pour toi) et on écoute son son, du début à la fin
+    progress && progress(0);
+    let fs = null;
+    const r = await listenVideo(file, 0, Infinity, (chs, sr) => {
+      if (!fs) fs = new C.AudioFeatureStream(sr);
+      const a = chs[0], b = chs[1];
+      if (b) { const m = new Float32Array(a.length); for (let i = 0; i < a.length; i++) m[i] = (a[i] + b[i]) / 2; fs.push(m); } else fs.push(a);
+    }, { progress, cancelled, start: (d) => { if (say) say('J\'écoute la vidéo en entier (environ ' + fmtDur(d) + ')…'); } });
+    if (r === null) return null;
+    if (r && fs) return fs.finish();
     throw new Error('son illisible');
   }
   async function decodeSmall(ab) {
@@ -1268,7 +1414,7 @@
     S.wantAwake = true; keepAwake(true);
     const ui = { bar: (f) => { const b = $('#pb'); if (b) b.style.width = Math.round(f * 100) + '%'; }, title: (t) => { const e = $('#pt'); if (e) e.textContent = t; }, msg: (t) => { const e = $('#pm'); if (e) e.textContent = t; } };
     let feat = null;
-    try { feat = await readVideoAudio(S.videoFile, ui.bar, () => cancelled); } catch (e) { feat = null; }
+    try { feat = await readVideoAudio(S.videoFile, ui.bar, () => cancelled, (t) => { ui.title(t); ui.msg('📱 Garde l\'écran allumé et l\'appli ouverte jusqu\'à la fin.'); }); } catch (e) { feat = null; }
     if (feat) { await dput('data', feat, 'af:' + c.id); c.audio = 'ok'; } else c.audio = 'none';
     const mids = c.pendingMusics || []; delete c.pendingMusics;
     c.musicIds = mids;
@@ -1311,7 +1457,7 @@
     render('<div class="top"><h1>Nouveau découpage</h1></div><div class="card o"><h2 id="pt">Un instant…</h2><div class="bar"><i id="pb"></i></div><p class="soft" id="pm" style="margin-top:10px"></p></div>');
     S.wantAwake = true; keepAwake(true);
     const ui = { bar: (f) => { const b = $('#pb'); if (b) b.style.width = Math.round(f * 100) + '%'; }, title: (t) => { const e = $('#pt'); if (e) e.textContent = t; }, msg: (t) => { const e = $('#pm'); if (e) e.textContent = t; } };
-    if (!feat) { ui.title('J\'écoute le son de la vidéo…'); try { feat = await readVideoAudio(file, ui.bar, () => false); } catch (e) { feat = null; } if (feat) { await dput('data', feat, 'af:' + c.id); c.audio = 'ok'; } }
+    if (!feat) { ui.title('J\'écoute le son de la vidéo…'); try { feat = await readVideoAudio(file, ui.bar, () => false, (t) => { ui.title(t); ui.msg('📱 Garde l\'écran allumé et l\'appli ouverte jusqu\'à la fin.'); }); } catch (e) { feat = null; } if (feat) { await dput('data', feat, 'af:' + c.id); c.audio = 'ok'; } }
     let ms;
     try { ms = await autoCut(c, feat, courseMusicIds(c), ui); } catch (e) { console.error(e); S.wantAwake = false; keepAwake(false); toast('Le découpage n\'a pas marché. Ton édition n\'a pas été modifiée.', 4000); return scrCourse(c.id); }
     // garder les scripts : chaque ancien morceau va au nouveau morceau qui le recouvre le plus
