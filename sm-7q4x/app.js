@@ -1848,7 +1848,8 @@
         '<button data-act="spd" data-s="0.5">0,5×</button><button data-act="spd" data-s="0.75">0,75×</button><button data-act="spd" data-s="1" class="on">1×</button></div>' +
         '<div class="vtime"><b id="wt">0:00</b><input type="range" id="wr" min="0" max="' + Math.max(1, Math.round((m.end - m.start) * 10) / 10) + '" step="0.1" value="0" aria-label="Position dans le morceau"><span class="mute">' + fmt(m.end - m.start) + '</span></div>' +
         '<div class="wnav"><button data-act="prevm"' + (prevM ? '' : ' disabled') + '>⏮ Morceau précédent</button><button data-act="nextm"' + (nextM ? '' : ' disabled') + '>Morceau suivant ⏭</button>' +
-        '<button data-act="voix" id="wvoix" class="wvoix">' + voixLabel() + '</button></div>' :
+        '<button data-act="voix" id="wvoix" class="wvoix">' + voixLabel() + '</button>' +
+        '<button data-act="mp3m" class="wvoix">🎵 Convertir en MP3</button></div>' :
         '<div class="card j small" style="margin:0">🎬 La vidéo n\'est pas gardée dans l\'appli. Rechoisis-la pour écrire en la regardant (elle sera gardée).<button class="btn sec small" style="margin:8px 0 0" data-act="revid">🎬 Choisir la vidéo</button></div>') +
         '<div id="wedit"></div></div>' +
       '<div id="wbody"></div></div><div id="wfoot"></div>',
@@ -1856,6 +1857,7 @@
       back: async () => { await leave(); goBack(cid); },
       prevm: async () => { if (!prevM) return; const x = v(), on = !!(x && !x.paused); await leave(); scrWrite(cid, prevM.id, { fromStart: true, play: on }); },
       nextm: async () => { if (!nextM) return; const x = v(), on = !!(x && !x.paused); await leave(); scrWrite(cid, nextM.id, { fromStart: true, play: on }); },
+      mp3m: () => { const x = v(); if (x && !x.paused) x.pause(); dlMp3(c, m); },
       voix: () => { if (!mu) { toast('Pas de musique liée à ce morceau'); return; } S.wMute = !S.wMute; voixApply(); },
       revid: async () => { await leave(); await giveVideo(c); scrWrite(cid, mid); },
       pp: () => { const x = v(); if (!x) return; if (x.paused) { if (x.currentTime >= m.end - 0.05) x.currentTime = m.start; x.play().catch(() => {}); } else x.pause(); },
