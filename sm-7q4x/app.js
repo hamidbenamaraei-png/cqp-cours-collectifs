@@ -1004,6 +1004,8 @@
       '<button class="btn" data-act="new">➕ Nouvelle édition</button>' +
       (list.length ? list.map((c) => {
         const ms = c.morceaux.filter((m) => !m.lost); const w = ms.filter((m) => C.textCount(C.textOf(m))).length;
+        // 08/11 : Zumba : une vidéo à un seul titre a le même style que les cartes 🎵 (s'ouvre toujours sur sa page)
+        if (zumF && zumParts(c).length < 2) return '<button class="seg" data-act="open" data-id="' + c.id + '"><span class="n">🎵</span><span class="t"><b>' + esc(c.name) + '</b><span class="mute">' + fmtDate(c.created) + (c.video && isFinite(c.video.duration) ? ' · ' + fmt(c.video.duration) : '') + '</span></span><span style="font-size:24px">›</span></button>';
         return '<button class="seg" data-act="open" data-id="' + c.id + '"><span class="t"><b>' + esc(c.name) + '</b><span class="mute">' + fmtDate(c.created) + ' · ' + ms.length + ' morceau' + (ms.length > 1 ? 'x' : '') + ' · ✍️ ' + w + ' / ' + ms.length + ' écrit' + (w > 1 ? 's' : '') + (c.video && c.video.kept ? ' · 🎬' : '') + '</span>' + (c.livret ? '<span class="lvbadge"><span class="badge">📄 livret</span></span>' : '') + '</span><span style="font-size:24px">›</span></button>' +
           // 08/11 : Zumba : chaque morceau d'un mix (2 morceaux ou plus) = une vidéo à part, juste sous l'édition
           (zumF ? zumParts(c).map((m) => '<button class="seg" data-act="openm" data-id="' + c.id + '" data-mid="' + esc(m.id) + '" style="margin-left:18px;width:calc(100% - 18px)"><span class="n">🎵</span><span class="t"><b>' + esc(m.name) + '</b><span class="mute">de « ' + esc(c.name) + ' » · ' + fmt(m.end - m.start) + '</span></span><span style="font-size:24px">›</span></button>').join('') : '');
