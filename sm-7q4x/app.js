@@ -169,6 +169,8 @@
   });
   window.addEventListener('pagehide', () => { if (S.flushWrite) S.flushWrite(); });
   const folderOf = (id) => S.folders.find((f) => f.id === id) || null;
+  /** Édition rangée dans le dossier Zumba ? */
+  const zumbaCourse = (c) => { const f = c && folderOf(c.folder); return !!(f && C.norm(f.name).includes('zumba')); };
   /* 🔀 Mes mix : S.mixBack = { id, pos } quand on a ouvert un morceau depuis un mix (le retour revient au mix) */
   const mixOf = (id) => (S.mixes || []).find((x) => x.id === id) || null;
   const goBack = (cid) => { const b = S.mixBack; if (b && mixOf(b.id)) return scrMix(b.id, b.pos); S.mixBack = null; return scrCourse(cid); };
@@ -1199,6 +1201,18 @@
         if (parts[0] && parts[0][1] - parts[0][0] >= 60) segs.push({ start: parts[0][0], end: parts[0][1] });
       }
     } else if (!segs.length) segs.push({ start: 0, end: dur });
+    // Zumba (mix, presque sans blanc) sans musique liée : on cherche aussi les changements de titre
+    if (feat && zumbaCourse(c) && !infos.some((x) => !x.err)) {
+      ui.msg('Je cherche les changements de musique.'); await sleep(20);
+      const base = segs.length ? segs.splice(0) : [{ start: 0, end: dur }];
+      for (const g of base) {
+        if (g.end - g.start < 150) { segs.push(g); continue; }
+        let mc = null; try { mc = C.mixCuts(C.sliceFeat(feat, g.start, g.end), { minSong: 60, maxSong: 360 }); } catch (e) { console.error(e); }
+        if (!mc || !mc.pieces.length) { segs.push(g); continue; }
+        for (const p of mc.pieces) segs.push({ start: g.start + p.start, end: Math.min(g.end, g.start + p.end) });
+      }
+    }
+    if (!segs.length && zumbaCourse(c)) segs.push({ start: 0, end: dur }); // rien de net : toute la vidéo = un morceau
     segs.sort((a, b) => a.start - b.start);
     if (feat) segs.forEach((g) => { g.bpm = g.res ? null : videoBpm(feat, g.start, g.end); });
     const mlist = infos.filter((x) => !x.err).map((x) => ({ id: x.mu.id, name: x.mu.name, duration: x.mu.len || x.mu.duration, bpm: x.mu.bpm }));
@@ -1307,6 +1321,9 @@
     const hasVid = !!vurl;
     const vtime = () => { const v = $('#cutvid'); return v ? v.currentTime : 0; };
     const mids = courseMusicIds(c);
+    const zumC = zumbaCourse(c);
+    /** Zumba : noms par défaut « Morceau 1, 2… » remis dans l'ordre (les noms choisis par toi ne bougent pas) */
+    const zNum = () => { if (zumC) c.morceaux.filter((x) => !x.lost).forEach((x, i) => { if (x.autoName && !x.renamed && !x.musicId) x.name = 'Morceau ' + (i + 1); }); };
     const draw = () => {
       const lost = c.morceaux.filter((m) => m.lost);
       const ms = c.morceaux.filter((m) => !m.lost);
@@ -1350,12 +1367,17 @@
         see: (b) => { const v = $('#cutvid'); if (v) { v.currentTime = +b.dataset.t; v.play(); v.scrollIntoView({ behavior: 'smooth' }); } },
         cut: async () => {
           const t = Math.round(vtime() * 10) / 10;
-          const m = c.morceaux.find((x) => !x.lost && t > x.start + 3 && t < x.end - 3);
+          let m = c.morceaux.find((x) => !x.lost && t > x.start + 3 && t < x.end - 3);
+          // Zumba sans aucun morceau : toute la vidéo compte comme un seul morceau
+          if (!m && zumC && !c.morceaux.some((x) => !x.lost) && c.video && c.video.duration > 0 && t > 3 && t < c.video.duration - 3) {
+            m = newMorceau('Morceau 1', 0, c.video.duration); m.autoName = true; c.morceaux.unshift(m);
+          }
           if (!m) { toast('Mets la vidéo au milieu d\'un morceau, puis touche « Couper ici ».', 3500); return; }
           const n = newMorceau('Morceau', t, m.end); n.name = m.name + ' (suite)'; m.end = t;
+          if (zumC && m.autoName && !m.renamed && !m.musicId) n.autoName = true;
           // le script (texte libre, sans heures) reste dans le premier morceau ; le nouveau est à écrire
           n.lines = []; n.text = ''; n.textOk = false;
-          c.morceaux.splice(c.morceaux.indexOf(m) + 1, 0, n);
+          c.morceaux.splice(c.morceaux.indexOf(m) + 1, 0, n); zNum();
           await saveCourse(c); draw(); toast('Coupé à ' + fmt(t));
         },
         fuse: async (b) => {
@@ -1364,13 +1386,13 @@
           A.text = [ta, tb].filter((x) => x.trim()).join('\n\n'); A.textOk = !!A.text.trim() && (!ta.trim() || !!A.textOk) && (!tb.trim() || !!B.textOk);
           A.end = B.end; A.lines = C.sortLines((A.lines || []).concat(B.lines || [])); if (!A.musicId && B.musicId) { A.musicId = B.musicId; A.offset = B.offset; A.sync = B.sync; A.alignMode = B.alignMode; }
           for (const p of await photosOf(B.id)) { p.mid = A.id; await dput('photos', p); }
-          c.morceaux.splice(c.morceaux.indexOf(B), 1); await saveCourse(c); draw();
+          c.morceaux.splice(c.morceaux.indexOf(B), 1); zNum(); await saveCourse(c); draw();
         },
         del: async (b) => {
           const m = c.morceaux.find((x) => x.id === b.dataset.id); const ph = await photosOf(m.id);
           const r = await ask('Retirer ce morceau ?', C.textCount(C.textOf(m)) || ph.length ? '<b>Son script (' + C.textCount(C.textOf(m)) + ' lignes) et ses photos seront effacés.</b> La vidéo n\'est pas touchée.' : 'La vidéo n\'est pas touchée.', [{ label: 'Oui, retirer', value: 1, cls: 'red' }, { label: 'Non', value: 0, cls: 'sec' }]);
           if (!r) return; for (const p of ph) await ddel('photos', p.id);
-          c.morceaux = c.morceaux.filter((x) => x.id !== b.dataset.id); await saveCourse(c); draw();
+          c.morceaux = c.morceaux.filter((x) => x.id !== b.dataset.id); zNum(); await saveCourse(c); draw();
         },
         ok: async () => { if (S.shareOn && await shareNext()) return; scrCourse(c.id); },
         redo: () => redoCut(c)
@@ -1404,7 +1426,7 @@
     const fo = folderOf(c.folder);
     const kept = c.video && c.video.kept;
     const lv = c.livret;
-    const zumE = !!(fo && C.norm(fo.name).includes('zumba')); // 08/11 : Zumba sans livret, script, PDF ni découpage
+    const zumE = !!(fo && C.norm(fo.name).includes('zumba')); // 08/11 : Zumba sans livret, script ni PDF (découpage remis en v49)
     /** Réglage « Page du livret » d'un morceau (la proposition automatique est affichée en clair, pas imposée) */
     const lvSet = (m) => { const r = lvPageFor(c, m); return '<div class="lvset" data-id="' + m.id + '"><span class="lvl">📄 Page du livret :</span><button data-act="lvpm" data-id="' + m.id + '" data-d="-1" aria-label="Page d\'avant">−</button><b class="lvnum' + (r.auto ? ' auto' : '') + '">' + r.page + '</b><button data-act="lvpm" data-id="' + m.id + '" data-d="1" aria-label="Page d\'après">+</button><span class="lvhint mute">' + (r.auto ? 'proposée' : '') + '</span></div>' +
       '<div class="lvq hide" data-id="' + m.id + '"><span>Régler les suivants à la suite ?</span><button data-act="lvfill" data-id="' + m.id + '">Oui</button><button data-act="lvno" data-id="' + m.id + '">Non</button></div>'; };
@@ -1430,7 +1452,7 @@
         ((kept && isFinite(m.start) && isFinite(m.end) && m.end > m.start) || (m.musicId && musics[m.musicId]) ? '<div class="row tight">' +
           (kept && isFinite(m.start) && isFinite(m.end) && m.end > m.start ? '<button class="btn sec small" data-act="mp3" data-id="' + m.id + '">🎵 Extraire en MP3</button>' : '') +
           (m.musicId && musics[m.musicId] ? '<button class="btn sec small" data-act="dlmus" data-id="' + m.id + '">⬇️ Dans mon téléphone</button>' : '') + '</div>' : '') + '</div>').join('') +
-      (zumE ? '<button class="btn sec" data-act="mvf">📁 Changer de dossier</button>' : '<div class="row"><button class="btn sec" data-act="cut">✂️ Modifier le découpage</button><button class="btn sec" data-act="mvf">📁 Changer de dossier</button></div>') +
+      '<div class="row"><button class="btn sec" data-act="cut">✂️ Modifier le découpage</button><button class="btn sec" data-act="mvf">📁 Changer de dossier</button></div>' +
       '<button class="btn ghost small" data-act="del">🗑️ Supprimer cette édition</button>',
     {
       back: () => scrFolder(c.folder),

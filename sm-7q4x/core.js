@@ -514,6 +514,119 @@
     return { cuts: cuts.map((g) => ({ t: Math.round(g.c * 10) / 10, score: Math.round(g.score * 100) / 100 })), pieces, silent: silent.map((g) => [g.s, g.e]) };
   }
 
+  /* ---------- 7d. Zumba : changements de titre dans un mix (musiques enchaînées presque sans blanc) ---------- */
+  /** Cherche les changements de musique : « couleur » du son (nouveauté de Foote sur l'autosimilarité des bandes),
+      pulsation / tempo (autocorrélation des attaques + estimateBPM), creux ou saut d'énergie.
+      opt.minSong (60 s), opt.maxSong (360 s). Renvoie {cuts:[{t, score}], pieces:[{start, end}]} ;
+      si rien n'est assez net : une seule pièce (toute la durée). */
+  function mixCuts(feat, opt) {
+    opt = opt || {};
+    const minSong = opt.minSong || 60, maxSong = opt.maxSong || 360;
+    const hop = feat.hop, n = feat.n, dur = n * hop, nb = feat.bands.length;
+    const r1 = (x) => Math.round(x * 10) / 10;
+    const one = { cuts: [], pieces: dur > 0 ? [{ start: 0, end: r1(dur) }] : [] };
+    const F = Math.max(1, Math.round(1 / hop)), S = Math.floor(n / F); // une case par seconde
+    if (dur < 2 * minSong || S < 2 * minSong) return one;
+    // 1. profil par seconde : moyenne de chaque bande + énergie globale
+    const P = feat.bands.map((x) => { const o = new Float64Array(S); for (let s = 0; s < S; s++) { let t = 0; for (let i = s * F; i < s * F + F; i++) t += x[i]; o[s] = t / F; } return o; });
+    const E = new Float64Array(S); for (let s = 0; s < S; s++) { let t = 0; for (let b = 0; b < nb; b++) t += P[b][s]; E[s] = t / nb; }
+    // « couleur » : forme du spectre sans le volume, centrée-réduite, lissée sur 3 s
+    const Z = P.map((o) => {
+      const d = new Float64Array(S); for (let s = 0; s < S; s++) d[s] = o[s] - E[s];
+      const m = mean(d); let v = 0; for (let s = 0; s < S; s++) v += (d[s] - m) * (d[s] - m);
+      const sd = Math.sqrt(v / S) || 1; for (let s = 0; s < S; s++) d[s] = (d[s] - m) / sd;
+      return smooth(d, 3);
+    });
+    const dist = (i, j) => { let t = 0; for (let b = 0; b < nb; b++) { const q = Z[b][i] - Z[b][j]; t += q * q; } return t / nb; };
+    // 2. nouveauté de Foote : noyau en damier (pondéré en cloche) sur la matrice d'autosimilarité, ±L s
+    const L = 10, wk = []; for (let k = 0; k < L; k++) wk.push(Math.exp(-0.5 * Math.pow((k + 0.5) / (L / 2), 2)));
+    const color = new Float64Array(S);
+    for (let t = L; t <= S - L; t++) {
+      let cross = 0, cw = 0, within = 0, ww = 0;
+      for (let a = 0; a < L; a++) for (let b = 0; b < L; b++) {
+        const w = wk[a] * wk[b];
+        cross += w * dist(t - 1 - a, t + b); cw += w;
+        if (b > a) { within += w * (dist(t - 1 - a, t - 1 - b) + dist(t + a, t + b)); ww += 2 * w; }
+      }
+      color[t] = Math.max(0, cross / cw - within / ww);
+    }
+    // 3. pulsation : autocorrélation des attaques (basses) avant / après, sur ±W s
+    const on = new Float64Array(n);
+    for (let i = 1; i < n; i++) { let s = 0; for (let b = 0; b < Math.min(4, nb); b++) s += Math.max(0, feat.bands[b][i] - feat.bands[b][i - 1]); on[i] = s; }
+    const onm = smooth(on, F | 1); for (let i = 0; i < n; i++) on[i] -= onm[i];
+    const lag0 = Math.max(1, Math.round(0.25 / hop)), lag1 = Math.round(1.5 / hop), NL = lag1 - lag0 + 1;
+    const Q = new Float64Array((S + 1) * NL); // sommes cumulées par seconde
+    for (let s = 0; s < S; s++) {
+      for (let l = 0; l < NL; l++) {
+        const lag = lag0 + l; let t = 0;
+        for (let i = s * F; i < s * F + F && i + lag < n; i++) t += on[i] * on[i + lag];
+        Q[(s + 1) * NL + l] = Q[s * NL + l] + t;
+      }
+    }
+    const W = 12, acf = (a, b) => { const o = new Float64Array(NL); for (let l = 0; l < NL; l++) o[l] = Q[b * NL + l] - Q[a * NL + l]; return o; };
+    const cosd = (x, y) => { let xy = 0, xx = 0, yy = 0; for (let l = 0; l < x.length; l++) { xy += x[l] * y[l]; xx += x[l] * x[l]; yy += y[l] * y[l]; } return xx > 0 && yy > 0 ? 1 - xy / Math.sqrt(xx * yy) : 0; };
+    const rhythm = new Float64Array(S);
+    for (let t = W; t <= S - W; t++) rhythm[t] = cosd(acf(t - W, t - 1), acf(t + 1, t + W)); // la seconde du changement est laissée de côté
+    // 4. énergie : saut (moyenne 8 s avant / après) et creux (par rapport au niveau autour)
+    const Es = smooth(E, 3), jump = new Float64Array(S), dip = new Float64Array(S);
+    const mE = (a, b) => { let t = 0; for (let s = a; s < b; s++) t += Es[s]; return t / Math.max(1, b - a); };
+    for (let t = 8; t <= S - 8; t++) {
+      jump[t] = Math.abs(mE(t - 8, t) - mE(t, t + 8));
+      let lo = Infinity; for (let s = Math.max(0, t - 2); s <= Math.min(S - 1, t + 1); s++) lo = Math.min(lo, E[s]);
+      dip[t] = Math.max(0, quantile(E.subarray(Math.max(0, t - 15), Math.min(S, t + 15)), 0.5) - lo);
+    }
+    // 5. chaque indice en « écarts robustes » (médiane, MAD), puis combinaison
+    const rz = (c) => { const a = c.subarray(L, S - L), med = quantile(a, 0.5), mad = quantile(Array.from(a, (x) => Math.abs(x - med)), 0.5) || 1e-6; return (i) => Math.max(0, Math.min(8, (c[i] - med) / (1.4826 * mad))); };
+    const zc = rz(color), zr = rz(rhythm), zj = rz(jump), zd = rz(dip);
+    const comb = new Float64Array(S);
+    for (let t = L; t <= S - L; t++) comb[t] = zc(t) + zr(t) + 0.5 * zj(t) + 0.5 * zd(t);
+    // 6. pics (maximum local sur ±8 s), à au moins minSong des bords
+    const peaks = [];
+    for (let t = Math.max(L, Math.ceil(minSong)); t <= Math.min(S - L, Math.floor(dur - minSong)); t++) {
+      let ok = comb[t] > 0; for (let k = Math.max(0, t - 8); k <= Math.min(S - 1, t + 8) && ok; k++) if (comb[k] > comb[t] || (comb[k] === comb[t] && k < t)) ok = false;
+      if (ok) peaks.push({ t, c: zc(t), r: zr(t), score: comb[t] });
+    }
+    if (!peaks.length) return one;
+    // bonus si le tempo change durablement (estimateBPM sur 20 s de chaque côté), pour les meilleurs pics
+    peaks.sort((x, y) => y.score - x.score);
+    for (const p of peaks.slice(0, 30)) {
+      const b1 = estimateBPM(sliceFeat(feat, Math.max(0, p.t - 22), p.t - 2)), b2 = estimateBPM(sliceFeat(feat, p.t + 2, Math.min(dur, p.t + 22)));
+      const ch = b1 && b2 ? Math.min(...[1, 2, 0.5].map((k) => Math.abs(Math.log2(b1 * k / b2)))) : 0;
+      if (ch > 0.02) { p.score += 1.5; p.r = Math.max(p.r, 3); }
+    }
+    peaks.sort((x, y) => y.score - x.score);
+    // 7. choix : seulement les frontières nettes, morceaux de minSong à ~maxSong, nombre raisonnable (≈ 2 min mini en moyenne)
+    const TH = opt.th || 6, best = peaks[0].score;
+    const net = (p, k) => p.score >= Math.max(TH * k, 0.45 * best) && Math.max(p.c, p.r) >= 3 * k;
+    const maxCuts = Math.max(0, Math.floor(dur / 120) - 1);
+    const fits = (cuts) => { const pts = [0].concat(cuts.slice().sort((x, y) => x - y), [dur]); for (let i = 0; i + 1 < pts.length; i++) if (pts[i + 1] - pts[i] < minSong) return false; return true; };
+    const chosen = [];
+    for (const p of peaks) { if (chosen.length >= maxCuts) break; if (net(p, 1) && fits(chosen.concat([p.t]))) chosen.push(p.t); }
+    // morceau trop long : on accepte une frontière un peu moins nette à l'intérieur (s'il y en a une)
+    for (let guard = 0; guard < 20 && chosen.length < maxCuts; guard++) {
+      const pts = [0].concat(chosen.slice().sort((x, y) => x - y), [dur]); let added = false;
+      for (let i = 0; i + 1 < pts.length && !added; i++) {
+        if (pts[i + 1] - pts[i] <= maxSong) continue;
+        const p = peaks.find((q) => q.t > pts[i] && q.t < pts[i + 1] && !chosen.includes(q.t) && net(q, 0.5) && fits(chosen.concat([q.t])));
+        if (p) { chosen.push(p.t); added = true; }
+      }
+      if (!added) break;
+    }
+    if (!chosen.length) return one;
+    // 8. position précise : le point le plus calme à ±1,5 s
+    const fine = (t) => {
+      const a = Math.max(1, Math.round((t - 1.5) / hop)), b = Math.min(n - 2, Math.round((t + 1.5) / hop));
+      let bi = Math.round(t / hop), bv = Infinity, k = Math.max(1, Math.round(0.1 / hop));
+      for (let i = a; i <= b; i++) { let s = 0, c = 0; for (let j = Math.max(0, i - k); j <= Math.min(n - 1, i + k); j++) { for (let q = 0; q < nb; q++) s += feat.bands[q][j]; c++; } s /= c; if (s < bv) { bv = s; bi = i; } }
+      return r1(bi * hop);
+    };
+    const cutT = chosen.sort((x, y) => x - y).map(fine);
+    const pts = [0].concat(cutT, [r1(dur)]), pieces = [];
+    for (let i = 0; i + 1 < pts.length; i++) pieces.push({ start: pts[i], end: pts[i + 1] });
+    const sc = {}; for (const p of peaks) sc[p.t] = p.score;
+    return { cuts: chosen.map((t, i) => ({ t: cutT[i], score: Math.round(sc[t] * 100) / 100 })), pieces };
+  }
+
   /** Numéro dans un nom de fichier (« 03 - Squats », « Track 7 »…) ou null */
   function trackNumber(name) {
     const s = String(name || '').replace(/(19|20)\d\d/g, ' ').replace(/\b\d{3,}\b/g, ' ');
@@ -1299,7 +1412,7 @@
     cpEnc, cpDec, cpHash, cpSig, cpTaille, cpZumba, cpOrdre,
     smooth, quantile, MOVES, STYLES, QUICK, RENAMES, TEMPO_BEATS, OLD_TEMPOS, normTempo, COURSE_VERSION, migrateMoveLists,
     morceauNumber, numLabel, getFavs, setFavs, moveButtons, fft, AudioFeatureStream, audioFeaturesFromPCM, prepareVideo, alignMusic, silenceCuts,
-    prepareVideo2, findMusic, placeMusics, verifyChunks, sliceFeat, cutSongs, trackNumber, proposeMusics,
+    prepareVideo2, findMusic, placeMusics, verifyChunks, sliceFeat, cutSongs, mixCuts, trackNumber, proposeMusics,
     firstBeat, makeSync, musicToVideo, videoToMusic, trimSilence, estimateBPM, segLine, fmtTime, playState, ASR, AHOP,
     TEMPOS, beatsPerRep, insertLine, sortLines, moveLine, dupLine, pasteBlock, lineDur, buildTimeline,
     editionNumber, sortEditions, BASE_FOLDERS, migrateCourse, topMoves, lineText, norm,
