@@ -342,15 +342,28 @@
     const i = list.findIndex((x) => x.id === c.id);
     const prev = i > 0 ? list[i - 1] : null, next = i >= 0 && i < list.length - 1 ? list[i + 1] : null;
     const stop = () => { const v = $('#smwatch'); if (v) v.pause(); };
+    // 08/11 : escargot (seulement Zumba) = vidéo + musique 2 fois plus lentes ; un 2e toucher = vitesse normale
+    const fz = folderOf(c.folder), zum = !!(fz && C.norm(fz.name).includes('zumba'));
     render('<div class="top"><button class="back" data-act="back">‹</button><h1>' + esc(c.name) + '</h1></div>' +
-      '<div class="vidbox"><video id="smwatch" src="' + url + '" controls playsinline preload="metadata"' + (auto ? ' autoplay' : '') + '></video></div>' +
+      '<div class="vidbox" style="position:relative"><video id="smwatch" src="' + url + '" controls playsinline preload="metadata"' + (auto ? ' autoplay' : '') + '></video>' +
+      (zum ? '<button id="smslow" data-act="slow" aria-label="Ralentir la vidéo" style="position:absolute;right:38px;bottom:37px;width:36px;height:36px;padding:0;border-radius:50%;border:2px solid #ff8a3d;background:rgba(21,26,51,.85);font-size:20px;line-height:1;z-index:2">🐌</button>' : '') + '</div>' +
       '<div class="row"><button class="btn sec" data-act="prev"' + (prev ? '' : ' disabled') + '>⏮ Vidéo précédente</button><button class="btn sec" data-act="next"' + (next ? '' : ' disabled') + '>Vidéo suivante ⏭</button></div>' +
       '<p class="mute small">Touche ⛶ en bas de la vidéo pour la mettre en plein écran.</p>',
       {
         back: () => { stop(); scrCourse(c.id); },
         prev: () => { if (prev) { stop(); scrWatch(prev, true); } },
-        next: () => { if (next) { stop(); scrWatch(next, true); } }
+        next: () => { if (next) { stop(); scrWatch(next, true); } },
+        slow: () => { const v = $('#smwatch'), b = $('#smslow'); if (!v || !b) return; const lent = v.playbackRate > 0.75;
+          v.defaultPlaybackRate = lent ? 0.5 : 1; v.playbackRate = lent ? 0.5 : 1; b.style.background = lent ? '#ff8a3d' : 'rgba(21,26,51,.85)'; toast(lent ? '🐌 Vidéo ralentie de moitié' : 'Vitesse normale'); }
       });
+    // 08/11 : glisser à gauche = vidéo suivante, à droite = vidéo précédente (boutons gardés ; pas sur la barre du bas de la vidéo)
+    if (!S.watchSwipe) { S.watchSwipe = true; let d = null; // posé une seule fois (l'écran est redessiné à chaque vidéo)
+      app.addEventListener('touchstart', (e) => { const t = e.target, v = $('#smwatch'); d = null; if (!v || e.touches.length !== 1) return;
+        const y = e.touches[0].clientY, r = v.getBoundingClientRect(); if (t && t.closest('#smwatch') && y > r.bottom - 90) return;
+        if (t && t.closest('button')) return; d = { x: e.touches[0].clientX, y, t: Date.now() }; }, { passive: true });
+      app.addEventListener('touchend', (e) => { if (!d || !$('#smwatch')) { d = null; return; } const t = e.changedTouches[0], dx = t.clientX - d.x, dy = t.clientY - d.y, ok = Date.now() - d.t < 800; d = null;
+        if (!ok || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+        const b = app.querySelector('[data-act="' + (dx < 0 ? 'next' : 'prev') + '"]'); if (b && !b.disabled) b.click(); }, { passive: true }); }
   }
   /** Rechoisir la vidéo d'une édition, et la garder dans l'appli */
   async function giveVideo(c, given, sure) {

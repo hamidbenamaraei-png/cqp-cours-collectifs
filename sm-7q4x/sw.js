@@ -2,7 +2,7 @@
    Ne met en cache que les fichiers de l'appli (jamais tes vidéos, tes musiques, tes photos ni tes livrets : ils restent dans l'appli).
    lib/ : pdf.js 6.2.108 (Mozilla, licence Apache 2.0, voir lib/LICENSE-pdfjs.txt) pour afficher le livret sans Internet.
    lib/qr.js (QR codes, licence MIT) et lib/jsQR.js 1.4.0 (lecture des QR codes, licence Apache 2.0, voir lib/LICENSE-jsqr.txt) : copie vers le PC (08/11). */
-const V = 'sm-app-v42';
+const V = 'sm-app-v43';
 /* v24 : TOUT ce dont l'appli a besoin est gardé dès l'installation : elle s'ouvre et marche sans internet (salles sans réseau). */
 const CORE = ['./', './index.html', './core.js', './mp4.js', './app.js', './pc-commun.js', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png',
   './lib/pdf.min.mjs', './lib/pdf.worker.min.mjs', './pc.html', './pc-page.js', './lib/qr.js', './lib/jsQR.js'];
