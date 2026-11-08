@@ -1353,7 +1353,7 @@
         }).join('') +
         (lost.length ? '<div class="card r"><h3>❓ Musiques pas retrouvées dans la vidéo</h3><p class="soft small">Elles ne sont liées à aucun morceau. Tu peux en choisir une dans la liste d\'un morceau ci-dessus.</p>' + lost.map((m) => '<p>🎵 ' + esc(m.name) + '</p>').join('') + '</div>' : '') +
         '<button class="btn" data-act="ok">✅ C\'est bon</button>' +
-        (mids.length || c.audio === 'ok' || (zumC && (hasVid || (c.video && c.video.kept))) ? '<button class="btn ghost small" data-act="redo">🔁 ' + (zumC ? 'Analyser et découper automatiquement' : 'Refaire le découpage automatique') + '</button>' : ''),
+        (mids.length || c.audio === 'ok' || (zumC && (hasVid || (c.video && c.video.kept))) ? '<button class="btn ghost small" data-act="redo">🔁 Refaire le découpage automatique</button>' : ''),
       {
         back: () => scrCourse(c.id),
         revid: async () => { await giveVideo(c); scrCut(cid); },
