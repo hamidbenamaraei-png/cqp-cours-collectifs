@@ -346,7 +346,7 @@
     const fz = folderOf(c.folder), zum = !!(fz && C.norm(fz.name).includes('zumba'));
     render('<div class="top"><button class="back" data-act="back">‹</button><h1>' + esc(c.name) + '</h1></div>' +
       '<div class="vidbox" style="position:relative"><video id="smwatch" src="' + url + '" controls playsinline preload="metadata"' + (auto ? ' autoplay' : '') + '></video>' +
-      (zum ? '<button id="smslow" data-act="slow" aria-label="Ralentir la vidéo" style="position:absolute;right:170px;bottom:34px;width:26px;height:26px;padding:0;border-radius:50%;border:0;background:transparent;font-size:17px;line-height:26px;text-align:center;z-index:2">🐌</button>' : '') + '</div>' +
+      (zum ? '<button id="smslow" data-act="slow" aria-label="Ralentir la vidéo" style="position:absolute;right:34px;bottom:34px;width:24px;height:24px;padding:0;border-radius:50%;border:0;background:transparent;font-size:14px;line-height:24px;text-align:center;z-index:2;transition:opacity .3s">🐌</button>' : '') + '</div>' +
       '<div class="row"><button class="btn sec" data-act="prev"' + (prev ? '' : ' disabled') + '>⏮ Vidéo précédente</button><button class="btn sec" data-act="next"' + (next ? '' : ' disabled') + '>Vidéo suivante ⏭</button></div>' +
       '<p class="mute small">Touche ⛶ en bas de la vidéo pour la mettre en plein écran.</p>',
       {
@@ -356,6 +356,12 @@
         slow: () => { const v = $('#smwatch'), b = $('#smslow'); if (!v || !b) return; const lent = v.playbackRate > 0.75;
           v.defaultPlaybackRate = lent ? 0.5 : 1; v.playbackRate = lent ? 0.5 : 1; b.style.background = lent ? '#ff8a3d' : 'transparent'; toast(lent ? '🐌 Vidéo ralentie de moitié' : 'Vitesse normale'); }
       });
+    // 08/11 : l'escargot disparaît avec les icônes du lecteur (vidéo qui joue) et revient quand on touche la vidéo ou en pause
+    { const v = $('#smwatch'), b = $('#smslow'); if (v && b) { let tm = null;
+        const montre = () => { b.style.opacity = '1'; b.style.pointerEvents = 'auto'; clearTimeout(tm); if (!v.paused) tm = setTimeout(cache, 3000); };
+        const cache = () => { if (v.paused) return; b.style.opacity = '0'; b.style.pointerEvents = 'none'; };
+        v.addEventListener('play', montre); v.addEventListener('pause', montre); v.addEventListener('ended', montre);
+        v.addEventListener('touchstart', montre, { passive: true }); v.addEventListener('click', montre); b.addEventListener('click', montre); } }
     // 08/11 : glisser à gauche = vidéo suivante, à droite = vidéo précédente (boutons gardés ; pas sur la barre du bas de la vidéo)
     if (!S.watchSwipe) { S.watchSwipe = true; let d = null; // posé une seule fois (l'écran est redessiné à chaque vidéo)
       app.addEventListener('touchstart', (e) => { const t = e.target, v = $('#smwatch'); d = null; if (!v || e.touches.length !== 1) return;
