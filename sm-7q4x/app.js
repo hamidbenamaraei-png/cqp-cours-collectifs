@@ -335,31 +335,49 @@
     }
     return null;
   }
-  /** Regarder la vidéo d'une édition, même sans musiques ni script */
-  async function scrWatch(c, auto) {
+  /** 08/11 : Zumba : les morceaux d'un mix (2 morceaux ou plus, avec début et fin), dans l'ordre de la vidéo */
+  const zumParts = (c) => { const ms = c.morceaux.filter((m) => !m.lost && isFinite(+m.start) && isFinite(+m.end) && +m.end > +m.start).sort((a, b) => a.start - b.start); return ms.length >= 2 ? ms : []; };
+  /** Regarder la vidéo d'une édition, même sans musiques ni script. o.m = seulement ce morceau (Zumba) ; o.list = retour à la liste du dossier */
+  async function scrWatch(c, auto, o) {
+    o = o || {}; const pm = o.m || null;
     const url = await videoURL(c);
     if (!url) { await ask('Vidéo introuvable', 'La vidéo n\'est plus dans l\'appli : rechoisis-la avec « 🎬 Remettre la vidéo ».', [{ label: 'OK', value: 1 }]); scrCourse(c.id); return; }
     // éditions du même dossier qui ont une vidéo gardée, dans l'ordre du dossier
     const list = C.sortEditions((await dall('courses')).filter((x) => x.folder === c.folder && x.video && x.video.kept));
     const i = list.findIndex((x) => x.id === c.id);
-    const prev = i > 0 ? list[i - 1] : null, next = i >= 0 && i < list.length - 1 ? list[i + 1] : null;
+    let prev = i > 0 ? list[i - 1] : null, next = i >= 0 && i < list.length - 1 ? list[i + 1] : null;
     const stop = () => { const v = $('#smwatch'); if (v) v.pause(); };
     // 08/11 : escargot (seulement Zumba) = vidéo + musique 2 fois plus lentes ; un 2e toucher = vitesse normale
     const fz = folderOf(c.folder), zum = !!(fz && C.norm(fz.name).includes('zumba'));
-    render('<div class="top"><button class="back" data-act="back">‹</button><h1>' + esc(c.name) + '</h1></div>' +
-      '<div class="vidbox" style="position:relative"><video id="smwatch" src="' + url + '" controls playsinline preload="metadata"' + (auto ? ' autoplay' : '') + '></video>' +
+    let goPrev = () => scrWatch(prev, true), goNext = () => scrWatch(next, true);
+    if (zum) { // 08/11 : Zumba : suivante / précédente = élément de la liste du dossier (édition simple ou morceau d'un mix)
+      const items = []; for (const x of list) { const ps = zumParts(x); if (ps.length) { items.push({ c: x, mix: true }); ps.forEach((m) => items.push({ c: x, m })); } else items.push({ c: x }); }
+      const k = items.findIndex((x) => x.c.id === c.id && (pm ? x.m && x.m.id === pm.id : !x.m));
+      const ok = (x) => !x.mix; let a = null, z = null;
+      if (k >= 0) { for (let j = k - 1; j >= 0; j--) if (ok(items[j])) { a = items[j]; break; } for (let j = k + 1; j < items.length; j++) if (ok(items[j])) { z = items[j]; break; } }
+      prev = a; next = z;
+      goPrev = () => scrWatch(a.c, true, { m: a.m, list: o.list }); goNext = () => scrWatch(z.c, true, { m: z.m, list: o.list });
+    }
+    const src = pm ? url + '#t=' + (+pm.start).toFixed(2) + ',' + (+pm.end).toFixed(2) : url;
+    render('<div class="top"><button class="back" data-act="back">‹</button><h1>' + esc(pm ? pm.name : c.name) + '</h1></div>' +
+      '<div class="vidbox" style="position:relative"><video id="smwatch" src="' + src + '" controls playsinline preload="metadata"' + (auto ? ' autoplay' : '') + '></video>' +
       (zum ? '<button id="smslow" data-act="slow" aria-label="Ralentir la vidéo" style="position:absolute;right:34px;bottom:34px;width:24px;height:24px;padding:0;border-radius:50%;border:0;background:transparent;font-size:14px;line-height:24px;text-align:center;z-index:2;transition:opacity .3s">🐌</button>' : '') + '</div>' +
-      (zum ? '<button class="btn sec" data-act="mp3all">🎵 Convertir en MP3</button>'
+      (zum ? '<button class="btn sec" data-act="mp3all">🎵 Convertir en MP3</button><button data-act="prev" hidden' + (prev ? '' : ' disabled') + '></button><button data-act="next" hidden' + (next ? '' : ' disabled') + '></button>'
         : '<div class="row"><button class="btn sec" data-act="prev"' + (prev ? '' : ' disabled') + '>⏮ Vidéo précédente</button><button class="btn sec" data-act="next"' + (next ? '' : ' disabled') + '>Vidéo suivante ⏭</button></div>') +
       '<p class="mute small">Touche ⛶ en bas de la vidéo pour la mettre en plein écran.</p>',
       {
-        back: () => { stop(); scrCourse(c.id); },
-        prev: () => { if (prev) { stop(); scrWatch(prev, true); } },
-        next: () => { if (next) { stop(); scrWatch(next, true); } },
-        mp3all: () => { stop(); const v = $('#smwatch'); const d = (c.video && +c.video.duration) || (v && isFinite(v.duration) ? v.duration : 0); if (d > 0) dlMp3(c, { id: 'video', name: 'Vidéo', start: 0, end: d }); },
+        back: () => { stop(); if (o.list) scrFolder(c.folder); else scrCourse(c.id); },
+        prev: () => { if (prev) { stop(); goPrev(); } },
+        next: () => { if (next) { stop(); goNext(); } },
+        mp3all: () => { stop(); if (pm) { dlMp3(c, pm); return; } const v = $('#smwatch'); const d = (c.video && +c.video.duration) || (v && isFinite(v.duration) ? v.duration : 0); if (d > 0) dlMp3(c, { id: 'video', name: 'Vidéo', start: 0, end: d }); },
         slow: () => { const v = $('#smwatch'), b = $('#smslow'); if (!v || !b) return; const lent = v.playbackRate > 0.75;
           v.defaultPlaybackRate = lent ? 0.5 : 1; v.playbackRate = lent ? 0.5 : 1; b.style.background = lent ? '#ff8a3d' : 'transparent'; toast(lent ? '🐌 Vidéo ralentie de moitié' : 'Vitesse normale'); }
       });
+    // 08/11 : un morceau seul : la lecture part du début du morceau et s'arrête à sa fin (barre du lecteur utilisable)
+    if (pm) { const v = $('#smwatch'); if (v) { const st = +pm.start, en = +pm.end;
+        v.addEventListener('loadedmetadata', () => { if (v.currentTime < st - 0.5 || v.currentTime >= en) v.currentTime = st; });
+        v.addEventListener('timeupdate', () => { if (!v.paused && v.currentTime >= en - 0.05) { v.pause(); v.currentTime = en; } });
+        v.addEventListener('play', () => { if (v.currentTime >= en - 0.3 || v.currentTime < st - 0.5) v.currentTime = st; }); } }
     // 08/11 : l'escargot disparaît avec les icônes du lecteur (vidéo qui joue) et revient quand on touche la vidéo ou en pause
     { const v = $('#smwatch'), b = $('#smslow'); if (v && b) { let tm = null;
         const montre = () => { b.style.opacity = '1'; b.style.pointerEvents = 'auto'; clearTimeout(tm); if (!v.paused) tm = setTimeout(cache, 3000); };
@@ -981,11 +999,14 @@
     S.wantAwake = false; keepAwake(false); S.mixBack = null;
     const f = folderOf(fid); if (!f) return scrHome();
     const list = C.sortEditions((await dall('courses')).filter((c) => c.folder === fid));
+    const zumF = C.norm(f.name).includes('zumba');
     render('<div class="top"><button class="back" data-act="back">‹</button><h1>📁 ' + esc(f.name) + '</h1>' + (/pump/i.test(f.name) ? '<button class="back" data-act="pcat" aria-label="Choisir par morceau (échauffement, squats…)">⋯</button>' : '') + '<button class="back" data-act="ren" aria-label="Renommer le dossier">✏️</button></div>' +
       '<button class="btn" data-act="new">➕ Nouvelle édition</button>' +
       (list.length ? list.map((c) => {
         const ms = c.morceaux.filter((m) => !m.lost); const w = ms.filter((m) => C.textCount(C.textOf(m))).length;
-        return '<button class="seg" data-act="open" data-id="' + c.id + '"><span class="t"><b>' + esc(c.name) + '</b><span class="mute">' + fmtDate(c.created) + ' · ' + ms.length + ' morceau' + (ms.length > 1 ? 'x' : '') + ' · ✍️ ' + w + ' / ' + ms.length + ' écrit' + (w > 1 ? 's' : '') + (c.video && c.video.kept ? ' · 🎬' : '') + '</span>' + (c.livret ? '<span class="lvbadge"><span class="badge">📄 livret</span></span>' : '') + '</span><span style="font-size:24px">›</span></button>';
+        return '<button class="seg" data-act="open" data-id="' + c.id + '"><span class="t"><b>' + esc(c.name) + '</b><span class="mute">' + fmtDate(c.created) + ' · ' + ms.length + ' morceau' + (ms.length > 1 ? 'x' : '') + ' · ✍️ ' + w + ' / ' + ms.length + ' écrit' + (w > 1 ? 's' : '') + (c.video && c.video.kept ? ' · 🎬' : '') + '</span>' + (c.livret ? '<span class="lvbadge"><span class="badge">📄 livret</span></span>' : '') + '</span><span style="font-size:24px">›</span></button>' +
+          // 08/11 : Zumba : chaque morceau d'un mix (2 morceaux ou plus) = une vidéo à part, juste sous l'édition
+          (zumF ? zumParts(c).map((m) => '<button class="seg" data-act="openm" data-id="' + c.id + '" data-mid="' + esc(m.id) + '" style="margin-left:18px;width:calc(100% - 18px)"><span class="n">🎵</span><span class="t"><b>' + esc(m.name) + '</b><span class="mute">de « ' + esc(c.name) + ' » · ' + fmt(m.end - m.start) + '</span></span><span style="font-size:24px">›</span></button>').join('') : '');
       }).join('') : '<div class="card"><p class="soft">Aucune édition dans ce dossier.</p><p class="mute">Touche « ➕ Nouvelle édition » : choisis la vidéo du cours et tes musiques.</p></div>') +
       (!f.builtin && !list.length ? '<button class="btn ghost small" data-act="del">🗑️ Supprimer ce dossier (vide)</button>' : ''),
     {
@@ -993,6 +1014,7 @@
       new: () => scrNew(fid),
       pcat: () => scrPumpCats(fid),
       open: (b) => scrCourse(b.dataset.id),
+      openm: (b) => { const c = list.find((x) => x.id === b.dataset.id), m = c && zumParts(c).find((x) => x.id === b.dataset.mid); if (m) scrWatch(c, true, { m, list: true }); },
       ren: async () => { const n = await askText('Nom du dossier', f.name); if (n) { f.name = n; await saveKV('folders'); scrFolder(fid); } },
       del: async () => {
         const r = await ask('Supprimer ce dossier ?', 'Il est vide.', [{ label: '🗑️ Oui, supprimer', value: 1, cls: 'red' }, { label: 'Non', value: 0, cls: 'sec' }]);
