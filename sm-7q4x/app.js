@@ -347,12 +347,14 @@
     render('<div class="top"><button class="back" data-act="back">‹</button><h1>' + esc(c.name) + '</h1></div>' +
       '<div class="vidbox" style="position:relative"><video id="smwatch" src="' + url + '" controls playsinline preload="metadata"' + (auto ? ' autoplay' : '') + '></video>' +
       (zum ? '<button id="smslow" data-act="slow" aria-label="Ralentir la vidéo" style="position:absolute;right:34px;bottom:34px;width:24px;height:24px;padding:0;border-radius:50%;border:0;background:transparent;font-size:14px;line-height:24px;text-align:center;z-index:2;transition:opacity .3s">🐌</button>' : '') + '</div>' +
-      '<div class="row"><button class="btn sec" data-act="prev"' + (prev ? '' : ' disabled') + '>⏮ Vidéo précédente</button><button class="btn sec" data-act="next"' + (next ? '' : ' disabled') + '>Vidéo suivante ⏭</button></div>' +
+      (zum ? '<button class="btn sec" data-act="mp3all">🎵 Convertir en MP3</button>'
+        : '<div class="row"><button class="btn sec" data-act="prev"' + (prev ? '' : ' disabled') + '>⏮ Vidéo précédente</button><button class="btn sec" data-act="next"' + (next ? '' : ' disabled') + '>Vidéo suivante ⏭</button></div>') +
       '<p class="mute small">Touche ⛶ en bas de la vidéo pour la mettre en plein écran.</p>',
       {
         back: () => { stop(); scrCourse(c.id); },
         prev: () => { if (prev) { stop(); scrWatch(prev, true); } },
         next: () => { if (next) { stop(); scrWatch(next, true); } },
+        mp3all: () => { stop(); const v = $('#smwatch'); const d = (c.video && +c.video.duration) || (v && isFinite(v.duration) ? v.duration : 0); if (d > 0) dlMp3(c, { id: 'video', name: 'Vidéo', start: 0, end: d }); },
         slow: () => { const v = $('#smwatch'), b = $('#smslow'); if (!v || !b) return; const lent = v.playbackRate > 0.75;
           v.defaultPlaybackRate = lent ? 0.5 : 1; v.playbackRate = lent ? 0.5 : 1; b.style.background = lent ? '#ff8a3d' : 'transparent'; toast(lent ? '🐌 Vidéo ralentie de moitié' : 'Vitesse normale'); }
       });
@@ -686,7 +688,7 @@
     dlBusy = true; keepAwake(true);
     try { await fn(); } finally { dlBusy = false; dlBar(null); if (!S.wantAwake) keepAwake(false); }
   }
-  const dlLabel = (ms, m) => (ms.indexOf(m) + 1) + '. ' + m.name;
+  const dlLabel = (ms, m) => (ms.indexOf(m) < 0 ? m.name : (ms.indexOf(m) + 1) + '. ' + m.name);
   const dlFolderName = (c) => { const f = folderOf(c.folder); return f ? f.name : ''; };
   /** Les fichiers d'une édition à copier : [{ name, size, get() → Blob | null }] (vidéo gardée, musiques des morceaux, livret, photos) */
   async function dlEditionItems(c, musics) {
@@ -1402,6 +1404,7 @@
     const fo = folderOf(c.folder);
     const kept = c.video && c.video.kept;
     const lv = c.livret;
+    const zumE = !!(fo && C.norm(fo.name).includes('zumba')); // 08/11 : Zumba sans livret, script, PDF ni découpage
     /** Réglage « Page du livret » d'un morceau (la proposition automatique est affichée en clair, pas imposée) */
     const lvSet = (m) => { const r = lvPageFor(c, m); return '<div class="lvset" data-id="' + m.id + '"><span class="lvl">📄 Page du livret :</span><button data-act="lvpm" data-id="' + m.id + '" data-d="-1" aria-label="Page d\'avant">−</button><b class="lvnum' + (r.auto ? ' auto' : '') + '">' + r.page + '</b><button data-act="lvpm" data-id="' + m.id + '" data-d="1" aria-label="Page d\'après">+</button><span class="lvhint mute">' + (r.auto ? 'proposée' : '') + '</span></div>' +
       '<div class="lvq hide" data-id="' + m.id + '"><span>Régler les suivants à la suite ?</span><button data-act="lvfill" data-id="' + m.id + '">Oui</button><button data-act="lvno" data-id="' + m.id + '">Non</button></div>'; };
@@ -1411,10 +1414,10 @@
       (oldCut(c) ? '<div class="card r"><h3>⚠️ Découpage à refaire</h3><p class="soft small">Cette édition a été découpée avec l\'ancienne méthode : des musiques ont pu être placées n\'importe où. La nouvelle méthode ne place une musique que si elle est sûre. Ta vidéo, tes musiques, le nom et tes scripts sont gardés.</p><button class="btn" data-act="redo">🔁 Refaire le découpage</button></div>' : '') +
       (!kept && cpVideoAttendue(c.id) ? '<div class="card j small">⏳ <b>La vidéo arrive de ton téléphone…</b> <span class="mute">(' + fmtSize(cpVideoAttendue(c.id)) + ')</span><br><span class="mute">Elle apparaîtra ici dès qu\'elle sera copiée.</span></div>' :
       '<div class="card ' + (kept ? 'g' : 'j') + ' small">' + (kept ? '🎬 <b>Vidéo gardée dans l\'appli</b> (' + fmtSize(kept.size) + ')<button class="btn small" style="margin:8px 0 0" data-act="watch">▶️ Regarder la vidéo</button><button class="btn sec small" style="margin:8px 0 0" data-act="dlvid">⬇️ Mettre la vidéo dans mon téléphone</button><button class="btn ghost small" style="margin:8px 0 0" data-act="rmvid">🗑️ Retirer la vidéo (garder scripts et musiques)</button>' : '🎬 <b>La vidéo n\'est pas gardée</b> dans l\'appli.' + (c.video ? ' <span class="mute">(' + esc(c.video.name) + ', ' + fmtSize(c.video.size) + ')</span>' : '') + '<button class="btn sec small" style="margin:8px 0 0" data-act="addvid">🎬 Remettre la vidéo</button>') + '</div>') +
-      (lv ? '<div class="card g small lvcard">📄 <b>Mon livret</b> · <span id="lvinfo">' + lvPages(lv.pages) + ' · ' + lvSize(lv.size) + '</span>' +
+      (zumE ? '' : lv ? '<div class="card g small lvcard">📄 <b>Mon livret</b> · <span id="lvinfo">' + lvPages(lv.pages) + ' · ' + lvSize(lv.size) + '</span>' +
         '<button class="btn small" style="margin:8px 0 8px" data-act="lvsee">📄 Voir mon livret</button><div class="row tight"><button class="btn sec small" style="margin:0" data-act="lvadd">🔁 Remplacer</button><button class="btn sec small" style="margin:0" data-act="lvrm">🗑️ Retirer</button></div></div>'
         : '<button class="btn sec" data-act="lvadd">📄 Ajouter mon livret</button>') +
-      '<div class="row"><button class="btn sec" data-act="script">📖 Script de l\'édition</button><button class="btn sec" data-act="pdf">🖨️ PDF</button></div>' +
+      (zumE ? '' : '<div class="row"><button class="btn sec" data-act="script">📖 Script de l\'édition</button><button class="btn sec" data-act="pdf">🖨️ PDF</button></div>') +
       ms.map((m, i) => '<div class="card mrc ' + (C.textCount(C.textOf(m)) ? 'g' : 'o') + '"><div class="head"><button class="btn sec small" style="width:auto;flex:0 0 auto;margin:0 8px 0 0;padding:6px 10px" data-act="renm" data-id="' + m.id + '" aria-label="Renommer ce morceau">✏️</button><h2 style="flex:1 1 auto;min-width:0">' + (i + 1) + '. ' + esc(m.name) + '</h2><button class="btn sec small" style="width:auto;flex:0 0 auto;margin:0 0 0 8px;padding:6px 10px" data-act="delm" data-id="' + m.id + '" aria-label="Supprimer ce morceau">🗑️</button></div>' +
         '<p style="margin:0 0 6px">' + scriptState(m, nPh(m.id)) + '</p>' +
         (lv ? lvSet(m) : '') +
@@ -1427,7 +1430,7 @@
         ((kept && isFinite(m.start) && isFinite(m.end) && m.end > m.start) || (m.musicId && musics[m.musicId]) ? '<div class="row tight">' +
           (kept && isFinite(m.start) && isFinite(m.end) && m.end > m.start ? '<button class="btn sec small" data-act="mp3" data-id="' + m.id + '">🎵 Extraire en MP3</button>' : '') +
           (m.musicId && musics[m.musicId] ? '<button class="btn sec small" data-act="dlmus" data-id="' + m.id + '">⬇️ Dans mon téléphone</button>' : '') + '</div>' : '') + '</div>').join('') +
-      '<div class="row"><button class="btn sec" data-act="cut">✂️ Modifier le découpage</button><button class="btn sec" data-act="mvf">📁 Changer de dossier</button></div>' +
+      (zumE ? '<button class="btn sec" data-act="mvf">📁 Changer de dossier</button>' : '<div class="row"><button class="btn sec" data-act="cut">✂️ Modifier le découpage</button><button class="btn sec" data-act="mvf">📁 Changer de dossier</button></div>') +
       '<button class="btn ghost small" data-act="del">🗑️ Supprimer cette édition</button>',
     {
       back: () => scrFolder(c.folder),
