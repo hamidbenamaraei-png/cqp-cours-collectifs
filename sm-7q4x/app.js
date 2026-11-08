@@ -346,7 +346,7 @@
     const fz = folderOf(c.folder), zum = !!(fz && C.norm(fz.name).includes('zumba'));
     render('<div class="top"><button class="back" data-act="back">‹</button><h1>' + esc(c.name) + '</h1></div>' +
       '<div class="vidbox" style="position:relative"><video id="smwatch" src="' + url + '" controls playsinline preload="metadata"' + (auto ? ' autoplay' : '') + '></video>' +
-      (zum ? '<button id="smslow" data-act="slow" aria-label="Ralentir la vidéo" style="position:absolute;right:42px;bottom:42px;width:26px;height:26px;padding:0;border-radius:50%;border:0;background:transparent;font-size:17px;line-height:26px;text-align:center;z-index:2">🐌</button>' : '') + '</div>' +
+      (zum ? '<button id="smslow" data-act="slow" aria-label="Ralentir la vidéo" style="position:absolute;right:170px;bottom:34px;width:26px;height:26px;padding:0;border-radius:50%;border:0;background:transparent;font-size:17px;line-height:26px;text-align:center;z-index:2">🐌</button>' : '') + '</div>' +
       '<div class="row"><button class="btn sec" data-act="prev"' + (prev ? '' : ' disabled') + '>⏮ Vidéo précédente</button><button class="btn sec" data-act="next"' + (next ? '' : ' disabled') + '>Vidéo suivante ⏭</button></div>' +
       '<p class="mute small">Touche ⛶ en bas de la vidéo pour la mettre en plein écran.</p>',
       {
