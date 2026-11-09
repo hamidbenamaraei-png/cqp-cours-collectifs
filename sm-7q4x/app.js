@@ -379,6 +379,18 @@
         v.addEventListener('timeupdate', () => { if (!v.paused && v.currentTime >= en - 0.05) { v.pause(); v.currentTime = en; } });
         v.addEventListener('play', () => { if (v.currentTime >= en - 0.3 || v.currentTime < st - 0.5) v.currentTime = st; }); } }
     // 08/11 : l'escargot disparaît avec les icônes du lecteur (vidéo qui joue) et revient quand on touche la vidéo ou en pause
+    // 09/11 : plein écran Zumba : on agrandit le cadre de la vidéo (et pas la vidéo seule) pour que l'escargot reste visible
+    { const v = $('#smwatch'), b = $('#smslow'), box = v && v.parentElement; if (v && b && box) {
+        const onFs = () => {
+          const fe = document.fullscreenElement || document.webkitFullscreenElement;
+          if (fe === v) { // le bouton ⛶ du lecteur a mis la vidéo seule en plein écran : on passe au cadre
+            const ex = document.exitFullscreen ? document.exitFullscreen() : (document.webkitExitFullscreen && document.webkitExitFullscreen());
+            Promise.resolve(ex).catch(() => {}).then(() => { const rq = box.requestFullscreen || box.webkitRequestFullscreen; if (rq) Promise.resolve(rq.call(box)).then(() => { try { screen.orientation.lock('landscape').catch(() => {}); } catch (e) { /* rien */ } }).catch(() => {}); });
+            return;
+          }
+          box.classList.toggle('smfs', fe === box);
+        };
+        document.addEventListener('fullscreenchange', onFs); document.addEventListener('webkitfullscreenchange', onFs); } }
     { const v = $('#smwatch'), b = $('#smslow'); if (v && b) { let tm = null;
         const montre = () => { b.style.opacity = '1'; b.style.pointerEvents = 'auto'; clearTimeout(tm); if (!v.paused) tm = setTimeout(cache, 3000); };
         const cache = () => { if (v.paused) return; b.style.opacity = '0'; b.style.pointerEvents = 'none'; };
