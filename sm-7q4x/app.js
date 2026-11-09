@@ -361,7 +361,7 @@
     const src = pm ? url + '#t=' + (+pm.start).toFixed(2) + ',' + (+pm.end).toFixed(2) : url;
     render('<div class="top"><button class="back" data-act="back">‹</button><h1>' + esc(pm ? pm.name : c.name) + '</h1></div>' +
       '<div class="vidbox" style="position:relative"><video id="smwatch" src="' + src + '" controls playsinline preload="metadata"' + (auto ? ' autoplay' : '') + '></video>' +
-      (zum ? '<button id="smslow" data-act="slow" aria-label="Ralentir la vidéo" style="position:absolute;right:34px;bottom:34px;width:24px;height:24px;padding:0;border-radius:50%;border:0;background:transparent;font-size:14px;line-height:24px;text-align:center;z-index:2;transition:opacity .3s">🐌</button>' : '') + '</div>' +
+      (zum ? '<button id="smfsb" aria-label="Plein écran" style="position:absolute;right:61px;bottom:32px;width:44px;height:44px;padding:0;border:0;background:transparent;z-index:3;transition:opacity .3s"></button><button id="smslow" data-act="slow" aria-label="Ralentir la vidéo" style="position:absolute;right:34px;bottom:34px;width:24px;height:24px;padding:0;border-radius:50%;border:0;background:transparent;font-size:14px;line-height:24px;text-align:center;z-index:2;transition:opacity .3s">🐌</button>' : '') + '</div>' +
       (zum ? '<button class="btn sec" data-act="mp3all">🎵 Convertir en MP3</button><button data-act="prev" hidden' + (prev ? '' : ' disabled') + '></button><button data-act="next" hidden' + (next ? '' : ' disabled') + '></button>'
         : '<div class="row"><button class="btn sec" data-act="prev"' + (prev ? '' : ' disabled') + '>⏮ Vidéo précédente</button><button class="btn sec" data-act="next"' + (next ? '' : ' disabled') + '>Vidéo suivante ⏭</button></div>') +
       '<p class="mute small">Touche ⛶ en bas de la vidéo pour la mettre en plein écran.</p>',
@@ -390,10 +390,16 @@
           }
           box.classList.toggle('smfs', fe === box);
         };
-        document.addEventListener('fullscreenchange', onFs); document.addEventListener('webkitfullscreenchange', onFs); } }
+        document.addEventListener('fullscreenchange', onFs); document.addEventListener('webkitfullscreenchange', onFs);
+        const fsb = $('#smfsb'); if (fsb) fsb.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation();
+          const fe = document.fullscreenElement || document.webkitFullscreenElement;
+          if (fe) { const ex = document.exitFullscreen ? document.exitFullscreen() : (document.webkitExitFullscreen && document.webkitExitFullscreen()); Promise.resolve(ex).catch(() => {}); try { screen.orientation.unlock(); } catch (er) { /* rien */ } return; }
+          const rq = box.requestFullscreen || box.webkitRequestFullscreen; if (!rq) return;
+          Promise.resolve(rq.call(box)).then(() => { try { screen.orientation.lock('landscape').catch(() => {}); } catch (er) { /* rien */ } }).catch(() => {}); }); } }
     { const v = $('#smwatch'), b = $('#smslow'); if (v && b) { let tm = null;
-        const montre = () => { b.style.opacity = '1'; b.style.pointerEvents = 'auto'; clearTimeout(tm); if (!v.paused) tm = setTimeout(cache, 3000); };
-        const cache = () => { if (v.paused) return; b.style.opacity = '0'; b.style.pointerEvents = 'none'; };
+        const fsb = $('#smfsb'), set = (o) => { for (const x of [b, fsb]) if (x) { x.style.opacity = o ? '1' : '0'; x.style.pointerEvents = o ? 'auto' : 'none'; } };
+        const montre = () => { set(true); clearTimeout(tm); if (!v.paused) tm = setTimeout(cache, 3000); };
+        const cache = () => { if (v.paused) return; set(false); };
         v.addEventListener('play', montre); v.addEventListener('pause', montre); v.addEventListener('ended', montre);
         v.addEventListener('touchstart', montre, { passive: true }); v.addEventListener('click', montre); b.addEventListener('click', montre); } }
     // 08/11 : glisser à gauche = vidéo suivante, à droite = vidéo précédente (boutons gardés ; pas sur la barre du bas de la vidéo)
