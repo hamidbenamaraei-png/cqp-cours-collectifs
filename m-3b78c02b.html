@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#16a34a">
+<title>Mes films</title>
+<style>
+:root{--bg:#f6f4f1;--card:#fff;--ink:#1d1b19;--muted:#6b655e;--line:#e6e1da;--vert:#16a34a;--rouge:#b91c1c}
+@media (prefers-color-scheme:dark){:root{--bg:#171513;--card:#24211e;--ink:#f3efe9;--muted:#a69f96;--line:#38332e}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:640px;margin:0 auto;padding:16px 16px 110px}
+h1{font-size:26px;margin:8px 0 14px;display:flex;align-items:center;gap:10px}
+h1 .sp{flex:1}
+button{font:inherit;cursor:pointer;border:0;border-radius:12px;padding:12px 16px;background:var(--line);color:var(--ink)}
+button.vert{background:var(--vert);color:#fff;font-weight:700}
+button.rouge{background:#fde2e2;color:#7f1d1d}
+button.petit{padding:8px 12px;font-size:15px}
+button:disabled{opacity:.6}
+input,select{font:inherit;width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink)}
+label{display:block;font-weight:700;margin:12px 0 6px}
+.cat{background:var(--card);border:1px solid var(--line);border-radius:16px;margin:12px 0;overflow:hidden}
+.cat>summary{list-style:none;padding:14px 16px;font-weight:800;font-size:19px;display:flex;gap:8px;align-items:center;cursor:pointer}
+.cat>summary::-webkit-details-marker{display:none}
+.cat>summary .n{margin-left:auto;color:var(--muted);font-weight:600;font-size:15px}
+.lien{display:flex;align-items:center;border-top:1px solid var(--line)}
+.lien a{flex:1;min-width:0;padding:14px 16px;color:var(--ink);text-decoration:none}
+.lien a b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lien a small{display:block;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lien button{background:none;padding:14px;font-size:20px}
+.ajout{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom));font-size:20px;padding:16px 28px;border-radius:40px;box-shadow:0 6px 18px rgba(0,0,0,.2)}
+.ecran{display:none}.ecran.on{display:block}
+.centre{max-width:360px;margin:12vh auto 0;text-align:center}
+.code{font-size:30px;letter-spacing:.4em;text-align:center}
+.msg{min-height:1.4em;margin:10px 0;font-weight:700}
+.err{color:var(--rouge)}.ok{color:var(--vert)}
+.fond{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-end;justify-content:center;z-index:9}
+.fond.on{display:flex}
+.feuille{background:var(--bg);width:100%;max-width:560px;border-radius:20px 20px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom));max-height:92vh;overflow:auto}
+.rang{display:flex;gap:10px;margin-top:16px}.rang>*{flex:1}
+.vide{color:var(--muted);text-align:center;margin:40px 0}
+.etat{color:var(--muted);font-size:14px;text-align:center;min-height:1.2em}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="ecran on" id="eCharge"><div class="centre"><h1 style="justify-content:center">🎬 Mes films</h1><p>Chargement…</p></div></div>
+
+<div class="ecran" id="eCreer"><div class="centre">
+  <h1 style="justify-content:center">🔒 Mes films</h1>
+  <p>Choisis ton <b>code secret</b> (4 chiffres ou plus).<br>⚠️ Si tu l'oublies, tes liens sont perdus.</p>
+  <input id="c1" class="code" type="password" inputmode="numeric" autocomplete="off" placeholder="••••">
+  <input id="c2" class="code" type="password" inputmode="numeric" autocomplete="off" placeholder="encore" style="margin-top:10px">
+  <div class="msg err" id="mCreer"></div>
+  <button class="vert" style="width:100%" id="bCreer">Valider</button>
+</div></div>
+
+<div class="ecran" id="eCode"><div class="centre">
+  <h1 style="justify-content:center">🔒 Mes films</h1>
+  <p>Entre ton code</p>
+  <input id="cOuv" class="code" type="password" inputmode="numeric" autocomplete="off" placeholder="••••">
+  <div class="msg err" id="mCode"></div>
+  <button class="vert" style="width:100%" id="bOuvrir">Ouvrir</button>
+</div></div>
+
+<div class="ecran" id="eListe">
+  <h1>🎬 Mes films <span class="sp"></span>
+    <button class="petit" id="bMaj" aria-label="Actualiser">🔄</button>
+    <button class="petit" id="bVerrou" aria-label="Verrouiller">🔒</button></h1>
+  <div class="etat" id="etat"></div>
+  <div id="liste"></div>
+  <button class="vert ajout" id="bAjout">＋ Ajouter un film</button>
+</div>
+</div>
+
+<div class="fond" id="fLien"><div class="feuille">
+  <h2 id="tLien" style="margin:0">Ajouter un film</h2>
+  <label>Nom du film</label><input id="lNom" placeholder="ex. Le titre du film">
+  <label>Lien</label><input id="lUrl" inputmode="url" placeholder="https://…">
+  <label>Catégorie</label>
+  <select id="lCat"></select>
+  <input id="lCatNew" placeholder="Nom de la nouvelle catégorie" style="margin-top:8px;display:none">
+  <div class="msg err" id="mLien"></div>
+  <div class="rang"><button id="lAnnuler">Annuler</button><button class="vert" id="lOk">Enregistrer</button></div>
+  <button class="rouge" id="lSuppr" style="width:100%;margin-top:12px;display:none">🗑️ Supprimer</button>
+</div></div>
+
+<script>
+// ---- réglages : formulaire Google + tableau (contenu chiffré) ----
+const FORM='https://docs.google.com/forms/d/e/1FAIpQLSc8l4ovHM5zvHtkYgNTXdLBY4wOvMwG3q4Isj8eXqFlPWlc-w/formResponse';
+const ENTRY='entry.973599002';
+const SHEET='https://docs.google.com/spreadsheets/d/1dKmTn-ECKk0mPezTyIM9VDCu7blgw6LgEK3XzKK1uHw/gviz/tq?tqx=out:csv';
+const SEL='MbKVEFJjXP/VM/VMX9IKEg==';
+const ATTENTE='mesfilms.attente.v1';
+
+const $=id=>document.getElementById(id);
+const enc=new TextEncoder(),dec=new TextDecoder();
+const b64=a=>btoa(String.fromCharCode(...new Uint8Array(a)));
+const unb64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+let cle=null, brut=[], ops=[], edition=null;
+
+async function deriver(code){
+  const base=await crypto.subtle.importKey('raw',enc.encode(code),'PBKDF2',false,['deriveKey']);
+  return crypto.subtle.deriveKey({name:'PBKDF2',salt:unb64(SEL),iterations:250000,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+}
+async function chiffrer(obj){
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},cle,enc.encode(JSON.stringify(obj)));
+  return 'v1.'+b64(iv)+'.'+b64(ct);
+}
+async function dechiffrer(s,k){
+  const p=String(s).trim().split('.'); if(p[0]!=='v1'||p.length!==3) throw 0;
+  return JSON.parse(dec.decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:unb64(p[1])},k||cle,unb64(p[2]))));
+}
+
+// ---- lecture du tableau ----
+function lireCSV(t){
+  const lignes=[];let l=[],c='',q=false;
+  for(let i=0;i<t.length;i++){const ch=t[i];
+    if(q){if(ch==='"'){if(t[i+1]==='"'){c+='"';i++}else q=false}else c+=ch}
+    else if(ch==='"')q=true;else if(ch===','){l.push(c);c=''}
+    else if(ch==='\n'){l.push(c);lignes.push(l);l=[];c=''}else if(ch!=='\r')c+=ch;}
+  if(c||l.length){l.push(c);lignes.push(l)}
+  return lignes;
+}
+async function charger(){
+  const r=await fetch(SHEET+'&_='+Date.now(),{cache:'no-store'});
+  if(!r.ok) throw new Error('tableau '+r.status);
+  const L=lireCSV(await r.text());
+  brut=L.slice(1).map(x=>x[1]).filter(v=>v&&v.startsWith('v1.'));
+}
+function attente(){try{return JSON.parse(localStorage.getItem(ATTENTE)||'[]')}catch(e){return[]}}
+function setAttente(a){try{localStorage.setItem(ATTENTE,JSON.stringify(a))}catch(e){}}
+
+async function decoder(){
+  const tout=[];
+  for(const s of brut){try{tout.push(await dechiffrer(s))}catch(e){}}
+  const vus=new Set(tout.map(o=>o.k));
+  const reste=[];
+  for(const s of attente()){try{const o=await dechiffrer(s);if(!vus.has(o.k)){tout.push(o);reste.push(s)}}catch(e){}}
+  setAttente(reste);
+  tout.sort((a,b)=>a.t-b.t);
+  ops=tout;
+}
+function films(){
+  const m=new Map();
+  for(const o of ops){
+    if(o.op==='add'||o.op==='edit') m.set(o.id,{id:o.id,nom:o.nom,url:o.url,cat:o.cat});
+    else if(o.op==='del') m.delete(o.id);
+  }
+  return [...m.values()];
+}
+async function envoyer(obj){
+  obj.t=Date.now(); obj.k=obj.t.toString(36)+Math.random().toString(36).slice(2,8);
+  const s=await chiffrer(obj);
+  const a=attente();a.push(s);setAttente(a);
+  ops.push(obj);
+  try{
+    await fetch(FORM,{method:'POST',mode:'no-cors',body:new URLSearchParams({[ENTRY]:s})});
+    $('etat').textContent='✅ Enregistré';
+  }catch(e){ $('etat').textContent='⚠️ Pas de connexion : enregistré sur cet appareil, envoi à la prochaine ouverture.'; }
+}
+async function renvoyerAttente(){
+  for(const s of attente()){try{await fetch(FORM,{method:'POST',mode:'no-cors',body:new URLSearchParams({[ENTRY]:s})})}catch(e){}}
+}
+
+// ---- écrans ----
+function ecran(id){for(const e of document.querySelectorAll('.ecran'))e.classList.toggle('on',e.id===id)}
+async function demarrer(){
+  try{await charger()}catch(e){ $('eCharge').querySelector('p').textContent='❌ Impossible de lire tes liens. Vérifie Internet puis recharge la page.'; return }
+  if(brut.length||attente().length){ecran('eCode');setTimeout(()=>$('cOuv').focus(),50)}
+  else{ecran('eCreer');setTimeout(()=>$('c1').focus(),50)}
+}
+$('bCreer').onclick=async()=>{
+  const a=$('c1').value.trim(),b=$('c2').value.trim();
+  if(a.length<4) return $('mCreer').textContent='Au moins 4 chiffres.';
+  if(a!==b) return $('mCreer').textContent='Les 2 codes ne sont pas pareils.';
+  $('bCreer').disabled=true;
+  cle=await deriver(a); ops=[];
+  await envoyer({op:'init'});
+  afficher(); ecran('eListe'); $('bCreer').disabled=false;
+};
+async function ouvrir(){
+  const c=$('cOuv').value.trim(); if(!c) return;
+  $('bOuvrir').disabled=true; $('mCode').textContent='';
+  const k=await deriver(c);
+  const echantillon=brut.length?brut:attente();
+  let bon=false; for(const s of echantillon.slice(0,5)){try{await dechiffrer(s,k);bon=true;break}catch(e){}}
+  $('bOuvrir').disabled=false;
+  if(!bon){$('mCode').textContent='Code incorrect.';$('cOuv').select();return}
+  cle=k; $('cOuv').value='';
+  await decoder(); afficher(); ecran('eListe'); renvoyerAttente();
+}
+$('bOuvrir').onclick=ouvrir;
+$('cOuv').onkeydown=e=>{if(e.key==='Enter')ouvrir()};
+$('c2').onkeydown=e=>{if(e.key==='Enter')$('bCreer').click()};
+$('bVerrou').onclick=verrouiller;
+function verrouiller(){cle=null;ops=[];$('liste').innerHTML='';$('etat').textContent='';ecran('eCode')}
+document.addEventListener('visibilitychange',async()=>{
+  if(document.hidden){ if(cle) verrouiller(); }
+  else if($('eCode').classList.contains('on')){ try{await charger()}catch(e){} }
+});
+$('bMaj').onclick=async()=>{ $('etat').textContent='Actualisation…'; try{await charger();await decoder();afficher();$('etat').textContent='✅ À jour'}catch(e){$('etat').textContent='⚠️ Pas de connexion'} };
+
+// ---- liste ----
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function categories(){return [...new Set(films().map(l=>l.cat))].sort((a,b)=>a.localeCompare(b,'fr'))}
+function afficher(){
+  const fs=films(), cats=categories();
+  if(!fs.length){$('liste').innerHTML='<p class="vide">Aucun film pour l\'instant.<br>Touche <b>＋ Ajouter un film</b>.</p>';return}
+  $('liste').innerHTML=cats.map(c=>{
+    const ls=fs.filter(l=>l.cat===c).sort((a,b)=>a.nom.localeCompare(b.nom,'fr'));
+    return `<details class="cat" open><summary>📂 ${esc(c)}<span class="n">${ls.length}</span></summary>${
+      ls.map(l=>`<div class="lien"><a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer"><b>${esc(l.nom)}</b><small>${esc(l.url)}</small></a><button data-id="${esc(l.id)}" aria-label="Modifier">✏️</button></div>`).join('')
+    }</details>`}).join('');
+}
+$('liste').onclick=e=>{const b=e.target.closest('button[data-id]');if(b)fenetre(films().find(l=>l.id===b.dataset.id))};
+
+// ---- ajouter / modifier ----
+const NOUV='__nouvelle__';
+function remplirCats(ch){
+  const cats=categories();
+  $('lCat').innerHTML=cats.map(c=>`<option ${c===ch?'selected':''}>${esc(c)}</option>`).join('')+`<option value="${NOUV}" ${!cats.length?'selected':''}>➕ Nouvelle catégorie…</option>`;
+  majCat();
+}
+function majCat(){$('lCatNew').style.display=$('lCat').value===NOUV?'block':'none'}
+$('lCat').onchange=majCat;
+function fenetre(l){
+  edition=l||null;
+  $('tLien').textContent=l?'Modifier':'Ajouter un film';
+  $('lNom').value=l?l.nom:'';$('lUrl').value=l?l.url:'';$('lCatNew').value='';$('mLien').textContent='';
+  $('lSuppr').style.display=l?'block':'none';
+  remplirCats(l?l.cat:null);
+  $('fLien').classList.add('on');
+}
+$('bAjout').onclick=async()=>{
+  fenetre(null);
+  try{const t=(await navigator.clipboard.readText()).trim();if(/^https?:\/\/\S+$/.test(t))$('lUrl').value=t}catch(e){}
+};
+$('lAnnuler').onclick=()=>$('fLien').classList.remove('on');
+$('lOk').onclick=async()=>{
+  let nom=$('lNom').value.trim(),url=$('lUrl').value.trim();
+  const cat=$('lCat').value===NOUV?$('lCatNew').value.trim():$('lCat').value;
+  if(!url) return $('mLien').textContent='Mets le lien.';
+  if(!/^[a-z]+:\/\//i.test(url)) url='https://'+url;
+  if(!cat) return $('mLien').textContent='Choisis ou écris une catégorie.';
+  if(!nom){try{nom=new URL(url).hostname.replace(/^www\./,'')}catch(e){nom=url}}
+  $('lOk').disabled=true;
+  if(edition) await envoyer({op:'edit',id:edition.id,nom,url,cat});
+  else await envoyer({op:'add',id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),nom,url,cat});
+  $('lOk').disabled=false; afficher(); $('fLien').classList.remove('on');
+};
+$('lSuppr').onclick=async()=>{
+  if(!edition) return;
+  if($('lSuppr').dataset.sure!=='1'){$('lSuppr').dataset.sure='1';$('lSuppr').textContent='Touche encore pour confirmer';return}
+  $('lSuppr').dataset.sure='';$('lSuppr').textContent='🗑️ Supprimer';
+  await envoyer({op:'del',id:edition.id}); afficher(); $('fLien').classList.remove('on');
+};
+document.querySelectorAll('.fond').forEach(f=>f.addEventListener('click',e=>{if(e.target===f)f.classList.remove('on')}));
+
+demarrer();
+</script>
+</body>
+</html>
