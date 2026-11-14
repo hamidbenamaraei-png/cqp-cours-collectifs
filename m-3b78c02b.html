@@ -41,6 +41,8 @@ label{display:block;font-weight:700;margin:12px 0 6px}
 .feuille{background:var(--bg);width:100%;max-width:560px;border-radius:20px 20px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom));max-height:92vh;overflow:auto}
 .rang{display:flex;gap:10px;margin-top:16px}.rang>*{flex:1}
 .vide{color:var(--muted);text-align:center;margin:40px 0}
+.adr{display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin-bottom:8px;font-size:14px}
+.adr code{flex:1 1 100%;word-break:break-all;color:var(--muted)}
 .etat{color:var(--muted);font-size:14px;text-align:center;min-height:1.2em}
 </style>
 </head>
@@ -70,6 +72,7 @@ label{display:block;font-weight:700;margin:12px 0 6px}
   <h1>🎬 Mes films <span class="sp"></span>
     <button class="petit" id="bMaj" aria-label="Actualiser">🔄</button>
     <button class="petit" id="bVerrou" aria-label="Verrouiller">🔒</button></h1>
+  <div class="adr"><span>📌 Mon adresse :</span><code id="adr"></code><button class="petit" id="bAdr">📋 Copier</button></div>
   <div class="etat" id="etat"></div>
   <div id="liste"></div>
   <button class="vert ajout" id="bAjout">＋ Ajouter un film</button>
@@ -261,6 +264,9 @@ $('lSuppr').onclick=async()=>{
 };
 document.querySelectorAll('.fond').forEach(f=>f.addEventListener('click',e=>{if(e.target===f)f.classList.remove('on')}));
 
+const ADR=location.href.split('#')[0].split('?')[0];
+$('adr').textContent=ADR;
+$('bAdr').onclick=async()=>{try{await navigator.clipboard.writeText(ADR);$('bAdr').textContent='✅ Copiée'}catch(e){const r=document.createRange();r.selectNodeContents($('adr'));const sel=getSelection();sel.removeAllRanges();sel.addRange(r);$('bAdr').textContent='Sélectionnée'}setTimeout(()=>$('bAdr').textContent='📋 Copier',2000)};
 demarrer();
 </script>
 </body>
