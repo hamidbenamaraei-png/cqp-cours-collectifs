@@ -162,7 +162,9 @@ async function envoyer(obj){
   const a=attente();a.push(s);setAttente(a);
   ops.push(obj);
   try{
-    await fetch(FORM,{method:'POST',mode:'no-cors',body:new URLSearchParams({[ENTRY]:s})});
+    const ac=new AbortController(); const tm=setTimeout(()=>ac.abort(),10000);
+    await fetch(FORM,{method:'POST',mode:'no-cors',body:new URLSearchParams({[ENTRY]:s}),signal:ac.signal});
+    clearTimeout(tm);
     $('etat').textContent='✅ Enregistré';
   }catch(e){ $('etat').textContent='⚠️ Pas de connexion : enregistré sur cet appareil, envoi à la prochaine ouverture.'; }
 }
@@ -201,10 +203,13 @@ $('bOuvrir').onclick=ouvrir;
 $('cOuv').onkeydown=e=>{if(e.key==='Enter')ouvrir()};
 $('c2').onkeydown=e=>{if(e.key==='Enter')$('bCreer').click()};
 $('bVerrou').onclick=verrouiller;
-function verrouiller(){cle=null;ops=[];$('liste').innerHTML='';$('etat').textContent='';ecran('eCode')}
+function verrouiller(){document.querySelectorAll('.fond').forEach(f=>f.classList.remove('on'));cle=null;ops=[];$('liste').innerHTML='';$('etat').textContent='';ecran('eCode')}
+let cache=0;
 document.addEventListener('visibilitychange',async()=>{
-  if(document.hidden){ if(cle) verrouiller(); }
-  else if($('eCode').classList.contains('on')){ try{await charger()}catch(e){} }
+  if(document.hidden){ cache=Date.now(); return }
+  if(cle && cache && Date.now()-cache>5*60*1000) verrouiller();
+  cache=0;
+  if($('eCode').classList.contains('on')){ try{await charger()}catch(e){} }
 });
 $('bMaj').onclick=async()=>{ $('etat').textContent='Actualisation…'; try{await charger();await decoder();afficher();$('etat').textContent='✅ À jour'}catch(e){$('etat').textContent='⚠️ Pas de connexion'} };
 
@@ -251,16 +256,21 @@ $('lOk').onclick=async()=>{
   if(!/^[a-z]+:\/\//i.test(url)) url='https://'+url;
   if(!cat) return $('mLien').textContent='Choisis ou écris une catégorie.';
   if(!nom){try{nom=new URL(url).hostname.replace(/^www\./,'')}catch(e){nom=url}}
+  if(!cle){ $('fLien').classList.remove('on'); verrouiller(); return }
   $('lOk').disabled=true;
-  if(edition) await envoyer({op:'edit',id:edition.id,nom,url,cat});
-  else await envoyer({op:'add',id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),nom,url,cat});
-  $('lOk').disabled=false; afficher(); $('fLien').classList.remove('on');
+  try{
+    if(edition) await envoyer({op:'edit',id:edition.id,nom,url,cat});
+    else await envoyer({op:'add',id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),nom,url,cat});
+    afficher(); $('fLien').classList.remove('on');
+  }catch(e){ $('mLien').textContent='⚠️ Pas enregistré. Réessaie.'; }
+  finally{ $('lOk').disabled=false; }
 };
 $('lSuppr').onclick=async()=>{
   if(!edition) return;
   if($('lSuppr').dataset.sure!=='1'){$('lSuppr').dataset.sure='1';$('lSuppr').textContent='Touche encore pour confirmer';return}
   $('lSuppr').dataset.sure='';$('lSuppr').textContent='🗑️ Supprimer';
-  await envoyer({op:'del',id:edition.id}); afficher(); $('fLien').classList.remove('on');
+  if(!cle){ verrouiller(); return }
+  try{ await envoyer({op:'del',id:edition.id}); afficher(); $('fLien').classList.remove('on'); }catch(e){ $('mLien').textContent='⚠️ Pas supprimé. Réessaie.'; }
 };
 document.querySelectorAll('.fond').forEach(f=>f.addEventListener('click',e=>{if(e.target===f)f.classList.remove('on')}));
 
