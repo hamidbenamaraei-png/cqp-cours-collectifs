@@ -221,7 +221,7 @@ function afficher(){
   if(!fs.length){$('liste').innerHTML='<p class="vide">Aucun film pour l\'instant.<br>Touche <b>＋ Ajouter un film</b>.</p>';return}
   $('liste').innerHTML=cats.map(c=>{
     const ls=fs.filter(l=>l.cat===c).sort((a,b)=>a.nom.localeCompare(b.nom,'fr'));
-    return `<details class="cat" open><summary>📂 ${esc(c)}<span class="n">${ls.length}</span></summary>${
+    return `<details class="cat"><summary>📂 ${esc(c)}<span class="n">${ls.length}</span></summary>${
       ls.map(l=>`<div class="lien"><a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer"><b>${esc(l.nom)}</b><small>${esc(l.url)}</small></a><button data-id="${esc(l.id)}" aria-label="Modifier">✏️</button></div>`).join('')
     }</details>`}).join('');
 }
